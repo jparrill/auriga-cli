@@ -46,6 +46,14 @@ func ResolveGGUF(repo string, quantPriority []string) (string, int64, error) {
 		}
 	}
 
+	// Prefer Unsloth Dynamic (UD-) quants over standard
+	for _, q := range quantPriority {
+		for _, gf := range ggufFiles {
+			if strings.Contains(gf.Path, "UD-"+q) {
+				return gf.Path, gf.Size, nil
+			}
+		}
+	}
 	for _, q := range quantPriority {
 		for _, gf := range ggufFiles {
 			if strings.Contains(gf.Path, q) {
