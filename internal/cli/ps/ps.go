@@ -245,10 +245,15 @@ func shortenPath(path string) string {
 }
 
 func resolveOllamaModelsDir() string {
-	if v := os.Getenv("OLLAMA_MODELS"); v != "" {
+	if v := os.Getenv("OLLAMA_MODELS_DIR"); v != "" {
 		return v
 	}
-	return config.ExpandHome(viper.GetString("ollama.models_dir"))
+	dir := viper.GetString("ollama.models_dir")
+	if dir != "" {
+		return config.ExpandHome(dir)
+	}
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".ollama", "models")
 }
 
 func printGPUMemory() {

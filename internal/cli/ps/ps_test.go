@@ -39,7 +39,7 @@ func TestExtractFlag(t *testing.T) {
 }
 
 func TestResolveOllamaModelsDir_FromEnv(t *testing.T) {
-	t.Setenv("OLLAMA_MODELS", "/tmp/test-ollama")
+	t.Setenv("OLLAMA_MODELS_DIR", "/tmp/test-ollama")
 	dir := resolveOllamaModelsDir()
 	if dir != "/tmp/test-ollama" {
 		t.Errorf("expected /tmp/test-ollama, got %q", dir)
