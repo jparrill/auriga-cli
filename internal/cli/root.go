@@ -6,7 +6,7 @@ import (
 	"github.com/jparrill/auriga-cli/internal/cli/benchmark"
 	"github.com/jparrill/auriga-cli/internal/cli/fix"
 	"github.com/jparrill/auriga-cli/internal/cli/model"
-	"github.com/jparrill/auriga-cli/internal/cli/serve"
+	"github.com/jparrill/auriga-cli/internal/cli/profile"
 	"github.com/jparrill/auriga-cli/internal/config"
 	"github.com/jparrill/auriga-cli/internal/ui"
 	"github.com/spf13/cobra"
@@ -25,9 +25,10 @@ Examples:
   auriga model ensure                        # Download missing models
   auriga model create --name my-model --gguf Qwen3.6.gguf
 
-  auriga serve start qwen3.6-vision          # Start llama-server with vision profile
-  auriga serve list                          # List available profiles
-  auriga serve stop                          # Stop llama-server, restart Ollama
+  auriga profile create mymodel --repo unsloth/gemma-4-12b-it-GGUF --vision
+  auriga profile list                        # List configured profiles
+  auriga profile serve qwen3.6-vision        # Start llama-server with profile
+  auriga profile stop                        # Stop llama-server, restart Ollama
 
   auriga benchmark list                      # Show all benchmark results
   auriga benchmark list --failed             # Only failed results
@@ -53,7 +54,7 @@ Examples:
 	cobra.OnInitialize(func() { initViper(cfgFile) })
 
 	cmd.AddCommand(newVersionCmd())
-	cmd.AddCommand(serve.NewServeCmd())
+	cmd.AddCommand(profile.NewProfileCmd())
 	cmd.AddCommand(model.NewModelCmd())
 	cmd.AddCommand(fix.NewFixCmd())
 	cmd.AddCommand(benchmark.NewBenchmarkCmd())
