@@ -100,27 +100,25 @@ func runBenchmarkList(failedOnly bool, run string) error {
 	runName := filepath.Base(runDir)
 	fmt.Printf("\n  %s\n", ui.BoldStyle.Render(fmt.Sprintf("Run: %s", runName)))
 
-	pass := ui.SuccessStyle.Render("✓")
-	fail := ui.ErrorStyle.Render("✗")
-
-	fmt.Printf("  %-45s %-14s %4s  %5s  %6s  %4s\n",
+	fmt.Printf("  %-45s %-14s %-6s %5s  %6s  %s\n",
 		"MODEL", "BACKEND", "PASS", "FILES", "TIME", "SRC")
-	fmt.Printf("  %s\n", strings.Repeat("─", 84))
+	fmt.Printf("  %s\n", strings.Repeat("─", 86))
 
 	for _, r := range results {
-		status := fail
+		status := ui.ErrorStyle.Render("✗")
 		if r.Success {
-			status = pass
+			status = ui.SuccessStyle.Render("✓")
 		}
-		src := fail
+		src := ui.ErrorStyle.Render("✗")
 		if r.HasSrc {
-			src = pass
+			src = ui.SuccessStyle.Render("✓")
 		}
 		model := r.Model
 		if len(model) > 44 {
 			model = model[:44]
 		}
-		fmt.Printf("  %-45s %-14s %4s  %5d  %5ds  %4s\n",
+		// Pad manually after ANSI-colored strings
+		fmt.Printf("  %-45s %-14s %s      %5d  %5ds  %s\n",
 			model, r.Backend, status, r.FilesCreated, r.Duration, src)
 	}
 	fmt.Println()
