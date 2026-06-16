@@ -42,7 +42,13 @@ func NewFixCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "fix",
 		Short: "Interactive project fix workflow with Pi",
-		Long:  "Pick a benchmark result, spin up the model that generated it, and launch Pi for interactive fixes.",
+		Long: `Pick a benchmark result, spin up the model that generated it, and launch Pi for interactive fixes.
+
+Examples:
+  auriga fix                   # Interactive fzf picker
+  auriga fix --list            # Just list all results
+  auriga fix --failed          # Pick from failed only
+  auriga fix --model gemma4    # Jump to gemma4 result directly`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runFix(opts)
 		},

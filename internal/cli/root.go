@@ -17,7 +17,24 @@ func NewRootCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "auriga",
 		Short: "AI server management CLI for auriga",
-		Long:  "Manage LLM models, benchmarks, and development workflows on the auriga AI server.",
+		Long: `Manage LLM models, benchmarks, and development workflows on the auriga AI server.
+
+Examples:
+  auriga model list                          # List all Ollama + GGUF models
+  auriga model list --backend ollama         # Ollama models only
+  auriga model ensure                        # Download missing models
+  auriga model create --name my-model --gguf Qwen3.6.gguf
+
+  auriga serve start qwen3.6-vision          # Start llama-server with vision profile
+  auriga serve list                          # List available profiles
+  auriga serve stop                          # Stop llama-server, restart Ollama
+
+  auriga benchmark list                      # Show all benchmark results
+  auriga benchmark list --failed             # Only failed results
+
+  auriga fix                                 # Interactive fix with Pi (fzf picker)
+  auriga fix --failed                        # Only pick from failed results
+  auriga fix --model gemma4                  # Jump to a specific model`,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			ui.InitLogger(config.Verbose)
 			return nil

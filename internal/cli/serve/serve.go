@@ -22,7 +22,14 @@ func NewServeCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "serve",
 		Short: "Manage llama-server for local inference",
-		Long:  "Start llama-server with a named profile (model + optional mmproj for vision), or stop it.",
+		Long: `Start llama-server with a named profile (model + optional mmproj for vision), or stop it.
+
+Examples:
+  auriga serve start qwen3.6-vision                    # Vision-enabled (with mmproj)
+  auriga serve start qwen3.6-uncensored-vision         # Uncensored + vision
+  auriga serve start --model Qwen3-30B-A3B-Q4_K_M.gguf # Custom GGUF, no vision
+  auriga serve list                                    # Show configured profiles
+  auriga serve stop                                    # Stop and restart Ollama`,
 	}
 
 	cmd.AddCommand(newServeStartCmd())
