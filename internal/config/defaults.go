@@ -19,7 +19,6 @@ var (
 	DefaultPiBin          = "~/.npm-global/bin/pi"
 	DefaultOllamaHost     = "http://localhost:11434"
 	DefaultLlamaServerHost = "http://localhost:8090"
-	DefaultLlamaServerPort = 8090
 	DefaultQuant          = "Q4_K_M"
 )
 

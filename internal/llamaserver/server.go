@@ -42,7 +42,16 @@ func Host() string {
 }
 
 func Port() int {
-	return viper.GetInt("llama_server.port")
+	host := Host()
+	parts := strings.Split(host, ":")
+	if len(parts) >= 3 {
+		var p int
+		fmt.Sscanf(parts[len(parts)-1], "%d", &p)
+		if p > 0 {
+			return p
+		}
+	}
+	return 8090
 }
 
 func Bin() string {

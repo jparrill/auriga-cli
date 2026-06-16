@@ -94,7 +94,6 @@ func initViper(cfgFile string) {
 	// Defaults
 	viper.SetDefault("ollama.host", config.DefaultOllamaHost)
 	viper.SetDefault("llama_server.host", config.DefaultLlamaServerHost)
-	viper.SetDefault("llama_server.port", config.DefaultLlamaServerPort)
 	viper.SetDefault("llama_server.bin", config.DefaultLlamaServerBin)
 	viper.SetDefault("llama_server.gguf_dir", config.DefaultGGUFDir)
 	viper.SetDefault("llama_server.mmproj_dir", config.DefaultMMProjDir)

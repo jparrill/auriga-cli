@@ -10,7 +10,6 @@ ollama:
 
 llama_server:
   host: http://localhost:8090
-  port: 8090
   bin: ~/infra/bin/llama-server
   gguf_dir: ~/infra/ai/models/gguf
   mmproj_dir: ~/infra/ai/models/mmproj
