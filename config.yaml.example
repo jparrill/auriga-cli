@@ -1,5 +1,6 @@
 ollama:
   host: http://localhost:11434
+  models_dir: ~/infra/ai/models/ollama
   models:
     - gemma4:26b
     - qwen3.6:27b

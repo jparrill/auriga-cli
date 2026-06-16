@@ -243,8 +243,7 @@ func resolveOllamaModelsDir() string {
 	if v := os.Getenv("OLLAMA_MODELS"); v != "" {
 		return v
 	}
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".ollama", "models")
+	return config.ExpandHome(viper.GetString("ollama.models_dir"))
 }
 
 func printGPUMemory() {

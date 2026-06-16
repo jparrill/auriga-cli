@@ -19,7 +19,8 @@ var (
 	DefaultPiBin          = "~/.npm-global/bin/pi"
 	DefaultOllamaHost     = "http://localhost:11434"
 	DefaultLlamaServerHost = "http://localhost:8090"
-	DefaultQuant          = "Q4_K_M"
+	DefaultQuant           = "Q4_K_M"
+	DefaultOllamaModelsDir = "~/infra/ai/models/ollama"
 )
 
 func ExpandHome(path string) string {
