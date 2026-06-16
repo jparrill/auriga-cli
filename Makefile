@@ -15,7 +15,14 @@ build:
 
 .PHONY: install
 install: build
+	@mkdir -p $(HOME)/bin $(HOME)/.config/auriga
 	cp bin/$(BINARY) $(HOME)/bin/$(BINARY)
+	@if [ ! -f $(HOME)/.config/auriga/config.yaml ]; then \
+		cp config.yaml.example $(HOME)/.config/auriga/config.yaml; \
+		echo "Created $(HOME)/.config/auriga/config.yaml"; \
+	else \
+		echo "Config already exists, skipping"; \
+	fi
 
 .PHONY: cross-linux
 cross-linux:
@@ -23,8 +30,10 @@ cross-linux:
 
 .PHONY: deploy
 deploy: cross-linux
-	rsync -avz bin/$(BINARY)-linux-amd64 auriga:~/infra/bin/$(BINARY)
-	rsync -avz config.yaml.example auriga:~/.config/auriga/config.yaml
+	@ssh auriga "mkdir -p ~/bin ~/.config/auriga"
+	rsync -avz bin/$(BINARY)-linux-amd64 auriga:~/bin/$(BINARY)
+	@ssh auriga "test -f ~/.config/auriga/config.yaml && echo 'Config already exists, skipping' || true"
+	@ssh auriga "test -f ~/.config/auriga/config.yaml" || rsync -avz config.yaml.example auriga:~/.config/auriga/config.yaml
 
 .PHONY: test
 test:
