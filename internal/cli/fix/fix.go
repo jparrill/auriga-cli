@@ -34,6 +34,7 @@ type fixOpts struct {
 	List       bool
 	FailedOnly bool
 	Model      string
+	Run        string
 }
 
 func NewFixCmd() *cobra.Command {
@@ -45,10 +46,11 @@ func NewFixCmd() *cobra.Command {
 		Long: `Pick a benchmark result, spin up the model that generated it, and launch Pi for interactive fixes.
 
 Examples:
-  auriga fix                   # Interactive fzf picker
+  auriga fix                   # Interactive fzf picker (latest run)
   auriga fix --list            # Just list all results
   auriga fix --failed          # Pick from failed only
-  auriga fix --model gemma4    # Jump to gemma4 result directly`,
+  auriga fix --model gemma4    # Jump to gemma4 result directly
+  auriga fix --run 2026-06-14_1045   # Fix from specific run`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runFix(opts)
 		},
@@ -57,13 +59,18 @@ Examples:
 	cmd.Flags().BoolVar(&opts.List, "list", false, "Only list results")
 	cmd.Flags().BoolVar(&opts.FailedOnly, "failed", false, "Only show failed results")
 	cmd.Flags().StringVar(&opts.Model, "model", "", "Jump to a specific model (substring match)")
+	cmd.Flags().StringVar(&opts.Run, "run", "latest", "Run to use (timestamp or 'latest')")
 
 	return cmd
 }
 
-func loadResults() ([]resultMeta, error) {
+func loadResults(run string) ([]resultMeta, error) {
 	resultsDir := config.ExpandHome(viper.GetString("benchmark.results_dir"))
-	entries, err := os.ReadDir(resultsDir)
+	runDir := resolveRunDir(resultsDir, run)
+	if runDir == "" {
+		return nil, fmt.Errorf("run %q not found in %s", run, resultsDir)
+	}
+	entries, err := os.ReadDir(runDir)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read results: %w", err)
 	}
@@ -73,7 +80,7 @@ func loadResults() ([]resultMeta, error) {
 		if !e.IsDir() {
 			continue
 		}
-		data, err := os.ReadFile(filepath.Join(resultsDir, e.Name(), "metadata.json"))
+		data, err := os.ReadFile(filepath.Join(runDir, e.Name(), "metadata.json"))
 		if err != nil {
 			continue
 		}
@@ -81,7 +88,7 @@ func loadResults() ([]resultMeta, error) {
 		if err := json.Unmarshal(data, &r); err != nil {
 			continue
 		}
-		r.Dir = filepath.Join(resultsDir, e.Name())
+		r.Dir = filepath.Join(runDir, e.Name())
 		_, srcErr := os.Stat(filepath.Join(r.Dir, "project", "src"))
 		r.HasSrc = srcErr == nil
 		results = append(results, r)
@@ -166,7 +173,7 @@ func selectWithFzf(results []resultMeta) *resultMeta {
 }
 
 func runFix(opts *fixOpts) error {
-	results, err := loadResults()
+	results, err := loadResults(opts.Run)
 	if err != nil {
 		return err
 	}
@@ -277,4 +284,34 @@ func runFixSession(meta *resultMeta) error {
 	}
 
 	return pi.Launch(ctx, projectDir, modelID)
+}
+
+func resolveRunDir(resultsDir, run string) string {
+	if run == "latest" {
+		latestLink := filepath.Join(resultsDir, "latest")
+		target, err := os.Readlink(latestLink)
+		if err != nil {
+			// Fallback: legacy flat results
+			entries, _ := os.ReadDir(resultsDir)
+			for _, e := range entries {
+				if e.IsDir() {
+					meta := filepath.Join(resultsDir, e.Name(), "metadata.json")
+					if _, err := os.Stat(meta); err == nil {
+						return resultsDir
+					}
+				}
+			}
+			return ""
+		}
+		if !filepath.IsAbs(target) {
+			target = filepath.Join(resultsDir, target)
+		}
+		return target
+	}
+
+	dir := filepath.Join(resultsDir, run)
+	if _, err := os.Stat(dir); err == nil {
+		return dir
+	}
+	return ""
 }

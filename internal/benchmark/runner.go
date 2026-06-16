@@ -43,6 +43,19 @@ func RunAll(cfg RunConfig) ([]Result, error) {
 		return nil, err
 	}
 
+	// Create timestamped run directory
+	runTimestamp := time.Now().Format("2006-01-02_1504")
+	runDir := filepath.Join(cfg.ResultsDir, runTimestamp)
+	if err := os.MkdirAll(runDir, 0755); err != nil {
+		return nil, fmt.Errorf("cannot create run dir: %w", err)
+	}
+
+	// Update latest symlink
+	latestLink := filepath.Join(cfg.ResultsDir, "latest")
+	os.Remove(latestLink)
+	os.Symlink(runTimestamp, latestLink)
+
+	ui.Info(fmt.Sprintf("Run: %s", runTimestamp))
 	ui.Info(fmt.Sprintf("Prompt: %d chars", len(prompt)))
 
 	type job struct {
@@ -53,19 +66,17 @@ func RunAll(cfg RunConfig) ([]Result, error) {
 
 	if cfg.Backend == "ollama" || cfg.Backend == "all" {
 		for _, m := range cfg.Models {
-			if cfg.Backend == "all" || cfg.Backend == "ollama" {
-				jobs = append(jobs, job{m, "ollama"})
-			}
+			jobs = append(jobs, job{m, "ollama"})
 		}
 	}
 
-	if cfg.Backend == "llama-server" {
+	if cfg.Backend == "llama-server" || cfg.Backend == "all" {
 		for _, m := range cfg.Models {
 			jobs = append(jobs, job{m, "llama-server"})
 		}
 	}
 
-	// If models are specified with a backend, use only those
+	// If models specified with specific backend, override
 	if len(cfg.Models) > 0 && cfg.Backend != "all" {
 		jobs = nil
 		for _, m := range cfg.Models {
@@ -75,9 +86,13 @@ func RunAll(cfg RunConfig) ([]Result, error) {
 
 	ui.Info(fmt.Sprintf("Total jobs: %d", len(jobs)))
 
+	// Override results dir to use run directory
+	runCfg := cfg
+	runCfg.ResultsDir = runDir
+
 	var results []Result
 	for _, j := range jobs {
-		r := runSingle(j.model, j.backend, prompt, cfg)
+		r := runSingle(j.model, j.backend, prompt, runCfg)
 		results = append(results, r)
 
 		if j.backend == "ollama" {
@@ -86,7 +101,7 @@ func RunAll(cfg RunConfig) ([]Result, error) {
 		}
 	}
 
-	summaryPath := filepath.Join(cfg.ResultsDir, "summary.json")
+	summaryPath := filepath.Join(runDir, "summary.json")
 	data, _ := json.MarshalIndent(results, "", "  ")
 	os.WriteFile(summaryPath, data, 0644)
 
