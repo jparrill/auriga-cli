@@ -34,7 +34,7 @@ func TestVersionCmd(t *testing.T) {
 
 func TestRootCmd_SubcommandRegistration(t *testing.T) {
 	cmd := NewRootCmd()
-	expected := []string{"version", "profile", "model", "fix", "benchmark"}
+	expected := []string{"version", "profile", "model", "fix", "benchmark", "ps"}
 
 	cmds := make(map[string]bool)
 	for _, c := range cmd.Commands() {
