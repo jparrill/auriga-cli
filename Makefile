@@ -32,6 +32,7 @@ cross-linux:
 deploy: cross-linux
 	@ssh auriga "mkdir -p ~/bin ~/.config/auriga"
 	rsync -avz bin/$(BINARY)-linux-amd64 auriga:~/bin/$(BINARY)
+	@ssh auriga "cp ~/bin/$(BINARY) ~/infra/bin/$(BINARY) 2>/dev/null || true"
 	@ssh auriga "test -f ~/.config/auriga/config.yaml && echo 'Config already exists, skipping' || true"
 	@ssh auriga "test -f ~/.config/auriga/config.yaml" || rsync -avz config.yaml.example auriga:~/.config/auriga/config.yaml
 

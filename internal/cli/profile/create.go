@@ -87,15 +87,6 @@ func runProfileCreate(name string, opts *createOpts) error {
 		ui.Ok(fmt.Sprintf("MMProj: %s (%.0f MB)", mmprojFile, sizeMB))
 	}
 
-	// Build profile data
-	profileData := map[string]interface{}{
-		"repo":  opts.Repo,
-		"model": modelFile,
-	}
-	if mmprojFile != "" {
-		profileData["mmproj"] = mmprojFile
-	}
-
 	// Show summary
 	params := []ui.OrderedParam{
 		{Key: "Name", Value: name},
@@ -113,21 +104,17 @@ func runProfileCreate(name string, opts *createOpts) error {
 		return err
 	}
 
-	// Write to config
-	viper.Set(fmt.Sprintf("profiles.%s", name), profileData)
-	cfgPath := viper.ConfigFileUsed()
-	if cfgPath == "" {
-		cfgPath = config.ExpandHome("~/.config/auriga/config.yaml")
+	// Write to config (direct YAML manipulation, preserves formatting)
+	pc := ProfileConfig{
+		Repo:   opts.Repo,
+		Model:  modelFile,
+		MMProj: mmprojFile,
 	}
-
-	if err := os.MkdirAll(filepath.Dir(cfgPath), 0755); err != nil {
-		return err
-	}
-	if err := viper.WriteConfigAs(cfgPath); err != nil {
+	if err := addProfileToConfig(name, pc); err != nil {
 		return fmt.Errorf("cannot write config: %w", err)
 	}
 
-	ui.Ok(fmt.Sprintf("Profile %q created in %s", name, cfgPath))
+	ui.Ok(fmt.Sprintf("Profile %q created in %s", configPath(), name))
 
 	// Check if files are downloaded
 	ggufDir := config.ExpandHome(viper.GetString("llama_server.gguf_dir"))
