@@ -3,6 +3,8 @@ package ui
 import (
 	"fmt"
 	"strings"
+
+	"github.com/mattn/go-runewidth"
 )
 
 type Column struct {
@@ -19,7 +21,7 @@ type Table struct {
 func NewTable(title string, headers ...string) *Table {
 	cols := make([]Column, len(headers))
 	for i, h := range headers {
-		cols[i] = Column{Header: h, Width: len(h)}
+		cols[i] = Column{Header: h, Width: runewidth.StringWidth(h)}
 	}
 	return &Table{Title: title, Columns: cols}
 }
@@ -31,10 +33,9 @@ func (t *Table) AddRow(values ...string) {
 			break
 		}
 		row[i] = v
-		// Only count visible length (strip ANSI)
-		visible := stripANSI(v)
-		if len(visible) > t.Columns[i].Width {
-			t.Columns[i].Width = len(visible)
+		w := visibleWidth(v)
+		if w > t.Columns[i].Width {
+			t.Columns[i].Width = w
 		}
 	}
 	t.Rows = append(t.Rows, row)
@@ -53,7 +54,11 @@ func (t *Table) Print() {
 			fmt.Print("  ")
 			totalWidth += 2
 		}
-		fmt.Printf("%-*s", col.Width, col.Header)
+		hPad := col.Width - runewidth.StringWidth(col.Header)
+		if hPad < 0 {
+			hPad = 0
+		}
+		fmt.Print(col.Header + strings.Repeat(" ", hPad))
 		totalWidth += col.Width
 	}
 	fmt.Println()
@@ -67,8 +72,7 @@ func (t *Table) Print() {
 				fmt.Print("  ")
 			}
 			val := row[i]
-			visible := stripANSI(val)
-			padding := col.Width - len(visible)
+			padding := col.Width - visibleWidth(val)
 			if padding < 0 {
 				padding = 0
 			}
@@ -77,6 +81,10 @@ func (t *Table) Print() {
 		fmt.Println()
 	}
 	fmt.Println()
+}
+
+func visibleWidth(s string) int {
+	return runewidth.StringWidth(stripANSI(s))
 }
 
 func stripANSI(s string) string {
