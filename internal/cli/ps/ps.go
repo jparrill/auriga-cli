@@ -197,17 +197,13 @@ func checkPi() processInfo {
 }
 
 func extractFlag(args, flag string) string {
-	idx := strings.Index(args, flag)
-	if idx == -1 {
-		return ""
+	fields := strings.Fields(args)
+	for i, f := range fields {
+		if f == flag && i+1 < len(fields) {
+			return fields[i+1]
+		}
 	}
-	rest := args[idx+len(flag):]
-	rest = strings.TrimLeft(rest, " =")
-	parts := strings.Fields(rest)
-	if len(parts) == 0 {
-		return ""
-	}
-	return parts[0]
+	return ""
 }
 
 func printDiskUsage() {
