@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/jparrill/auriga-cli/internal/config"
 	"github.com/jparrill/auriga-cli/internal/huggingface"
@@ -84,6 +85,13 @@ func runProfileCreate(name string, opts *createOpts) error {
 			return fmt.Errorf("cannot resolve mmproj: %w (this model may not support vision)", err)
 		}
 		sizeMB := float64(size) / (1024 * 1024)
+		// Rename mmproj to include model name for uniqueness
+		repoBase := filepath.Base(opts.Repo)
+		repoBase = strings.TrimSuffix(repoBase, "-GGUF")
+		if !strings.Contains(mmprojFile, repoBase) {
+			ext := filepath.Ext(mmprojFile)
+			mmprojFile = repoBase + "-" + mmprojFile[:len(mmprojFile)-len(ext)] + ext
+		}
 		ui.Ok(fmt.Sprintf("MMProj: %s (%.0f MB)", mmprojFile, sizeMB))
 	}
 
@@ -114,7 +122,7 @@ func runProfileCreate(name string, opts *createOpts) error {
 		return fmt.Errorf("cannot write config: %w", err)
 	}
 
-	ui.Ok(fmt.Sprintf("Profile %q created in %s", configPath(), name))
+	ui.Ok(fmt.Sprintf("Profile %q created in %s", name, configPath()))
 
 	// Check if files are downloaded
 	ggufDir := config.ExpandHome(viper.GetString("llama_server.gguf_dir"))
