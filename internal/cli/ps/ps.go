@@ -133,33 +133,42 @@ func getOllamaRunningModel() string {
 func checkLlamaServer() processInfo {
 	p := processInfo{Component: "llama-server", Status: "stopped", PID: "-", Port: "-", Model: "-", Extra: "-"}
 
+	llamaBin := config.ExpandHome(viper.GetString("llama_server.bin"))
+
 	ctx := context.Background()
 	out, err := exec.RunCapture(ctx, "pgrep", []string{"-a", "llama-server"}, exec.RunOpts{})
 	if err != nil || strings.TrimSpace(out) == "" {
 		return p
 	}
 
-	p.Status = "active"
-	line := strings.TrimSpace(strings.Split(out, "\n")[0])
-	parts := strings.SplitN(line, " ", 2)
-	p.PID = parts[0]
-
-	if len(parts) > 1 {
-		args := parts[1]
-		p.Model = extractFlag(args, "-m")
-		if p.Model != "" {
-			p.Model = filepath.Base(p.Model)
+	// Find our llama-server (not Ollama's internal one)
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		if !strings.Contains(line, llamaBin) {
+			continue
 		}
 
-		port := extractFlag(args, "--port")
-		if port != "" {
-			p.Port = port
-		}
+		p.Status = "active"
+		parts := strings.SplitN(line, " ", 2)
+		p.PID = parts[0]
 
-		mmproj := extractFlag(args, "--mmproj")
-		if mmproj != "" {
-			p.Extra = "vision: " + filepath.Base(mmproj)
+		if len(parts) > 1 {
+			args := parts[1]
+			p.Model = extractFlag(args, "-m")
+			if p.Model != "" {
+				p.Model = filepath.Base(p.Model)
+			}
+
+			port := extractFlag(args, "--port")
+			if port != "" {
+				p.Port = port
+			}
+
+			mmproj := extractFlag(args, "--mmproj")
+			if mmproj != "" {
+				p.Extra = "vision: " + filepath.Base(mmproj)
+			}
 		}
+		break
 	}
 
 	return p
