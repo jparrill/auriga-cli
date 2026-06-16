@@ -39,17 +39,15 @@ func addProfileToConfig(name string, pc ProfileConfig) error {
 	if profilesIdx == -1 {
 		result = append(result, "", "profiles:")
 		result = append(result, block...)
-		result = append(result, "")
 	} else {
 		insertIdx = findProfilesEnd(lines, profilesIdx)
-		// Ensure blank line before next section
-		needsBlank := insertIdx < len(result) && strings.TrimSpace(result[insertIdx]) != ""
+		// Walk back over trailing blank lines to insert right after last profile content
+		for insertIdx > profilesIdx+1 && strings.TrimSpace(lines[insertIdx-1]) == "" {
+			insertIdx--
+		}
 		tail := make([]string, len(result[insertIdx:]))
 		copy(tail, result[insertIdx:])
 		result = append(result[:insertIdx], block...)
-		if needsBlank {
-			result = append(result, "")
-		}
 		result = append(result, tail...)
 	}
 
