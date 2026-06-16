@@ -1,6 +1,7 @@
 package ps
 
 import (
+	"os"
 	"testing"
 
 	"github.com/jparrill/auriga-cli/internal/ui"
@@ -8,7 +9,7 @@ import (
 
 func TestMain(m *testing.M) {
 	ui.InitLogger(false)
-	m.Run()
+	os.Exit(m.Run())
 }
 
 func TestExtractFlag(t *testing.T) {
@@ -37,10 +38,11 @@ func TestExtractFlag(t *testing.T) {
 	}
 }
 
-func TestResolveOllamaModelsDir(t *testing.T) {
+func TestResolveOllamaModelsDir_FromEnv(t *testing.T) {
+	t.Setenv("OLLAMA_MODELS", "/tmp/test-ollama")
 	dir := resolveOllamaModelsDir()
-	if dir == "" {
-		t.Error("expected non-empty dir")
+	if dir != "/tmp/test-ollama" {
+		t.Errorf("expected /tmp/test-ollama, got %q", dir)
 	}
 }
 
@@ -69,13 +71,9 @@ func TestFormatBytesStr(t *testing.T) {
 }
 
 func TestGatherStatus(t *testing.T) {
-	// May fail on Mac/CI where pgrep/systemctl behave differently
-	// Just verify it doesn't panic and returns 3 components
-	defer func() {
-		if r := recover(); r != nil {
-			t.Errorf("gatherStatus panicked: %v", r)
-		}
-	}()
+	if os.Getenv("AURIGA_TEST_PS") == "" {
+		t.Skip("skipping ps test (set AURIGA_TEST_PS=1 on Linux)")
+	}
 	procs := gatherStatus()
 	if len(procs) != 3 {
 		t.Errorf("expected 3 components, got %d", len(procs))
