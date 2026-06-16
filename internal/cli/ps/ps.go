@@ -222,13 +222,21 @@ func printDiskUsage() {
 	ollamaSize := dirSize(ollamaDir)
 	total := ggufSize + mmprojSize + resultsSize + ollamaSize
 
-	tbl := ui.NewTable("Disk Usage", "PATH", "SIZE")
-	tbl.AddRow(ollamaDir, formatGB(ollamaSize))
-	tbl.AddRow(ggufDir, formatGB(ggufSize))
-	tbl.AddRow(mmprojDir, formatGB(mmprojSize))
-	tbl.AddRow(resultsDir, formatGB(resultsSize))
-	tbl.AddRow("TOTAL", formatGB(total))
+	tbl := ui.NewTable("Disk Usage", "COMPONENT", "PATH", "SIZE")
+	tbl.AddRow("Ollama models", shortenPath(ollamaDir), formatGB(ollamaSize))
+	tbl.AddRow("GGUF models", shortenPath(ggufDir), formatGB(ggufSize))
+	tbl.AddRow("MM Projectors", shortenPath(mmprojDir), formatGB(mmprojSize))
+	tbl.AddRow("Bench results", shortenPath(resultsDir), formatGB(resultsSize))
+	tbl.AddRow("TOTAL", "", formatGB(total))
 	tbl.Print()
+}
+
+func shortenPath(path string) string {
+	home, _ := os.UserHomeDir()
+	if strings.HasPrefix(path, home) {
+		return "~" + path[len(home):]
+	}
+	return path
 }
 
 func resolveOllamaModelsDir() string {
