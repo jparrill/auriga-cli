@@ -1,6 +1,7 @@
 package benchmark
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -136,7 +137,8 @@ func runSingle(model, backend, prompt string, cfg RunConfig) Result {
 			return Result{Model: model, Backend: backend, Error: "no GGUF found"}
 		}
 		var err error
-		llamaProc, err = llamaserver.Start(nil, gguf, "", nil)
+		ctx := context.Background()
+		llamaProc, err = llamaserver.Start(ctx, gguf, "", nil)
 		if err != nil {
 			ui.Fail(fmt.Sprintf("llama-server failed: %v", err))
 			return Result{Model: model, Backend: backend, Error: err.Error()}
