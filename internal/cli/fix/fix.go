@@ -31,10 +31,11 @@ type resultMeta struct {
 }
 
 type fixOpts struct {
-	List       bool
-	FailedOnly bool
-	Model      string
-	Run        string
+	List          bool
+	FailedOnly    bool
+	Model         string
+	Run           string
+	ModelOverride string
 }
 
 func NewFixCmd() *cobra.Command {
@@ -46,11 +47,14 @@ func NewFixCmd() *cobra.Command {
 		Long: `Pick a benchmark result, spin up the model that generated it, and launch Pi for interactive fixes.
 
 Examples:
-  auriga fix                   # Interactive fzf picker (latest run)
-  auriga fix --list            # Just list all results
-  auriga fix --failed          # Pick from failed only
-  auriga fix --model gemma4    # Jump to gemma4 result directly
-  auriga fix --run 2026-06-14_1045   # Fix from specific run`,
+  auriga fix                                         # Interactive fzf picker (latest run)
+  auriga fix --list                                  # Just list all results
+  auriga fix --failed                                # Pick from failed only
+  auriga fix --model gemma4                          # Jump to gemma4 result directly
+  auriga fix --run 2026-06-14_1045                   # Fix from specific run
+  auriga fix --run all                               # List available runs
+  auriga fix --model-override qwen3.6-vision         # Use a profile with vision
+  auriga fix --model-override gemma4:26b             # Use a different Ollama model`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runFix(opts)
 		},
@@ -59,7 +63,8 @@ Examples:
 	cmd.Flags().BoolVar(&opts.List, "list", false, "Only list results")
 	cmd.Flags().BoolVar(&opts.FailedOnly, "failed", false, "Only show failed results")
 	cmd.Flags().StringVar(&opts.Model, "model", "", "Jump to a specific model (substring match)")
-	cmd.Flags().StringVar(&opts.Run, "run", "latest", "Run to use (timestamp or 'latest')")
+	cmd.Flags().StringVar(&opts.Run, "run", "latest", "Run to use (timestamp, 'latest', or 'all')")
+	cmd.Flags().StringVar(&opts.ModelOverride, "model-override", "", "Override model: profile name (vision) or Ollama model")
 
 	return cmd
 }
@@ -172,7 +177,47 @@ func selectWithFzf(results []resultMeta) *resultMeta {
 	return nil
 }
 
+func listRuns() error {
+	resultsDir := config.ExpandHome(viper.GetString("benchmark.results_dir"))
+	entries, err := os.ReadDir(resultsDir)
+	if err != nil {
+		return fmt.Errorf("cannot read results dir: %w", err)
+	}
+
+	fmt.Printf("\n  %s\n", ui.BoldStyle.Render("Available runs"))
+	fmt.Printf("  %-25s %8s\n", "RUN", "MODELS")
+	fmt.Printf("  %s\n", strings.Repeat("─", 35))
+
+	for _, e := range entries {
+		if !e.IsDir() || e.Name() == "latest" {
+			continue
+		}
+		subEntries, _ := os.ReadDir(filepath.Join(resultsDir, e.Name()))
+		count := 0
+		for _, se := range subEntries {
+			if se.IsDir() {
+				count++
+			}
+		}
+		if count == 0 {
+			continue
+		}
+		fmt.Printf("  %-25s %8d\n", e.Name(), count)
+	}
+
+	latestTarget, err := os.Readlink(filepath.Join(resultsDir, "latest"))
+	if err == nil {
+		fmt.Printf("\n  latest → %s\n", latestTarget)
+	}
+	fmt.Println()
+	return nil
+}
+
 func runFix(opts *fixOpts) error {
+	if opts.Run == "all" {
+		return listRuns()
+	}
+
 	results, err := loadResults(opts.Run)
 	if err != nil {
 		return err
@@ -209,7 +254,7 @@ func runFix(opts *fixOpts) error {
 			return fmt.Errorf("no model matching %q", opts.Model)
 		}
 		if len(filtered) == 1 {
-			return runFixSession(&filtered[0])
+			return runFixSession(opts.ModelOverride,&filtered[0])
 		}
 		results = filtered
 	}
@@ -221,7 +266,7 @@ func runFix(opts *fixOpts) error {
 			break
 		}
 
-		if err := runFixSession(selected); err != nil {
+		if err := runFixSession(opts.ModelOverride,selected); err != nil {
 			ui.Fail(err.Error())
 		}
 
@@ -237,7 +282,7 @@ func runFix(opts *fixOpts) error {
 	return nil
 }
 
-func runFixSession(meta *resultMeta) error {
+func runFixSession(modelOverride string, meta *resultMeta) error {
 	ctx := context.Background()
 	projectDir := filepath.Join(meta.Dir, "project")
 
@@ -251,23 +296,70 @@ func runFixSession(meta *resultMeta) error {
 	ui.Info(fmt.Sprintf("Status: %v | Files: %d | Has src/: %v", meta.Success, meta.Files, meta.HasSrc))
 
 	var llamaProc *os.Process
+	var modelID string
 
-	if meta.Backend == "llama-server" {
-		gguf := llamaserver.FindLocalGGUF(meta.Model)
-		if gguf == "" {
-			return fmt.Errorf("no GGUF found for %s", meta.Model)
-		}
-		var err error
-		llamaProc, err = llamaserver.Start(ctx, gguf, "", nil)
-		if err != nil {
-			return err
-		}
-		defer llamaserver.Stop(llamaProc)
-	} else {
-		if !ollama.HasModel(meta.Model) {
-			ui.Warn(fmt.Sprintf("Model %s not in Ollama, trying anyway...", meta.Model))
+	if modelOverride != "" {
+		// Check if override is a profile
+		profileKey := fmt.Sprintf("profiles.%s", modelOverride)
+		profileModel := viper.GetString(profileKey + ".model")
+
+		if profileModel != "" {
+			// It's a profile — use llama-server
+			ggufDir := config.ExpandHome(viper.GetString("llama_server.gguf_dir"))
+			mmprojDir := config.ExpandHome(viper.GetString("llama_server.mmproj_dir"))
+			modelPath := filepath.Join(ggufDir, profileModel)
+			mmprojFile := viper.GetString(profileKey + ".mmproj")
+			var mmprojPath string
+			if mmprojFile != "" {
+				mmprojPath = filepath.Join(mmprojDir, mmprojFile)
+			}
+
+			ui.Info(fmt.Sprintf("Override: profile %s", modelOverride))
+			if mmprojPath != "" {
+				ui.Info(fmt.Sprintf("Vision: %s", filepath.Base(mmprojPath)))
+			}
+
+			var extraFlags []string
+			if mmprojPath != "" {
+				extraFlags = append(extraFlags, "--jinja")
+			}
+
+			var err error
+			llamaProc, err = llamaserver.Start(ctx, modelPath, mmprojPath, extraFlags)
+			if err != nil {
+				return err
+			}
+			defer llamaserver.Stop(llamaProc)
+			modelID = "local"
 		} else {
-			ui.Ok(fmt.Sprintf("Model %s available in Ollama", meta.Model))
+			// It's an Ollama model name
+			ui.Info(fmt.Sprintf("Override: Ollama model %s", modelOverride))
+			if !ollama.HasModel(modelOverride) {
+				ui.Warn(fmt.Sprintf("Model %s not in Ollama, trying anyway...", modelOverride))
+			}
+			modelID = modelOverride
+		}
+	} else {
+		// Default: use the model that generated the project
+		if meta.Backend == "llama-server" {
+			gguf := llamaserver.FindLocalGGUF(meta.Model)
+			if gguf == "" {
+				return fmt.Errorf("no GGUF found for %s", meta.Model)
+			}
+			var err error
+			llamaProc, err = llamaserver.Start(ctx, gguf, "", nil)
+			if err != nil {
+				return err
+			}
+			defer llamaserver.Stop(llamaProc)
+			modelID = "local"
+		} else {
+			if !ollama.HasModel(meta.Model) {
+				ui.Warn(fmt.Sprintf("Model %s not in Ollama, trying anyway...", meta.Model))
+			} else {
+				ui.Ok(fmt.Sprintf("Model %s available in Ollama", meta.Model))
+			}
+			modelID = meta.Model
 		}
 	}
 
@@ -277,11 +369,6 @@ func runFixSession(meta *resultMeta) error {
 	}
 	pi.WriteSystemMD(projectDir, meta.Model, meta.Backend, status, meta.Files)
 	ui.Ok("SYSTEM.md written")
-
-	modelID := meta.Model
-	if meta.Backend == "llama-server" {
-		modelID = "local"
-	}
 
 	return pi.Launch(ctx, projectDir, modelID)
 }
