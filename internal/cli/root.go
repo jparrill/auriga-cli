@@ -80,6 +80,7 @@ func initViper(cfgFile string) {
 	// Legacy env vars (compatible with Python scripts .envrc)
 	viper.BindEnv("ollama.host", "OLLAMA_HOST")
 	viper.BindEnv("ollama.models", "OLLAMA_MODELS")
+	viper.BindEnv("ollama.models_dir", "OLLAMA_MODELS_DIR")
 	viper.BindEnv("llama_server.host", "LLAMA_SERVER_HOST")
 	viper.BindEnv("llama_server.bin", "LLAMA_SERVER_BIN")
 	viper.BindEnv("llama_server.gguf_dir", "LLAMA_SERVER_GGUF_DIR")
