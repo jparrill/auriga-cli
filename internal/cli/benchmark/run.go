@@ -1,14 +1,12 @@
 package benchmark
 
 import (
-	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
+	"time"
 
+	"github.com/jparrill/auriga-cli/internal/benchmark"
 	"github.com/jparrill/auriga-cli/internal/config"
-	"github.com/jparrill/auriga-cli/internal/exec"
 	"github.com/jparrill/auriga-cli/internal/ui"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -29,8 +27,6 @@ func newBenchmarkRunCmd() *cobra.Command {
 		Long: `Run the meta-benchmark: give LLMs a project plan + source HTML and evaluate
 the generated Astro website (format, sensitive data, build validation).
 
-Wraps run-llm-benchmark.py with the correct environment from config.
-
 Examples:
   auriga benchmark run                                    # All configured models
   auriga benchmark run --backend ollama                   # Ollama only
@@ -50,76 +46,57 @@ Examples:
 }
 
 func runBenchmarkRun(opts *runOpts) error {
-	ctx := context.Background()
-
 	resultsDir := config.ExpandHome(viper.GetString("benchmark.results_dir"))
-	scriptDir := filepath.Dir(resultsDir)
-	scriptPath := filepath.Join(scriptDir, "run-llm-benchmark.py")
+	planFile := config.ExpandHome(viper.GetString("benchmark.plan_file"))
+	sourceHTML := config.ExpandHome(viper.GetString("benchmark.source_html"))
+	benchmarksJSON := config.ExpandHome(viper.GetString("benchmark.benchmarks_json"))
+	maxRetries := viper.GetInt("benchmark.max_retries")
+	maxTokens := viper.GetInt("benchmark.max_tokens")
+	genTimeout := viper.GetInt("benchmark.gen_timeout")
 
-	if _, err := os.Stat(scriptPath); err != nil {
-		return fmt.Errorf("benchmark script not found: %s\nExpected in parent of results_dir", scriptPath)
-	}
-
-	env := map[string]string{
-		"BENCH_RESULTS_DIR":    resultsDir,
-		"BENCH_MAX_TOKENS":     fmt.Sprintf("%d", viper.GetInt("benchmark.max_tokens")),
-		"BENCH_MAX_RETRIES":    fmt.Sprintf("%d", viper.GetInt("benchmark.max_retries")),
-		"OLLAMA_HOST":          viper.GetString("ollama.host"),
-		"LLAMA_SERVER_HOST":    viper.GetString("llama_server.host"),
-		"LLAMA_SERVER_BIN":     config.ExpandHome(viper.GetString("llama_server.bin")),
-		"LLAMA_SERVER_GGUF_DIR": config.ExpandHome(viper.GetString("llama_server.gguf_dir")),
-		"LLAMA_SERVER_QUANT":   viper.GetString("llama_server.quant"),
-	}
-
-	planFile := viper.GetString("benchmark.plan_file")
-	if planFile != "" {
-		env["BENCH_PLAN_FILE"] = config.ExpandHome(planFile)
-	}
-	sourceHTML := viper.GetString("benchmark.source_html")
-	if sourceHTML != "" {
-		env["BENCH_SOURCE_HTML"] = config.ExpandHome(sourceHTML)
-	}
-
-	timeout := viper.GetInt("benchmark.gen_timeout")
 	if opts.GenTimeout > 0 {
-		timeout = opts.GenTimeout
+		genTimeout = opts.GenTimeout
 	}
-	env["BENCH_GEN_TIMEOUT"] = fmt.Sprintf("%d", timeout)
 
+	var models []string
 	if opts.Models != "" {
-		if opts.Backend == "llama-server" {
-			env["LLAMA_SERVER_MODELS"] = opts.Models
-			env["OLLAMA_MODELS"] = ""
-		} else {
-			env["OLLAMA_MODELS"] = opts.Models
-			env["LLAMA_SERVER_MODELS"] = ""
-		}
-	}
-
-	args := []string{scriptPath}
-	if opts.Backend != "all" {
-		args = append(args, "--backend", opts.Backend)
+		models = strings.Fields(opts.Models)
 	}
 
 	params := []ui.OrderedParam{
-		{Key: "Script", Value: scriptPath},
 		{Key: "Backend", Value: opts.Backend},
-		{Key: "Timeout", Value: fmt.Sprintf("%ds", timeout)},
+		{Key: "Timeout", Value: fmt.Sprintf("%ds", genTimeout)},
+		{Key: "Max retries", Value: fmt.Sprintf("%d", maxRetries)},
+		{Key: "Results", Value: resultsDir},
 	}
-	if opts.Models != "" {
-		params = append(params, ui.OrderedParam{Key: "Models", Value: opts.Models})
+	if len(models) > 0 {
+		params = append(params, ui.OrderedParam{Key: "Models", Value: strings.Join(models, ", ")})
 	} else {
 		params = append(params, ui.OrderedParam{Key: "Models", Value: "from config/env"})
 	}
 
-	confirmed, err := ui.ConfirmOperationOrdered("Run Benchmark", params, strings.Join(append([]string{"python3"}, args...), " "), false)
+	confirmed, err := ui.ConfirmOperationOrdered("Run Benchmark", params, "", false)
 	if err != nil || !confirmed {
 		return err
 	}
 
-	ui.Info("Starting benchmark...")
-	return exec.RunStreaming(ctx, "python3", args, exec.RunOpts{
-		Dir: scriptDir,
-		Env: env,
-	})
+	cfg := benchmark.RunConfig{
+		Backend:    opts.Backend,
+		Models:     models,
+		MaxRetries: maxRetries,
+		MaxTokens:  maxTokens,
+		GenTimeout: time.Duration(genTimeout) * time.Second,
+		ResultsDir: resultsDir,
+		PlanFile:   planFile,
+		SourceHTML: sourceHTML,
+		Benchmarks: benchmarksJSON,
+	}
+
+	results, err := benchmark.RunAll(cfg)
+	if err != nil {
+		return err
+	}
+
+	benchmark.PrintSummary(results)
+	return nil
 }

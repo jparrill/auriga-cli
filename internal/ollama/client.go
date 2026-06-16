@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	goexec "os/exec"
 	"strings"
 	"time"
 
@@ -70,6 +71,10 @@ func HasModel(name string) bool {
 		}
 	}
 	return false
+}
+
+func StopModel(model string) {
+	goexec.Command("ollama", "stop", model).Run()
 }
 
 func Generate(model, prompt string, maxTokens int, timeout time.Duration) (string, error) {
