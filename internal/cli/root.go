@@ -88,6 +88,7 @@ func initViper(cfgFile string) {
 	viper.BindEnv("benchmark.results_dir", "BENCH_RESULTS_DIR")
 	viper.BindEnv("benchmark.plan_file", "BENCH_PLAN_FILE")
 	viper.BindEnv("benchmark.source_html", "BENCH_SOURCE_HTML")
+	viper.BindEnv("benchmark.benchmarks_json", "BENCH_BENCHMARKS_JSON")
 
 	// Defaults
 	viper.SetDefault("ollama.host", config.DefaultOllamaHost)
