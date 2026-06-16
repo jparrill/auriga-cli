@@ -66,38 +66,36 @@ func listOllamaModels() {
 		return
 	}
 
-	fmt.Printf("  %-55s %10s\n", "MODEL", "SIZE")
-	fmt.Printf("  %s\n", "──────────────────────────────────────────────────────────────────")
+	var entries []entry
 	for _, m := range tags.Models {
 		sizeGB := float64(m.Size) / (1024 * 1024 * 1024)
-		fmt.Printf("  %-55s %8.1f GB\n", m.Name, sizeGB)
+		entries = append(entries, entry{m.Name, fmt.Sprintf("%.1f GB", sizeGB)})
 	}
-	fmt.Println()
+	printTable("MODEL", "SIZE", entries)
 }
 
 func listGGUFModels() {
 	ggufDir := config.ExpandHome(viper.GetString("llama_server.gguf_dir"))
 	mmprojDir := config.ExpandHome(viper.GetString("llama_server.mmproj_dir"))
 
-	fmt.Printf("  %s\n", ui.BoldStyle.Render("GGUF Models ("+ggufDir+")"))
+	fmt.Printf("\n  %s\n", ui.BoldStyle.Render("GGUF Models ("+ggufDir+")"))
 
-	entries, err := os.ReadDir(ggufDir)
+	dirEntries, err := os.ReadDir(ggufDir)
 	if err != nil {
 		ui.Fail(fmt.Sprintf("Cannot read %s: %v", ggufDir, err))
 		return
 	}
 
-	fmt.Printf("  %-55s %10s\n", "FILE", "SIZE")
-	fmt.Printf("  %s\n", "──────────────────────────────────────────────────────────────────")
-	for _, e := range entries {
+	var files []entry
+	for _, e := range dirEntries {
 		if e.IsDir() || filepath.Ext(e.Name()) != ".gguf" {
 			continue
 		}
 		info, _ := e.Info()
 		sizeGB := float64(info.Size()) / (1024 * 1024 * 1024)
-		fmt.Printf("  %-55s %8.1f GB\n", e.Name(), sizeGB)
+		files = append(files, entry{e.Name(), fmt.Sprintf("%.1f GB", sizeGB)})
 	}
-	fmt.Println()
+	printTable("FILE", "SIZE", files)
 
 	fmt.Printf("  %s\n", ui.BoldStyle.Render("Multimodal Projectors ("+mmprojDir+")"))
 	projEntries, err := os.ReadDir(mmprojDir)
@@ -106,13 +104,44 @@ func listGGUFModels() {
 		return
 	}
 
+	var projs []entry
 	for _, e := range projEntries {
 		if e.IsDir() {
 			continue
 		}
 		info, _ := e.Info()
 		sizeMB := float64(info.Size()) / (1024 * 1024)
-		fmt.Printf("  %-55s %8.0f MB\n", e.Name(), sizeMB)
+		projs = append(projs, entry{e.Name(), fmt.Sprintf("%.0f MB", sizeMB)})
+	}
+	printTable("FILE", "SIZE", projs)
+}
+
+type entry struct {
+	name string
+	size string
+}
+
+func printTable(nameHeader, sizeHeader string, rows []entry) {
+	maxName := len(nameHeader)
+	for _, r := range rows {
+		if len(r.name) > maxName {
+			maxName = len(r.name)
+		}
+	}
+
+	fmtStr := fmt.Sprintf("  %%-%ds  %%10s\n", maxName)
+	fmt.Printf(fmtStr, nameHeader, sizeHeader)
+	fmt.Printf("  %s\n", repeatChar('─', maxName+12))
+	for _, r := range rows {
+		fmt.Printf(fmtStr, r.name, r.size)
 	}
 	fmt.Println()
+}
+
+func repeatChar(c rune, n int) string {
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = byte(c)
+	}
+	return string(b)
 }
