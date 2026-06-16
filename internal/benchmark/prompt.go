@@ -1,75 +1,83 @@
 package benchmark
 
 import (
+	"bytes"
+	"embed"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
+	"text/template"
+
+	"github.com/jparrill/auriga-cli/internal/config"
+	"github.com/spf13/viper"
 )
 
-const systemPrompt = `You are an expert frontend developer specializing in Astro static sites.
-You will receive a project plan, source HTML, and benchmark data.
-Your task is to generate a COMPLETE Astro website following the plan exactly.
+//go:embed prompts/*.md
+var embeddedPrompts embed.FS
 
-CRITICAL OUTPUT FORMAT — for each file output:
---- FILE: path/to/file.ext ---
-(complete file content)
---- END FILE ---
+type AffectedFile struct {
+	Path    string
+	Content string
+}
 
-RULES:
-1. Generate ALL files from the plan structure
-2. Every file COMPLETE — no TODOs, no truncation
-3. npm install && npm run dev must work
-4. NEVER include sensitive data — use placeholders
-5. Tokyo Night dark theme
-6. BenchmarkTable filters MUST work (use stopPropagation)
-7. Include package.json with Astro deps`
+type SensitiveRetryData struct {
+	Violations    []Violation
+	AffectedFiles []AffectedFile
+}
 
-const formatFixPrompt = `CRITICAL FORMAT REQUIREMENT — READ THIS FIRST:
-You MUST output every file using EXACTLY this format, with NO backticks around the content:
+type BuildRetryData struct {
+	Error         string
+	AffectedFiles []AffectedFile
+}
 
---- FILE: path/to/file.ext ---
-file content here (raw, no backtick wrapper)
---- END FILE ---
+func loadPromptTemplate(name string) (string, error) {
+	// 1. Try user override: ~/.config/auriga/prompts/<name>
+	promptsDir := config.ExpandHome(viper.GetString("prompts.dir"))
+	if promptsDir == "" {
+		promptsDir = config.ExpandHome("~/.config/auriga/prompts")
+	}
+	userPath := filepath.Join(promptsDir, name)
+	if data, err := os.ReadFile(userPath); err == nil {
+		return string(data), nil
+	}
 
-Example:
---- FILE: package.json ---
-{"name": "example"}
---- END FILE ---
+	// 2. Fallback: embedded
+	data, err := embeddedPrompts.ReadFile("prompts/" + name)
+	if err != nil {
+		return "", fmt.Errorf("prompt template %q not found", name)
+	}
+	return string(data), nil
+}
 
---- FILE: src/pages/index.astro ---
----
-import Layout from '../components/Layout.astro';
----
-<Layout title="Home"><h1>Hello</h1></Layout>
---- END FILE ---
+func renderTemplate(name string, data interface{}) (string, error) {
+	tmplStr, err := loadPromptTemplate(name)
+	if err != nil {
+		return "", err
+	}
 
-Do NOT wrap file contents in code blocks.
-Do NOT add explanations between files.
-Output ONLY --- FILE --- blocks, nothing else.
+	if data == nil {
+		return tmplStr, nil
+	}
 
-=== NOW GENERATE THE PROJECT ===
+	tmpl, err := template.New(name).Parse(tmplStr)
+	if err != nil {
+		return "", fmt.Errorf("cannot parse template %q: %w", name, err)
+	}
 
-`
-
-const buildFixPrompt = `Your generated Astro project failed to build. Here is the error:
-
-%s
-
-Fix the issue and regenerate ALL project files. Common problems:
-- Do NOT use @astrojs/node — this is a STATIC site, no adapter needed
-- Use astro@latest (^5.x), not old versions
-- Do NOT use getStaticProps (that is Next.js, not Astro)
-- The site field in astro.config.mjs must be a valid URL like 'https://example.github.io/auriga-lab'
-- Do NOT set adapter: null — just omit the adapter field entirely
-- All imports must match dependencies in package.json
-- Use output: 'static' in astro.config.mjs
-
-Regenerate the COMPLETE project using --- FILE: path --- / --- END FILE --- format.
-
-=== ORIGINAL REQUIREMENTS ===
-
-`
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		return "", fmt.Errorf("cannot render template %q: %w", name, err)
+	}
+	return buf.String(), nil
+}
 
 func BuildPrompt(planFile, sourceHTML, benchmarksJSON string) (string, error) {
+	system, err := renderTemplate("system.md", nil)
+	if err != nil {
+		return "", err
+	}
+
 	plan, err := os.ReadFile(planFile)
 	if err != nil {
 		return "", fmt.Errorf("cannot read plan: %w", err)
@@ -90,22 +98,98 @@ func BuildPrompt(planFile, sourceHTML, benchmarksJSON string) (string, error) {
 	}
 
 	return fmt.Sprintf("%s\n\n=== PROJECT PLAN ===\n%s\n\n=== SOURCE HTML ===\n%s\n\n=== BENCHMARK DATA ===\n%s\n\nGenerate the complete project now.",
-		systemPrompt, string(plan), sourceStr, string(benchmarks)), nil
+		system, string(plan), sourceStr, string(benchmarks)), nil
 }
 
 func BuildFormatRetryPrompt(originalPrompt string) string {
-	return formatFixPrompt + originalPrompt
-}
-
-func BuildSensitiveRetryPrompt(originalPrompt string, violations []Violation) string {
-	fix := "\n\n=== FIX REQUIRED ===\nSensitive data found:\n"
-	for _, v := range violations {
-		fix += fmt.Sprintf("  - %s in %s\n", v.Description, v.FilePath)
+	tmpl, err := renderTemplate("format-retry.md", nil)
+	if err != nil {
+		return originalPrompt
 	}
-	fix += "Replace ALL with placeholders. Regenerate ALL files.\n"
-	return originalPrompt + fix
+	return tmpl + originalPrompt
 }
 
-func BuildBuildRetryPrompt(originalPrompt, buildError string) string {
-	return fmt.Sprintf(buildFixPrompt, buildError) + originalPrompt
+func BuildSensitiveRetryPrompt(projectDir string, violations []Violation) (string, error) {
+	var affected []AffectedFile
+	seen := make(map[string]bool)
+	for _, v := range violations {
+		if seen[v.FilePath] {
+			continue
+		}
+		seen[v.FilePath] = true
+		content, err := os.ReadFile(filepath.Join(projectDir, v.FilePath))
+		if err != nil {
+			continue
+		}
+		affected = append(affected, AffectedFile{
+			Path:    v.FilePath,
+			Content: string(content),
+		})
+	}
+
+	data := SensitiveRetryData{
+		Violations:    violations,
+		AffectedFiles: affected,
+	}
+
+	return renderTemplate("sensitive-retry.md", data)
+}
+
+func BuildBuildRetryPrompt(projectDir, buildError string) (string, error) {
+	var affected []AffectedFile
+
+	// Include files most likely to cause build errors
+	candidates := []string{
+		"package.json",
+		"astro.config.mjs",
+		"tsconfig.json",
+	}
+
+	for _, c := range candidates {
+		path := filepath.Join(projectDir, c)
+		content, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		affected = append(affected, AffectedFile{
+			Path:    c,
+			Content: string(content),
+		})
+	}
+
+	// Also include files mentioned in the error
+	for _, line := range strings.Split(buildError, "\n") {
+		for _, ext := range []string{".astro", ".js", ".mjs", ".ts", ".json"} {
+			if idx := strings.Index(line, ext); idx > 0 {
+				start := strings.LastIndexAny(line[:idx], " '\"(/") + 1
+				fpath := line[start : idx+len(ext)]
+				fpath = strings.TrimPrefix(fpath, "/")
+
+				fullPath := filepath.Join(projectDir, fpath)
+				if _, err := os.Stat(fullPath); err == nil {
+					already := false
+					for _, a := range affected {
+						if a.Path == fpath {
+							already = true
+							break
+						}
+					}
+					if !already {
+						content, _ := os.ReadFile(fullPath)
+						affected = append(affected, AffectedFile{
+							Path:    fpath,
+							Content: string(content),
+						})
+					}
+				}
+			}
+		}
+	}
+
+	data := BuildRetryData{
+		Error:         buildError,
+		AffectedFiles: affected,
+	}
+
+	return renderTemplate("build-retry.md", data)
 }

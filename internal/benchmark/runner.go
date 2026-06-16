@@ -173,13 +173,23 @@ func runSingle(model, backend, prompt string, cfg RunConfig) Result {
 		ui.Info(fmt.Sprintf("Response: %d chars in %ds", len(response), duration))
 		os.WriteFile(filepath.Join(outputDir, fmt.Sprintf("raw_output_%d.txt", attempt)), []byte(response), 0644)
 
-		os.RemoveAll(projectDir)
-		os.MkdirAll(projectDir, 0755)
+		if attempt == 1 {
+			// First attempt: clean slate
+			os.RemoveAll(projectDir)
+			os.MkdirAll(projectDir, 0755)
+		}
 
-		filesCreated, _ = ParseFiles(response, projectDir)
-		ui.Info(fmt.Sprintf("Files created: %d", filesCreated))
+		parsed, _ := ParseFiles(response, projectDir)
+		if attempt == 1 {
+			filesCreated = parsed
+		} else {
+			// Incremental: merge new files into existing project
+			filesCreated += parsed
+			ui.Info(fmt.Sprintf("Patched %d files (total: %d)", parsed, filesCreated))
+		}
+		ui.Info(fmt.Sprintf("Files: %d in %ds", parsed, duration))
 
-		if filesCreated == 0 {
+		if parsed == 0 && attempt == 1 {
 			ui.Warn("No files parsed — will retry with format instructions")
 			if attempt < cfg.MaxRetries {
 				currentPrompt = BuildFormatRetryPrompt(prompt)
@@ -194,7 +204,12 @@ func runSingle(model, backend, prompt string, cfg RunConfig) Result {
 				ui.Fail(fmt.Sprintf("  %s in %s", v.Description, v.FilePath))
 			}
 			if attempt < cfg.MaxRetries {
-				currentPrompt = BuildSensitiveRetryPrompt(prompt, violations)
+				fixPrompt, err := BuildSensitiveRetryPrompt(projectDir, violations)
+				if err != nil {
+					ui.Warn(fmt.Sprintf("Cannot build incremental prompt: %v", err))
+					continue
+				}
+				currentPrompt = fixPrompt
 			}
 			continue
 		}
@@ -205,7 +220,12 @@ func runSingle(model, backend, prompt string, cfg RunConfig) Result {
 		if !buildOk {
 			ui.Fail("Build failed")
 			if attempt < cfg.MaxRetries {
-				currentPrompt = BuildBuildRetryPrompt(prompt, buildErr)
+				fixPrompt, err := BuildBuildRetryPrompt(projectDir, buildErr)
+				if err != nil {
+					ui.Warn(fmt.Sprintf("Cannot build incremental prompt: %v", err))
+					continue
+				}
+				currentPrompt = fixPrompt
 			}
 			continue
 		}

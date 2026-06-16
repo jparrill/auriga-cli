@@ -23,6 +23,9 @@ install: build
 	else \
 		echo "Config already exists, skipping"; \
 	fi
+	@mkdir -p $(HOME)/.config/auriga/prompts
+	@cp -n internal/benchmark/prompts/*.md $(HOME)/.config/auriga/prompts/ 2>/dev/null || true
+	@echo "Prompts synced to $(HOME)/.config/auriga/prompts/"
 
 .PHONY: cross-linux
 cross-linux:
