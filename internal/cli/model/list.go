@@ -66,19 +66,17 @@ func listOllamaModels() {
 		return
 	}
 
-	var entries []entry
+	tbl := ui.NewTable(fmt.Sprintf("Ollama Models (%s)", host), "MODEL", "SIZE")
 	for _, m := range tags.Models {
 		sizeGB := float64(m.Size) / (1024 * 1024 * 1024)
-		entries = append(entries, entry{m.Name, fmt.Sprintf("%.1f GB", sizeGB)})
+		tbl.AddRow(m.Name, fmt.Sprintf("%.1f GB", sizeGB))
 	}
-	printTable("MODEL", "SIZE", entries)
+	tbl.Print()
 }
 
 func listGGUFModels() {
 	ggufDir := config.ExpandHome(viper.GetString("llama_server.gguf_dir"))
 	mmprojDir := config.ExpandHome(viper.GetString("llama_server.mmproj_dir"))
-
-	fmt.Printf("\n  %s\n", ui.BoldStyle.Render("GGUF Models ("+ggufDir+")"))
 
 	dirEntries, err := os.ReadDir(ggufDir)
 	if err != nil {
@@ -86,62 +84,31 @@ func listGGUFModels() {
 		return
 	}
 
-	var files []entry
+	tbl := ui.NewTable(fmt.Sprintf("GGUF Models (%s)", ggufDir), "FILE", "SIZE")
 	for _, e := range dirEntries {
 		if e.IsDir() || filepath.Ext(e.Name()) != ".gguf" {
 			continue
 		}
 		info, _ := e.Info()
 		sizeGB := float64(info.Size()) / (1024 * 1024 * 1024)
-		files = append(files, entry{e.Name(), fmt.Sprintf("%.1f GB", sizeGB)})
+		tbl.AddRow(e.Name(), fmt.Sprintf("%.1f GB", sizeGB))
 	}
-	printTable("FILE", "SIZE", files)
+	tbl.Print()
 
-	fmt.Printf("  %s\n", ui.BoldStyle.Render("Multimodal Projectors ("+mmprojDir+")"))
 	projEntries, err := os.ReadDir(mmprojDir)
 	if err != nil {
 		ui.Warn(fmt.Sprintf("Cannot read %s: %v", mmprojDir, err))
 		return
 	}
 
-	var projs []entry
+	projTbl := ui.NewTable(fmt.Sprintf("Multimodal Projectors (%s)", mmprojDir), "FILE", "SIZE")
 	for _, e := range projEntries {
 		if e.IsDir() {
 			continue
 		}
 		info, _ := e.Info()
 		sizeMB := float64(info.Size()) / (1024 * 1024)
-		projs = append(projs, entry{e.Name(), fmt.Sprintf("%.0f MB", sizeMB)})
+		projTbl.AddRow(e.Name(), fmt.Sprintf("%.0f MB", sizeMB))
 	}
-	printTable("FILE", "SIZE", projs)
-}
-
-type entry struct {
-	name string
-	size string
-}
-
-func printTable(nameHeader, sizeHeader string, rows []entry) {
-	maxName := len(nameHeader)
-	for _, r := range rows {
-		if len(r.name) > maxName {
-			maxName = len(r.name)
-		}
-	}
-
-	fmtStr := fmt.Sprintf("  %%-%ds  %%10s\n", maxName)
-	fmt.Printf(fmtStr, nameHeader, sizeHeader)
-	fmt.Printf("  %s\n", repeatChar('─', maxName+12))
-	for _, r := range rows {
-		fmt.Printf(fmtStr, r.name, r.size)
-	}
-	fmt.Println()
-}
-
-func repeatChar(c rune, n int) string {
-	b := make([]byte, n)
-	for i := range b {
-		b[i] = byte(c)
-	}
-	return string(b)
+	projTbl.Print()
 }

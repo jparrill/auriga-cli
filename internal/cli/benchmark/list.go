@@ -98,11 +98,8 @@ func runBenchmarkList(failedOnly bool, run string) error {
 	})
 
 	runName := filepath.Base(runDir)
-	fmt.Printf("\n  %s\n", ui.BoldStyle.Render(fmt.Sprintf("Run: %s", runName)))
 
-	fmt.Printf("  %-45s %-14s %-6s %5s  %6s  %s\n",
-		"MODEL", "BACKEND", "PASS", "FILES", "TIME", "SRC")
-	fmt.Printf("  %s\n", strings.Repeat("─", 86))
+	tbl := ui.NewTable(fmt.Sprintf("Run: %s", runName), "MODEL", "BACKEND", "PASS", "FILES", "TIME", "SRC")
 
 	for _, r := range results {
 		status := ui.ErrorStyle.Render("✗")
@@ -114,15 +111,13 @@ func runBenchmarkList(failedOnly bool, run string) error {
 			src = ui.SuccessStyle.Render("✓")
 		}
 		model := r.Model
-		if len(model) > 44 {
-			model = model[:44]
+		if len(model) > 50 {
+			model = model[:50]
 		}
-		// Pad manually after ANSI-colored strings
-		fmt.Printf("  %-45s %-14s %s      %5d  %5ds  %s\n",
-			model, r.Backend, status, r.FilesCreated, r.Duration, src)
+		tbl.AddRow(model, r.Backend, status, fmt.Sprintf("%d", r.FilesCreated), fmt.Sprintf("%ds", r.Duration), src)
 	}
-	fmt.Println()
 
+	tbl.Print()
 	return nil
 }
 

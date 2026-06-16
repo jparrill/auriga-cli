@@ -25,12 +25,7 @@ func runProfileList() error {
 		return nil
 	}
 
-	maxName := len("PROFILE")
-	maxModel := len("MODEL")
-	maxRepo := len("REPO")
-
-	type row struct{ name, repo, model, vision string }
-	var rows []row
+	tbl := ui.NewTable("Profiles", "PROFILE", "REPO", "MODEL", "VISION")
 
 	for name := range profiles {
 		repo := viper.GetString(fmt.Sprintf("profiles.%s.repo", name))
@@ -38,37 +33,11 @@ func runProfileList() error {
 		mmproj := viper.GetString(fmt.Sprintf("profiles.%s.mmproj", name))
 		vision := "no"
 		if mmproj != "" {
-			vision = "yes"
+			vision = ui.SuccessStyle.Render("yes")
 		}
-		rows = append(rows, row{name, repo, model, vision})
-		if len(name) > maxName {
-			maxName = len(name)
-		}
-		if len(model) > maxModel {
-			maxModel = len(model)
-		}
-		if len(repo) > maxRepo {
-			maxRepo = len(repo)
-		}
+		tbl.AddRow(name, repo, model, vision)
 	}
 
-	fmtStr := fmt.Sprintf("\n  %%-%ds  %%-%ds  %%-%ds  %%s\n", maxName, maxRepo, maxModel)
-	fmt.Printf(fmtStr, "PROFILE", "REPO", "MODEL", "VISION")
-	total := maxName + maxRepo + maxModel + 14
-	fmt.Printf("  %s\n", repeatChar('─', total))
-
-	for _, r := range rows {
-		fmt.Printf(fmtStr, r.name, r.repo, r.model, r.vision)
-	}
-	fmt.Println()
-
+	tbl.Print()
 	return nil
-}
-
-func repeatChar(c rune, n int) string {
-	b := make([]byte, n)
-	for i := range b {
-		b[i] = byte(c)
-	}
-	return string(b)
 }
