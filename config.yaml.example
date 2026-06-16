@@ -1,0 +1,44 @@
+ollama:
+  host: http://localhost:11434
+  models:
+    - gemma4:26b
+    - qwen3.6:27b
+    - qwen3.6-uncensored:latest
+    - gpt-oss:20b
+    - devstral-small-2:24b
+    - deepseek-r1:14b
+
+llama_server:
+  host: http://localhost:8090
+  port: 8090
+  bin: ~/infra/bin/llama-server
+  gguf_dir: ~/infra/ai/models/gguf
+  mmproj_dir: ~/infra/ai/models/mmproj
+  quant: Q4_K_M
+
+profiles:
+  qwen3.6-vision:
+    model: Qwen3.6-35B-A3B-UD-Q4_K_M.gguf
+    mmproj: Qwen3.6-35B-A3B-mmproj-BF16.gguf
+    flags: [--jinja]
+  qwen3.6-uncensored-vision:
+    model: Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive-Q4_K_M.gguf
+    mmproj: mmproj-Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive-f16.gguf
+    flags: [--jinja]
+  gemma4-26b:
+    model: gemma-4-26B-A4B-it-UD-Q4_K_M.gguf
+  qwen3-coder:
+    model: Qwen3-Coder-Next-UD-Q4_K_M.gguf
+  qwen3-30b:
+    model: Qwen3-30B-A3B-Q4_K_M.gguf
+
+benchmark:
+  max_tokens: 32768
+  max_retries: 5
+  gen_timeout: 3600
+  results_dir: ~/Projects/auriga-lab/results
+
+pi:
+  bin: ~/.npm-global/bin/pi
+  default_model: gemma4:26b
+  vision_model: local

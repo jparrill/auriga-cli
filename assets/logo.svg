@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 430" width="800" height="430">
+  <defs>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&amp;display=swap');
+      .title { font-family: 'Orbitron', monospace; font-weight: 900; font-size: 72px; fill: #c0caf5; letter-spacing: 12px; }
+      .subtitle { font-family: 'Orbitron', monospace; font-weight: 400; font-size: 14px; fill: #565f89; letter-spacing: 8px; }
+      .reg { font-family: 'Orbitron', monospace; font-weight: 700; font-size: 13px; fill: #e0af68; letter-spacing: 6px; }
+      .tagline { font-family: 'Orbitron', monospace; font-weight: 400; font-size: 11px; fill: #7aa2f7; letter-spacing: 3px; }
+    </style>
+  </defs>
+
+  <!-- Background -->
+  <rect width="800" height="430" fill="#1a1b26"/>
+
+  <!-- Top decorative line -->
+  <line x1="100" y1="60" x2="700" y2="60" stroke="#3b4261" stroke-width="1"/>
+
+  <!-- Shield / Badge -->
+  <g transform="translate(400, 140)">
+    <!-- Outer hexagon -->
+    <polygon points="0,-52 45,-26 45,26 0,52 -45,26 -45,-26" fill="none" stroke="#7aa2f7" stroke-width="2"/>
+    <!-- Inner hexagon -->
+    <polygon points="0,-40 35,-20 35,20 0,40 -35,20 -35,-20" fill="none" stroke="#3d59a1" stroke-width="1"/>
+
+    <!-- Star -->
+    <polygon points="0,-25 6,-8 24,-8 10,3 15,20 0,11 -15,20 -10,3 -24,-8 -6,-8" fill="none" stroke="#e0af68" stroke-width="1.5"/>
+
+    <!-- Center dot -->
+    <circle cx="0" cy="0" r="3" fill="#f7768e"/>
+
+    <!-- Orbital rings -->
+    <ellipse cx="0" cy="0" rx="32" ry="12" fill="none" stroke="#565f89" stroke-width="0.5" transform="rotate(30)"/>
+    <ellipse cx="0" cy="0" rx="32" ry="12" fill="none" stroke="#565f89" stroke-width="0.5" transform="rotate(-30)"/>
+  </g>
+
+  <!-- Subtitle above title -->
+  <text x="400" y="220" text-anchor="middle" class="subtitle">LOCAL AI INFERENCE ENGINE</text>
+
+  <!-- Main title -->
+  <text x="400" y="300" text-anchor="middle" class="title">AURIGA</text>
+
+  <!-- Decorative lines around title -->
+  <line x1="100" y1="315" x2="280" y2="315" stroke="#3b4261" stroke-width="1"/>
+  <line x1="520" y1="315" x2="700" y2="315" stroke="#3b4261" stroke-width="1"/>
+  <rect x="280" y="313" width="5" height="5" fill="#7aa2f7"/>
+  <rect x="515" y="313" width="5" height="5" fill="#7aa2f7"/>
+
+  <!-- Registration -->
+  <text x="400" y="345" text-anchor="middle" class="reg">CLI v1.0</text>
+
+  <!-- Tagline -->
+  <text x="400" y="375" text-anchor="middle" class="tagline">MODELS  ·  BENCHMARKS  ·  VISION  ·  INFERENCE</text>
+
+  <!-- Bottom decorative line -->
+  <line x1="100" y1="395" x2="700" y2="395" stroke="#3b4261" stroke-width="1"/>
+</svg>
