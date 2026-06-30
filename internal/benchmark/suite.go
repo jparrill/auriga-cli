@@ -73,6 +73,10 @@ func LoadSuite(name string) (*Suite, error) {
 
 func ListSuites() ([]Suite, error) {
 	dir := SuitesDir()
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		os.MkdirAll(dir, 0755)
+		return nil, nil
+	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read suites dir %s: %w", dir, err)

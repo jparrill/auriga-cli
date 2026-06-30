@@ -23,7 +23,7 @@ install: build
 	else \
 		echo "Config already exists, skipping"; \
 	fi
-	@mkdir -p $(HOME)/.config/auriga/prompts
+	@mkdir -p $(HOME)/.config/auriga/prompts $(HOME)/.config/auriga/suites
 	@cp -n internal/benchmark/prompts/*.md $(HOME)/.config/auriga/prompts/ 2>/dev/null || true
 	@echo "Prompts synced to $(HOME)/.config/auriga/prompts/"
 
@@ -36,7 +36,9 @@ deploy: cross-linux
 	@ssh auriga "mkdir -p ~/bin ~/.config/auriga"
 	rsync -avz bin/$(BINARY)-linux-amd64 auriga:~/bin/$(BINARY)
 	@ssh auriga "cp ~/bin/$(BINARY) ~/infra/bin/$(BINARY) 2>/dev/null || true"
+	@ssh auriga "mkdir -p ~/.config/auriga/prompts ~/.config/auriga/suites"
 	@ssh auriga "test -f ~/.config/auriga/config.yaml && echo 'Config already exists, skipping' || true"
+	rsync -avz --ignore-existing internal/benchmark/prompts/*.md auriga:~/.config/auriga/prompts/
 	@ssh auriga "test -f ~/.config/auriga/config.yaml" || rsync -avz config.yaml.example auriga:~/.config/auriga/config.yaml
 
 .PHONY: test
