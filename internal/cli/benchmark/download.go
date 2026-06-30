@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	bench "github.com/jparrill/auriga-cli/internal/benchmark"
 	"github.com/jparrill/auriga-cli/internal/ui"
@@ -19,6 +20,7 @@ var knownSuites = map[string]struct {
 	Language    string
 	Format      string
 	Compressed  bool
+	Runner      string
 }{
 	"humaneval": {
 		URL:         "https://github.com/openai/human-eval/raw/master/data/HumanEval.jsonl.gz",
@@ -26,6 +28,23 @@ var knownSuites = map[string]struct {
 		Language:    "python",
 		Format:      "humaneval",
 		Compressed:  true,
+		Runner:      "python3",
+	},
+	"humaneval-go": {
+		URL:         "https://github.com/zai-org/CodeGeeX2/raw/main/benchmark/humanevalx/humanevalx_go.jsonl.gz",
+		Description: "HumanEval-X Go — 164 Go coding problems with unit tests",
+		Language:    "go",
+		Format:      "humaneval",
+		Compressed:  true,
+		Runner:      "go",
+	},
+	"mbpp": {
+		URL:         "https://raw.githubusercontent.com/google-research/google-research/master/mbpp/mbpp.jsonl",
+		Description: "MBPP — 974 basic Python programming problems",
+		Language:    "python",
+		Format:      "humaneval",
+		Compressed:  false,
+		Runner:      "python3",
 	},
 }
 
@@ -36,10 +55,14 @@ func newBenchmarkDownloadCmd() *cobra.Command {
 		Long: `Download a known benchmark suite to ~/.config/auriga/suites/.
 
 Available suites:
-  humaneval    OpenAI HumanEval — 164 Python coding problems
+  humaneval      OpenAI HumanEval — 164 Python coding problems
+  humaneval-go   HumanEval-X Go — 164 Go coding problems
+  mbpp           MBPP — 974 basic Python programming problems
 
 Examples:
-  auriga benchmark download humaneval`,
+  auriga benchmark download humaneval
+  auriga benchmark download humaneval-go
+  auriga benchmark download mbpp`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runBenchmarkDownload(args[0])
@@ -50,7 +73,11 @@ Examples:
 func runBenchmarkDownload(name string) error {
 	known, ok := knownSuites[name]
 	if !ok {
-		return fmt.Errorf("unknown suite %q. Available: humaneval", name)
+		available := make([]string, 0, len(knownSuites))
+		for k := range knownSuites {
+			available = append(available, k)
+		}
+		return fmt.Errorf("unknown suite %q. Available: %s", name, strings.Join(available, ", "))
 	}
 
 	suitesDir := bench.SuitesDir()
