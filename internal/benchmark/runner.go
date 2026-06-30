@@ -201,7 +201,7 @@ func runSingle(model, backend string, problem formats.Problem, suite formats.Sui
 	os.MkdirAll(outputDir, 0755)
 	workDir := filepath.Join(outputDir, "project")
 
-	fmt.Printf("\n  %s %s\n", ui.BoldStyle.Render("▸ "+problem.TaskID), ui.MutedStyle.Render(model))
+	fmt.Printf("\n  %s\n", ui.BoldStyle.Render("▸ "+problem.TaskID))
 
 	var (
 		attempt       int
@@ -309,9 +309,11 @@ func runSingle(model, backend string, problem formats.Problem, suite formats.Sui
 	os.WriteFile(filepath.Join(outputDir, "metadata.json"), data, 0644)
 
 	if success {
-		fmt.Printf("    %s %ds\n", ui.SuccessStyle.Render("✓"), totalDuration)
+		fmt.Printf("    %s | Files: %d | Duration: %ds\n",
+			ui.SuccessStyle.Render("✓ PASS"), filesCreated, totalDuration)
 	} else {
-		fmt.Printf("    %s %ds\n", ui.ErrorStyle.Render("✗"), totalDuration)
+		fmt.Printf("    %s | Files: %d | Duration: %ds | Attempts: %d\n",
+			ui.ErrorStyle.Render("✗ FAIL"), filesCreated, totalDuration, attempt)
 	}
 
 	return result
