@@ -253,17 +253,17 @@ func runSingle(model, backend string, problem formats.Problem, suite formats.Sui
 
 	for attempt < cfg.MaxRetries && !success {
 		attempt++
-		fmt.Printf("\n  %s\n", ui.BoldStyle.Render(fmt.Sprintf("[Attempt %d/%d]", attempt, cfg.MaxRetries)))
+		ui.Logger.Debug("attempt", "num", attempt, "max", cfg.MaxRetries)
 
 		start := time.Now()
 		var response string
 		var genErr error
 
 		if backend == "ollama" {
-			ui.Info("Calling Ollama...")
+			ui.Logger.Debug("calling", "backend", "ollama", "model", model)
 			response, genErr = ollama.Generate(model, currentPrompt, cfg.MaxTokens, cfg.GenTimeout)
 		} else {
-			ui.Info("Calling llama-server...")
+			ui.Logger.Debug("calling", "backend", "llama-server")
 			response, genErr = llamaserver.Generate(currentPrompt, cfg.MaxTokens, cfg.GenTimeout)
 		}
 
@@ -271,11 +271,11 @@ func runSingle(model, backend string, problem formats.Problem, suite formats.Sui
 		totalDuration += duration
 
 		if genErr != nil {
-			ui.Fail(fmt.Sprintf("Error after %ds: %v", duration, genErr))
+			ui.Logger.Debug("generation error", "duration", duration, "err", genErr)
 			continue
 		}
 
-		ui.Info(fmt.Sprintf("Response: %d chars in %ds", len(response), duration))
+		ui.Logger.Debug("response", "chars", len(response), "duration", duration)
 		os.WriteFile(filepath.Join(outputDir, fmt.Sprintf("raw_output_%d.txt", attempt)), []byte(response), 0644)
 
 		if attempt == 1 {
@@ -286,7 +286,7 @@ func runSingle(model, backend string, problem formats.Problem, suite formats.Sui
 		// Validate via format runner
 		ok, validationErr, err := format.ValidateResponse(response, problem, workDir)
 		if err != nil {
-			ui.Fail(fmt.Sprintf("Validation error: %v", err))
+			ui.Logger.Debug("validation error", "err", err)
 			continue
 		}
 
@@ -307,14 +307,14 @@ func runSingle(model, backend string, problem formats.Problem, suite formats.Sui
 		_ = entries
 
 		if ok {
-			ui.Ok(fmt.Sprintf("Validation passed — %d files", fileCount))
+			ui.Logger.Debug("validation passed", "files", fileCount)
 			success = true
 		} else {
-			ui.Fail(fmt.Sprintf("Validation: %s", truncateValidationErr(validationErr)))
+			ui.Logger.Debug("validation failed", "error", truncateValidationErr(validationErr))
 			if attempt < cfg.MaxRetries {
 				retryPrompt, err := format.BuildRetryPrompt(problem, workDir, validationErr)
 				if err != nil {
-					ui.Warn(fmt.Sprintf("Cannot build retry prompt: %v", err))
+					ui.Logger.Debug("retry prompt error", "err", err)
 					continue
 				}
 				if retryPrompt != "" {
