@@ -1,0 +1,14 @@
+# Sensitive data patterns for benchmark validation
+# Each entry is a regex pattern + description
+# Place your copy at ~/.config/auriga/sensitive-patterns.yaml
+#
+# Example:
+# - pattern: "192\\.168\\.1\\.100"
+#   description: "Server LAN IP"
+# - pattern: "my-secret-token"
+#   description: "API token"
+
+- pattern: "192\\.168\\.0\\.1"
+  description: "Example private IP"
+- pattern: "example@example\\.com"
+  description: "Example email"

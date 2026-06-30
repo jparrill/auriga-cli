@@ -24,6 +24,10 @@ install: build
 		echo "Config already exists, skipping"; \
 	fi
 	@cp -n internal/benchmark/prompts/*.md $(HOME)/.config/auriga/prompts/ 2>/dev/null || true
+	@if [ ! -f $(HOME)/.config/auriga/sensitive-patterns.yaml ]; then \
+		cp sensitive-patterns.yaml.example $(HOME)/.config/auriga/sensitive-patterns.yaml; \
+		echo "Created sensitive-patterns.yaml (edit with your patterns)"; \
+	fi
 	@echo "Installed $(BINARY) $(VERSION) to $(HOME)/bin/"
 
 .PHONY: deploy-remote

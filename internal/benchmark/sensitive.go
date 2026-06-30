@@ -5,6 +5,9 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/jparrill/auriga-cli/internal/config"
+	"gopkg.in/yaml.v3"
 )
 
 type Violation struct {
@@ -12,24 +15,42 @@ type Violation struct {
 	FilePath    string
 }
 
-var sensitivePatterns = []struct {
+var sensitivePatterns []struct {
 	Pattern     *regexp.Regexp
 	Description string
-}{
-	{regexp.MustCompile(`192\.168\.1\.143`), "Server LAN IP"},
-	{regexp.MustCompile(`192\.168\.1\.117`), "Server old IP"},
-	{regexp.MustCompile(`100\.77\.65\.108`), "Tailscale IP (server)"},
-	{regexp.MustCompile(`100\.108\.82\.122`), "Tailscale IP (Mac)"},
-	{regexp.MustCompile(`itpc-gcp-hcm-pe-eng-claude`), "Vertex AI project ID"},
-	{regexp.MustCompile(`8648704793`), "Telegram bot token prefix"},
-	{regexp.MustCompile(`AAFe8izbLr5uwh57k9ZyenJRcRUPJZ_vBnA`), "Telegram bot token"},
-	{regexp.MustCompile(`30890766`), "Telegram chat ID"},
-	{regexp.MustCompile(`6ScAPZK7`), "Odysseus password prefix"},
-	{regexp.MustCompile(`jparrill@redhat\.com`), "Work email"},
-	{regexp.MustCompile(`padajuan@gmail\.com`), "Personal email"},
-	{regexp.MustCompile(`BA202938CB1C0C1E251F966ADE30627E53AC3969`), "GPG fingerprint"},
-	{regexp.MustCompile(`xenomorph`), "Mac hostname"},
-	{regexp.MustCompile(`22E00A391800001`), "Printer serial number"},
+}
+
+func init() {
+	LoadSensitivePatterns()
+}
+
+func LoadSensitivePatterns() {
+	configFile := config.ExpandHome("~/.config/auriga/sensitive-patterns.yaml")
+	data, err := os.ReadFile(configFile)
+	if err != nil {
+		// Default: no patterns (user must configure)
+		return
+	}
+
+	var entries []struct {
+		Pattern     string `yaml:"pattern"`
+		Description string `yaml:"description"`
+	}
+	if err := yaml.Unmarshal(data, &entries); err != nil {
+		return
+	}
+
+	sensitivePatterns = nil
+	for _, e := range entries {
+		re, err := regexp.Compile(e.Pattern)
+		if err != nil {
+			continue
+		}
+		sensitivePatterns = append(sensitivePatterns, struct {
+			Pattern     *regexp.Regexp
+			Description string
+		}{re, e.Description})
+	}
 }
 
 var checkExts = map[string]bool{
