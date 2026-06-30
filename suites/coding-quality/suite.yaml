@@ -1,0 +1,15 @@
+name: coding-quality
+description: Software design and implementation quality by difficulty level
+language: go
+format: quality
+problems: problems.jsonl
+levels:
+  - name: L1-design
+    description: Software design (intermediate)
+  - name: L2-implementation
+    description: Go implementation (advanced)
+  - name: L3-architecture
+    description: Architecture + implementation (complex)
+evaluation:
+  - build
+  - tests

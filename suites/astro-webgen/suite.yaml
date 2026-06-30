@@ -1,0 +1,12 @@
+name: astro-webgen
+description: Generate complete Astro website from plan + source HTML
+language: typescript
+format: webgen
+plan_file: PLAN.md
+source_html: source.html
+benchmarks_json: benchmarks.json
+prompts_dir: prompts/
+validation:
+  - format
+  - sensitive_data
+  - build

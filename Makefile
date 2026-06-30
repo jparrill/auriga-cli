@@ -28,6 +28,8 @@ install: build
 		cp sensitive-patterns.yaml.example $(HOME)/.config/auriga/sensitive-patterns.yaml; \
 		echo "Created sensitive-patterns.yaml (edit with your patterns)"; \
 	fi
+	@cp -rn suites/* $(HOME)/.config/auriga/suites/ 2>/dev/null || true
+	@echo "Suites synced to $(HOME)/.config/auriga/suites/"
 	@echo "Installed $(BINARY) $(VERSION) to $(HOME)/bin/"
 
 .PHONY: deploy-remote
