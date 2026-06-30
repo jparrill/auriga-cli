@@ -140,11 +140,44 @@ func RunAll(cfg RunConfig) ([]Result, error) {
 
 	var results []Result
 	for _, j := range jobs {
+		var llamaProc *os.Process
+
+		fmt.Printf("\n%s\n%s (%s) — %d problems\n%s\n",
+			ui.BoldStyle.Render(strings.Repeat("═", 60)),
+			j.model, j.backend, len(problems),
+			ui.BoldStyle.Render(strings.Repeat("═", 60)))
+
+		// Start backend once per model
+		if j.backend == "llama-server" {
+			gguf := llamaserver.FindLocalGGUF(j.model)
+			if gguf == "" {
+				ui.Fail(fmt.Sprintf("No GGUF found for %s", j.model))
+				for _, p := range problems {
+					results = append(results, Result{Model: j.model, Backend: j.backend, Suite: fmtSuite.Name, TaskID: p.TaskID, Error: "no GGUF found"})
+				}
+				continue
+			}
+			ctx := context.Background()
+			var err error
+			llamaProc, err = llamaserver.Start(ctx, gguf, "", nil)
+			if err != nil {
+				ui.Fail(fmt.Sprintf("llama-server failed: %v", err))
+				for _, p := range problems {
+					results = append(results, Result{Model: j.model, Backend: j.backend, Suite: fmtSuite.Name, TaskID: p.TaskID, Error: err.Error()})
+				}
+				continue
+			}
+		}
+
 		for _, problem := range problems {
 			r := runSingle(j.model, j.backend, problem, fmtSuite, format, cfg, runDir)
 			results = append(results, r)
 		}
 
+		// Cleanup backend after all problems for this model
+		if llamaProc != nil {
+			llamaserver.Stop(llamaProc)
+		}
 		if j.backend == "ollama" {
 			ollama.StopModel(j.model)
 			time.Sleep(3 * time.Second)
@@ -168,34 +201,14 @@ func runSingle(model, backend string, problem formats.Problem, suite formats.Sui
 	os.MkdirAll(outputDir, 0755)
 	workDir := filepath.Join(outputDir, "project")
 
-	fmt.Printf("\n%s\n%s (%s) — %s\n%s\n",
-		ui.BoldStyle.Render(strings.Repeat("═", 60)),
-		model, backend, problem.TaskID,
-		ui.BoldStyle.Render(strings.Repeat("═", 60)))
+	fmt.Printf("\n  %s %s\n", ui.BoldStyle.Render("▸ "+problem.TaskID), ui.MutedStyle.Render(model))
 
 	var (
 		attempt       int
 		success       bool
 		totalDuration int
 		filesCreated  int
-		llamaProc     *os.Process
 	)
-
-	if backend == "llama-server" {
-		gguf := llamaserver.FindLocalGGUF(model)
-		if gguf == "" {
-			ui.Fail(fmt.Sprintf("No GGUF found for %s", model))
-			return Result{Model: model, Backend: backend, Suite: suite.Name, TaskID: problem.TaskID, Error: "no GGUF found"}
-		}
-		ctx := context.Background()
-		var err error
-		llamaProc, err = llamaserver.Start(ctx, gguf, "", nil)
-		if err != nil {
-			ui.Fail(fmt.Sprintf("llama-server failed: %v", err))
-			return Result{Model: model, Backend: backend, Suite: suite.Name, TaskID: problem.TaskID, Error: err.Error()}
-		}
-		defer llamaserver.Stop(llamaProc)
-	}
 
 	// Build initial prompt
 	prompt, err := format.BuildPrompt(problem, suite)
@@ -296,11 +309,9 @@ func runSingle(model, backend string, problem formats.Problem, suite formats.Sui
 	os.WriteFile(filepath.Join(outputDir, "metadata.json"), data, 0644)
 
 	if success {
-		fmt.Printf("\n  Result: %s | Files: %d | Duration: %ds\n",
-			ui.SuccessStyle.Render("✓ PASS"), filesCreated, totalDuration)
+		fmt.Printf("    %s %ds\n", ui.SuccessStyle.Render("✓"), totalDuration)
 	} else {
-		fmt.Printf("\n  Result: %s | Files: %d | Duration: %ds\n",
-			ui.ErrorStyle.Render("✗ FAIL"), filesCreated, totalDuration)
+		fmt.Printf("    %s %ds\n", ui.ErrorStyle.Render("✗"), totalDuration)
 	}
 
 	return result
