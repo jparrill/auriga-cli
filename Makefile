@@ -46,6 +46,10 @@ cross-linux:
 
 .PHONY: test
 test:
+	go test -short ./...
+
+.PHONY: test-all
+test-all:
 	go test ./...
 
 .PHONY: lint
