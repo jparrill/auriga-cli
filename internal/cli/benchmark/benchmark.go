@@ -17,6 +17,7 @@ Examples:
 
 	cmd.AddCommand(newBenchmarkListCmd())
 	cmd.AddCommand(newBenchmarkRunCmd())
+	cmd.AddCommand(newBenchmarkSuitesCmd())
 
 	return cmd
 }

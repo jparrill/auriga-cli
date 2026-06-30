@@ -21,6 +21,7 @@ var (
 	DefaultLlamaServerHost = "http://localhost:8090"
 	DefaultQuant           = "Q4_K_M"
 	DefaultOllamaModelsDir = "~/infra/ai/models/ollama"
+	DefaultSuitesDir       = "~/.config/auriga/suites"
 )
 
 func ExpandHome(path string) string {
