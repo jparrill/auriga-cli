@@ -15,6 +15,7 @@ type Problem struct {
 type Suite struct {
 	Name       string
 	Format     string
+	Language   string
 	Dir        string
 	PlanFile   string
 	SourceHTML string

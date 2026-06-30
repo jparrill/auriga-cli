@@ -77,7 +77,7 @@ func RunAll(cfg RunConfig) ([]Result, error) {
 			problems = []formats.Problem{{TaskID: "webgen"}}
 		}
 		fmtSuite = formats.Suite{
-			Name: suite.Name, Format: suite.Format, Dir: suite.Dir,
+			Name: suite.Name, Format: suite.Format, Language: suite.Language, Dir: suite.Dir,
 			PlanFile: suite.PlanFile, SourceHTML: suite.SourceHTML, BenchJSON: suite.BenchJSON,
 		}
 	} else {
