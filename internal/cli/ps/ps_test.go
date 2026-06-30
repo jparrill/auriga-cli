@@ -75,7 +75,7 @@ func TestGatherStatus(t *testing.T) {
 		t.Skip("skipping ps test (set AURIGA_TEST_PS=1 on Linux)")
 	}
 	procs := gatherStatus()
-	if len(procs) != 3 {
-		t.Errorf("expected 3 components, got %d", len(procs))
+	if len(procs) < 3 {
+		t.Errorf("expected at least 3 components, got %d", len(procs))
 	}
 }

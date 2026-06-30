@@ -80,7 +80,7 @@ func printStatus() {
 func gatherStatus() []processInfo {
 	var procs []processInfo
 	procs = append(procs, checkOllama())
-	procs = append(procs, checkLlamaServer())
+	procs = append(procs, checkLlamaServers()...)
 	procs = append(procs, checkPi())
 	return procs
 }
@@ -130,24 +130,22 @@ func getOllamaRunningModel() string {
 	return strings.Join(names, ", ")
 }
 
-func checkLlamaServer() processInfo {
-	p := processInfo{Component: "llama-server", Status: "stopped", PID: "-", Port: "-", Model: "-", Extra: "-"}
-
+func checkLlamaServers() []processInfo {
 	llamaBin := config.ExpandHome(viper.GetString("llama_server.bin"))
 
 	ctx := context.Background()
 	out, err := exec.RunCapture(ctx, "pgrep", []string{"-a", "llama-server"}, exec.RunOpts{})
 	if err != nil || strings.TrimSpace(out) == "" {
-		return p
+		return []processInfo{{Component: "llama-server", Status: "stopped", PID: "-", Port: "-", Model: "-", Extra: "-"}}
 	}
 
-	// Find our llama-server (not Ollama's internal one)
+	var procs []processInfo
 	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
 		if !strings.Contains(line, llamaBin) {
 			continue
 		}
 
-		p.Status = "active"
+		p := processInfo{Component: "llama-server", Status: "active", PID: "-", Port: "-", Model: "-", Extra: "-"}
 		parts := strings.SplitN(line, " ", 2)
 		p.PID = parts[0]
 
@@ -168,10 +166,13 @@ func checkLlamaServer() processInfo {
 				p.Extra = "vision: " + filepath.Base(mmproj)
 			}
 		}
-		break
+		procs = append(procs, p)
 	}
 
-	return p
+	if len(procs) == 0 {
+		return []processInfo{{Component: "llama-server", Status: "stopped", PID: "-", Port: "-", Model: "-", Extra: "-"}}
+	}
+	return procs
 }
 
 func checkPi() processInfo {
