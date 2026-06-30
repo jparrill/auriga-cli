@@ -169,10 +169,29 @@ func RunAll(cfg RunConfig) ([]Result, error) {
 			}
 		}
 
-		for _, problem := range problems {
-			r := runSingle(j.model, j.backend, problem, fmtSuite, format, cfg, runDir)
+		passCount := 0
+		failCount := 0
+		for i, problem := range problems {
+			r := runSingle(j.model, j.backend, problem, fmtSuite, format, cfg, runDir, i+1, len(problems))
 			results = append(results, r)
+			if r.Success {
+				passCount++
+			} else {
+				failCount++
+			}
 		}
+
+		// Model summary
+		total := passCount + failCount
+		rate := float64(0)
+		if total > 0 {
+			rate = float64(passCount) / float64(total) * 100
+		}
+		fmt.Printf("\n  %s %s %s %s\n",
+			ui.BoldStyle.Render(fmt.Sprintf("Done: %d/%d", total, len(problems))),
+			ui.SuccessStyle.Render(fmt.Sprintf("Pass: %d", passCount)),
+			ui.ErrorStyle.Render(fmt.Sprintf("Fail: %d", failCount)),
+			ui.AccentStyle.Render(fmt.Sprintf("Rate: %.1f%%", rate)))
 
 		// Cleanup backend after all problems for this model
 		if llamaProc != nil {
@@ -191,7 +210,7 @@ func RunAll(cfg RunConfig) ([]Result, error) {
 	return results, nil
 }
 
-func runSingle(model, backend string, problem formats.Problem, suite formats.Suite, format formats.FormatRunner, cfg RunConfig, runDir string) Result {
+func runSingle(model, backend string, problem formats.Problem, suite formats.Suite, format formats.FormatRunner, cfg RunConfig, runDir string, idx, total int) Result {
 	slug := regexp.MustCompile(`[/:]`).ReplaceAllString(model, "_")
 	taskSlug := regexp.MustCompile(`[/:]`).ReplaceAllString(problem.TaskID, "_")
 	outputDir := filepath.Join(runDir, fmt.Sprintf("%s__%s__%s", suite.Name, slug, backend))
@@ -201,7 +220,19 @@ func runSingle(model, backend string, problem formats.Problem, suite formats.Sui
 	os.MkdirAll(outputDir, 0755)
 	workDir := filepath.Join(outputDir, "project")
 
-	fmt.Printf("\n  %s\n", ui.BoldStyle.Render("▸ "+problem.TaskID))
+	// Print problem header inline — result appended after execution
+	counter := ui.MutedStyle.Render(fmt.Sprintf("[%3d/%d]", idx, total))
+	taskName := problem.TaskID
+	if len(taskName) > 30 {
+		taskName = taskName[:30]
+	}
+	// Dots filler
+	dotsLen := 40 - len(taskName)
+	if dotsLen < 3 {
+		dotsLen = 3
+	}
+	dots := ui.MutedStyle.Render(strings.Repeat("·", dotsLen))
+	fmt.Printf("  %s %s %s ", counter, taskName, dots)
 
 	var (
 		attempt       int
@@ -309,11 +340,18 @@ func runSingle(model, backend string, problem formats.Problem, suite formats.Sui
 	os.WriteFile(filepath.Join(outputDir, "metadata.json"), data, 0644)
 
 	if success {
-		fmt.Printf("    %s | Files: %d | Duration: %ds\n",
-			ui.SuccessStyle.Render("✓ PASS"), filesCreated, totalDuration)
+		fmt.Printf("%s %s\n",
+			ui.SuccessStyle.Render("✓ PASS"),
+			ui.MutedStyle.Render(fmt.Sprintf("%ds", totalDuration)))
 	} else {
-		fmt.Printf("    %s | Files: %d | Duration: %ds | Attempts: %d\n",
-			ui.ErrorStyle.Render("✗ FAIL"), filesCreated, totalDuration, attempt)
+		extra := ""
+		if attempt > 1 {
+			extra = fmt.Sprintf(" (%d attempts)", attempt)
+		}
+		fmt.Printf("%s %s%s\n",
+			ui.ErrorStyle.Render("✗ FAIL"),
+			ui.MutedStyle.Render(fmt.Sprintf("%ds", totalDuration)),
+			ui.MutedStyle.Render(extra))
 	}
 
 	return result
@@ -329,22 +367,83 @@ func truncateValidationErr(s string) string {
 func PrintSummary(results []Result) {
 	fmt.Printf("\n%s\n", ui.BoldStyle.Render(strings.Repeat("═", 60)))
 	fmt.Printf("%s\n", ui.BoldStyle.Render("BENCHMARK SUMMARY"))
-	fmt.Printf("%s\n", ui.BoldStyle.Render(strings.Repeat("═", 60)))
+	fmt.Printf("%s\n\n", ui.BoldStyle.Render(strings.Repeat("═", 60)))
 
-	tbl := ui.NewTable("", "SUITE", "MODEL", "BACKEND", "TASK", "PASS", "FILES", "TIME", "TRIES")
+	// Aggregate by model
+	type modelStats struct {
+		model, backend, suite string
+		pass, fail, total     int
+		totalTime             int
+	}
+	statsMap := make(map[string]*modelStats)
+	var order []string
+
 	for _, r := range results {
-		status := ui.ErrorStyle.Render("✗")
-		if r.Success {
-			status = ui.SuccessStyle.Render("✓")
+		key := fmt.Sprintf("%s__%s__%s", r.Suite, r.Model, r.Backend)
+		s, ok := statsMap[key]
+		if !ok {
+			s = &modelStats{model: r.Model, backend: r.Backend, suite: r.Suite}
+			statsMap[key] = s
+			order = append(order, key)
 		}
-		model := r.Model
+		s.total++
+		s.totalTime += r.Duration
+		if r.Success {
+			s.pass++
+		} else {
+			s.fail++
+		}
+	}
+
+	tbl := ui.NewTable("Results by Model", "SUITE", "MODEL", "BACKEND", "PASS", "FAIL", "TOTAL", "RATE", "TIME")
+	for _, key := range order {
+		s := statsMap[key]
+		rate := float64(0)
+		if s.total > 0 {
+			rate = float64(s.pass) / float64(s.total) * 100
+		}
+		model := s.model
 		if len(model) > 35 {
 			model = model[:35]
 		}
-		tbl.AddRow(r.Suite, model, r.Backend, r.TaskID, status,
-			fmt.Sprintf("%d", r.FilesCreated),
-			fmt.Sprintf("%ds", r.Duration),
-			fmt.Sprintf("%d", r.Attempts))
+
+		rateStr := fmt.Sprintf("%.1f%%", rate)
+		if rate >= 80 {
+			rateStr = ui.SuccessStyle.Render(rateStr)
+		} else if rate >= 50 {
+			rateStr = ui.WarningStyle.Render(rateStr)
+		} else {
+			rateStr = ui.ErrorStyle.Render(rateStr)
+		}
+
+		tbl.AddRow(s.suite, model, s.backend,
+			ui.SuccessStyle.Render(fmt.Sprintf("%d", s.pass)),
+			ui.ErrorStyle.Render(fmt.Sprintf("%d", s.fail)),
+			fmt.Sprintf("%d", s.total),
+			rateStr,
+			fmt.Sprintf("%ds", s.totalTime))
 	}
 	tbl.Print()
+
+	// Overall stats
+	totalPass := 0
+	totalFail := 0
+	totalTime := 0
+	for _, s := range statsMap {
+		totalPass += s.pass
+		totalFail += s.fail
+		totalTime += s.totalTime
+	}
+	totalAll := totalPass + totalFail
+	overallRate := float64(0)
+	if totalAll > 0 {
+		overallRate = float64(totalPass) / float64(totalAll) * 100
+	}
+
+	fmt.Printf("  %s  %s  %s  %s  %s\n\n",
+		ui.BoldStyle.Render("Overall:"),
+		ui.SuccessStyle.Render(fmt.Sprintf("Pass: %d", totalPass)),
+		ui.ErrorStyle.Render(fmt.Sprintf("Fail: %d", totalFail)),
+		ui.AccentStyle.Render(fmt.Sprintf("Rate: %.1f%%", overallRate)),
+		ui.MutedStyle.Render(fmt.Sprintf("Time: %ds", totalTime)))
 }
