@@ -1,6 +1,7 @@
 package benchmark
 
 import (
+	"os"
 	"testing"
 
 	"github.com/jparrill/auriga-cli/internal/ui"
@@ -8,7 +9,7 @@ import (
 
 func TestMain(m *testing.M) {
 	ui.InitLogger(false)
-	m.Run()
+	os.Exit(m.Run())
 }
 
 func TestPrintSummary(t *testing.T) {
