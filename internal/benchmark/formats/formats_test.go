@@ -2,19 +2,17 @@ package formats
 
 import (
 	"testing"
-
-	"github.com/jparrill/auriga-cli/internal/benchmark"
 )
 
 type mockRunner struct{}
 
-func (m *mockRunner) BuildPrompt(p benchmark.Problem, s benchmark.Suite) (string, error) {
+func (m *mockRunner) BuildPrompt(p Problem, s Suite) (string, error) {
 	return "mock prompt", nil
 }
-func (m *mockRunner) ValidateResponse(resp string, p benchmark.Problem, dir string) (bool, string, error) {
+func (m *mockRunner) ValidateResponse(resp string, p Problem, dir string) (bool, string, error) {
 	return true, "", nil
 }
-func (m *mockRunner) BuildRetryPrompt(p benchmark.Problem, dir string, err string) (string, error) {
+func (m *mockRunner) BuildRetryPrompt(p Problem, dir string, err string) (string, error) {
 	return "retry", nil
 }
 
@@ -29,7 +27,7 @@ func TestRegisterAndGet(t *testing.T) {
 		t.Error("expected non-nil runner")
 	}
 
-	prompt, err := r.BuildPrompt(benchmark.Problem{}, benchmark.Suite{})
+	prompt, err := r.BuildPrompt(Problem{}, Suite{})
 	if err != nil || prompt != "mock prompt" {
 		t.Errorf("unexpected prompt: %q, err: %v", prompt, err)
 	}

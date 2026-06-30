@@ -1,15 +1,30 @@
 package formats
 
-import (
-	"fmt"
+import "fmt"
 
-	"github.com/jparrill/auriga-cli/internal/benchmark"
-)
+type Problem struct {
+	TaskID     string   `json:"task_id"`
+	Prompt     string   `json:"prompt"`
+	Test       string   `json:"test,omitempty"`
+	EntryPoint string   `json:"entry_point,omitempty"`
+	Level      string   `json:"level,omitempty"`
+	Eval       []string `json:"eval,omitempty"`
+	TestCmd    string   `json:"test_cmd,omitempty"`
+}
+
+type Suite struct {
+	Name       string
+	Format     string
+	Dir        string
+	PlanFile   string
+	SourceHTML string
+	BenchJSON  string
+}
 
 type FormatRunner interface {
-	BuildPrompt(problem benchmark.Problem, suite benchmark.Suite) (string, error)
-	ValidateResponse(response string, problem benchmark.Problem, workDir string) (bool, string, error)
-	BuildRetryPrompt(problem benchmark.Problem, workDir string, validationError string) (string, error)
+	BuildPrompt(problem Problem, suite Suite) (string, error)
+	ValidateResponse(response string, problem Problem, workDir string) (bool, string, error)
+	BuildRetryPrompt(problem Problem, workDir string, validationError string) (string, error)
 }
 
 var registry = map[string]FormatRunner{}

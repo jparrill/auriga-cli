@@ -10,38 +10,91 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jparrill/auriga-cli/internal/benchmark/formats"
 	"github.com/jparrill/auriga-cli/internal/llamaserver"
 	"github.com/jparrill/auriga-cli/internal/ollama"
 	"github.com/jparrill/auriga-cli/internal/ui"
 )
 
 type RunConfig struct {
-	Backend      string
-	Models       []string
-	MaxRetries   int
-	MaxTokens    int
-	GenTimeout   time.Duration
-	ResultsDir   string
-	PlanFile     string
-	SourceHTML   string
-	Benchmarks   string
+	Backend    string
+	Models     []string
+	MaxRetries int
+	MaxTokens  int
+	GenTimeout time.Duration
+	ResultsDir string
+	Host       string
+	// Legacy (used when no suite specified)
+	PlanFile   string
+	SourceHTML string
+	Benchmarks string
+	// Suite mode
+	SuiteName  string
 }
 
 type Result struct {
 	Model        string `json:"model"`
 	Backend      string `json:"backend"`
+	Suite        string `json:"suite,omitempty"`
+	TaskID       string `json:"task_id,omitempty"`
+	Level        string `json:"level,omitempty"`
 	Attempts     int    `json:"attempts"`
 	Success      bool   `json:"success"`
 	Duration     int    `json:"total_duration_seconds"`
 	FilesCreated int    `json:"files_created"`
+	PassCount    int    `json:"pass_count,omitempty"`
+	TotalCount   int    `json:"total_count,omitempty"`
 	Timestamp    string `json:"timestamp"`
 	Error        string `json:"error,omitempty"`
 }
 
 func RunAll(cfg RunConfig) ([]Result, error) {
-	prompt, err := BuildPrompt(cfg.PlanFile, cfg.SourceHTML, cfg.Benchmarks)
-	if err != nil {
-		return nil, err
+	var fmtSuite formats.Suite
+	var format formats.FormatRunner
+	var problems []formats.Problem
+
+	if cfg.SuiteName != "" {
+		suite, err := LoadSuite(cfg.SuiteName)
+		if err != nil {
+			return nil, err
+		}
+		format, err = formats.Get(suite.Format)
+		if err != nil {
+			return nil, err
+		}
+		rawProblems, err := LoadProblems(suite)
+		if err != nil {
+			return nil, err
+		}
+		// Convert Problem types
+		for _, p := range rawProblems {
+			problems = append(problems, formats.Problem{
+				TaskID: p.TaskID, Prompt: p.Prompt, Test: p.Test,
+				EntryPoint: p.EntryPoint, Level: p.Level, Eval: p.Eval, TestCmd: p.TestCmd,
+			})
+		}
+		if len(problems) == 0 && suite.Format == "webgen" {
+			problems = []formats.Problem{{TaskID: "webgen"}}
+		}
+		fmtSuite = formats.Suite{
+			Name: suite.Name, Format: suite.Format, Dir: suite.Dir,
+			PlanFile: suite.PlanFile, SourceHTML: suite.SourceHTML, BenchJSON: suite.BenchJSON,
+		}
+	} else {
+		fmtSuite = formats.Suite{
+			Name:       "astro-webgen",
+			Format:     "webgen",
+			PlanFile:   cfg.PlanFile,
+			SourceHTML: cfg.SourceHTML,
+			BenchJSON:  cfg.Benchmarks,
+			Dir:        filepath.Dir(cfg.PlanFile),
+		}
+		var err error
+		format, err = formats.Get("webgen")
+		if err != nil {
+			return nil, fmt.Errorf("webgen format not registered: %w", err)
+		}
+		problems = []formats.Problem{{TaskID: "webgen"}}
 	}
 
 	// Create timestamped run directory
@@ -51,14 +104,15 @@ func RunAll(cfg RunConfig) ([]Result, error) {
 		return nil, fmt.Errorf("cannot create run dir: %w", err)
 	}
 
-	// Update latest symlink
 	latestLink := filepath.Join(cfg.ResultsDir, "latest")
 	os.Remove(latestLink)
 	os.Symlink(runTimestamp, latestLink)
 
 	ui.Info(fmt.Sprintf("Run: %s", runTimestamp))
-	ui.Info(fmt.Sprintf("Prompt: %d chars", len(prompt)))
+	ui.Info(fmt.Sprintf("Suite: %s (%s)", fmtSuite.Name, fmtSuite.Format))
+	ui.Info(fmt.Sprintf("Problems: %d", len(problems)))
 
+	// Build jobs
 	type job struct {
 		model   string
 		backend string
@@ -70,14 +124,11 @@ func RunAll(cfg RunConfig) ([]Result, error) {
 			jobs = append(jobs, job{m, "ollama"})
 		}
 	}
-
 	if cfg.Backend == "llama-server" || cfg.Backend == "all" {
 		for _, m := range cfg.Models {
 			jobs = append(jobs, job{m, "llama-server"})
 		}
 	}
-
-	// If models specified with specific backend, override
 	if len(cfg.Models) > 0 && cfg.Backend != "all" {
 		jobs = nil
 		for _, m := range cfg.Models {
@@ -87,14 +138,12 @@ func RunAll(cfg RunConfig) ([]Result, error) {
 
 	ui.Info(fmt.Sprintf("Total jobs: %d", len(jobs)))
 
-	// Override results dir to use run directory
-	runCfg := cfg
-	runCfg.ResultsDir = runDir
-
 	var results []Result
 	for _, j := range jobs {
-		r := runSingle(j.model, j.backend, prompt, runCfg)
-		results = append(results, r)
+		for _, problem := range problems {
+			r := runSingle(j.model, j.backend, problem, fmtSuite, format, cfg, runDir)
+			results = append(results, r)
+		}
 
 		if j.backend == "ollama" {
 			ollama.StopModel(j.model)
@@ -109,18 +158,20 @@ func RunAll(cfg RunConfig) ([]Result, error) {
 	return results, nil
 }
 
-func runSingle(model, backend, prompt string, cfg RunConfig) Result {
+func runSingle(model, backend string, problem formats.Problem, suite formats.Suite, format formats.FormatRunner, cfg RunConfig, runDir string) Result {
 	slug := regexp.MustCompile(`[/:]`).ReplaceAllString(model, "_")
-	outputDir := filepath.Join(cfg.ResultsDir, slug+"__"+backend)
+	taskSlug := regexp.MustCompile(`[/:]`).ReplaceAllString(problem.TaskID, "_")
+	outputDir := filepath.Join(runDir, fmt.Sprintf("%s__%s__%s", suite.Name, slug, backend))
+	if taskSlug != "webgen" {
+		outputDir = filepath.Join(outputDir, "problems", taskSlug)
+	}
 	os.MkdirAll(outputDir, 0755)
-	projectDir := filepath.Join(outputDir, "project")
+	workDir := filepath.Join(outputDir, "project")
 
-	fmt.Printf("\n%s\n%s (%s)\n%s\n",
+	fmt.Printf("\n%s\n%s (%s) — %s\n%s\n",
 		ui.BoldStyle.Render(strings.Repeat("═", 60)),
-		model, backend,
+		model, backend, problem.TaskID,
 		ui.BoldStyle.Render(strings.Repeat("═", 60)))
-
-	os.WriteFile(filepath.Join(outputDir, "prompt.txt"), []byte(prompt), 0644)
 
 	var (
 		attempt       int
@@ -134,19 +185,27 @@ func runSingle(model, backend, prompt string, cfg RunConfig) Result {
 		gguf := llamaserver.FindLocalGGUF(model)
 		if gguf == "" {
 			ui.Fail(fmt.Sprintf("No GGUF found for %s", model))
-			return Result{Model: model, Backend: backend, Error: "no GGUF found"}
+			return Result{Model: model, Backend: backend, Suite: suite.Name, TaskID: problem.TaskID, Error: "no GGUF found"}
 		}
-		var err error
 		ctx := context.Background()
+		var err error
 		llamaProc, err = llamaserver.Start(ctx, gguf, "", nil)
 		if err != nil {
 			ui.Fail(fmt.Sprintf("llama-server failed: %v", err))
-			return Result{Model: model, Backend: backend, Error: err.Error()}
+			return Result{Model: model, Backend: backend, Suite: suite.Name, TaskID: problem.TaskID, Error: err.Error()}
 		}
 		defer llamaserver.Stop(llamaProc)
 	}
 
+	// Build initial prompt
+	prompt, err := format.BuildPrompt(problem, suite)
+	if err != nil {
+		ui.Fail(fmt.Sprintf("Cannot build prompt: %v", err))
+		return Result{Model: model, Backend: backend, Suite: suite.Name, TaskID: problem.TaskID, Error: err.Error()}
+	}
+
 	currentPrompt := prompt
+	os.WriteFile(filepath.Join(outputDir, "prompt.txt"), []byte(prompt), 0644)
 
 	for attempt < cfg.MaxRetries && !success {
 		attempt++
@@ -154,21 +213,21 @@ func runSingle(model, backend, prompt string, cfg RunConfig) Result {
 
 		start := time.Now()
 		var response string
-		var err error
+		var genErr error
 
 		if backend == "ollama" {
 			ui.Info("Calling Ollama...")
-			response, err = ollama.Generate(model, currentPrompt, cfg.MaxTokens, cfg.GenTimeout)
+			response, genErr = ollama.Generate(model, currentPrompt, cfg.MaxTokens, cfg.GenTimeout)
 		} else {
 			ui.Info("Calling llama-server...")
-			response, err = llamaserver.Generate(currentPrompt, cfg.MaxTokens, cfg.GenTimeout)
+			response, genErr = llamaserver.Generate(currentPrompt, cfg.MaxTokens, cfg.GenTimeout)
 		}
 
 		duration := int(time.Since(start).Seconds())
 		totalDuration += duration
 
-		if err != nil {
-			ui.Fail(fmt.Sprintf("Error after %ds: %v", duration, err))
+		if genErr != nil {
+			ui.Fail(fmt.Sprintf("Error after %ds: %v", duration, genErr))
 			continue
 		}
 
@@ -176,69 +235,56 @@ func runSingle(model, backend, prompt string, cfg RunConfig) Result {
 		os.WriteFile(filepath.Join(outputDir, fmt.Sprintf("raw_output_%d.txt", attempt)), []byte(response), 0644)
 
 		if attempt == 1 {
-			// First attempt: clean slate
-			os.RemoveAll(projectDir)
-			os.MkdirAll(projectDir, 0755)
+			os.RemoveAll(workDir)
+		}
+		os.MkdirAll(workDir, 0755)
+
+		// Validate via format runner
+		ok, validationErr, err := format.ValidateResponse(response, problem, workDir)
+		if err != nil {
+			ui.Fail(fmt.Sprintf("Validation error: %v", err))
+			continue
 		}
 
-		parsed, _ := ParseFiles(response, projectDir)
+		// Count files
+		entries, _ := os.ReadDir(workDir)
+		fileCount := 0
+		filepath.Walk(workDir, func(_ string, info os.FileInfo, _ error) error {
+			if info != nil && !info.IsDir() {
+				fileCount++
+			}
+			return nil
+		})
 		if attempt == 1 {
-			filesCreated = parsed
+			filesCreated = fileCount
 		} else {
-			// Incremental: merge new files into existing project
-			filesCreated += parsed
-			ui.Info(fmt.Sprintf("Patched %d files (total: %d)", parsed, filesCreated))
+			filesCreated = fileCount
 		}
-		ui.Info(fmt.Sprintf("Files: %d in %ds", parsed, duration))
+		_ = entries
 
-		if parsed == 0 && attempt == 1 {
-			ui.Warn("No files parsed — will retry with format instructions")
+		if ok {
+			ui.Ok(fmt.Sprintf("Validation passed — %d files", fileCount))
+			success = true
+		} else {
+			ui.Fail(fmt.Sprintf("Validation: %s", truncateValidationErr(validationErr)))
 			if attempt < cfg.MaxRetries {
-				currentPrompt = BuildFormatRetryPrompt(prompt)
-			}
-			continue
-		}
-
-		violations := CheckSensitiveData(projectDir)
-		if len(violations) > 0 {
-			ui.Fail(fmt.Sprintf("%d sensitive data violations:", len(violations)))
-			for _, v := range violations {
-				ui.Fail(fmt.Sprintf("  %s in %s", v.Description, v.FilePath))
-			}
-			if attempt < cfg.MaxRetries {
-				fixPrompt, err := BuildSensitiveRetryPrompt(projectDir, violations)
+				retryPrompt, err := format.BuildRetryPrompt(problem, workDir, validationErr)
 				if err != nil {
-					ui.Warn(fmt.Sprintf("Cannot build incremental prompt: %v", err))
+					ui.Warn(fmt.Sprintf("Cannot build retry prompt: %v", err))
 					continue
 				}
-				currentPrompt = fixPrompt
-			}
-			continue
-		}
-
-		ui.Ok("No sensitive data found")
-
-		buildOk, buildErr := ValidateBuild(projectDir)
-		if !buildOk {
-			ui.Fail("Build failed")
-			if attempt < cfg.MaxRetries {
-				fixPrompt, err := BuildBuildRetryPrompt(projectDir, buildErr)
-				if err != nil {
-					ui.Warn(fmt.Sprintf("Cannot build incremental prompt: %v", err))
-					continue
+				if retryPrompt != "" {
+					currentPrompt = retryPrompt
 				}
-				currentPrompt = fixPrompt
 			}
-			continue
 		}
-
-		ui.Ok("Build passed — project is valid")
-		success = true
 	}
 
 	result := Result{
 		Model:        model,
 		Backend:      backend,
+		Suite:        suite.Name,
+		TaskID:       problem.TaskID,
 		Attempts:     attempt,
 		Success:      success,
 		Duration:     totalDuration,
@@ -260,27 +306,32 @@ func runSingle(model, backend, prompt string, cfg RunConfig) Result {
 	return result
 }
 
+func truncateValidationErr(s string) string {
+	if len(s) > 100 {
+		return s[:100] + "..."
+	}
+	return s
+}
+
 func PrintSummary(results []Result) {
 	fmt.Printf("\n%s\n", ui.BoldStyle.Render(strings.Repeat("═", 60)))
 	fmt.Printf("%s\n", ui.BoldStyle.Render("BENCHMARK SUMMARY"))
 	fmt.Printf("%s\n", ui.BoldStyle.Render(strings.Repeat("═", 60)))
 
-	fmt.Printf("\n  %-45s %-15s %-6s %-7s %-8s %s\n",
-		"Model", "Backend", "Pass", "Files", "Time", "Tries")
-	fmt.Printf("  %s\n", strings.Repeat("─", 90))
-
+	tbl := ui.NewTable("", "SUITE", "MODEL", "BACKEND", "TASK", "PASS", "FILES", "TIME", "TRIES")
 	for _, r := range results {
-		m := r.Model
-		if len(m) > 44 {
-			m = m[:44]
-		}
 		status := ui.ErrorStyle.Render("✗")
 		if r.Success {
 			status = ui.SuccessStyle.Render("✓")
 		}
-		fmt.Printf("  %-44s %-14s %s      %-7d %ds     %d\n",
-			m, r.Backend, status, r.FilesCreated, r.Duration, r.Attempts)
+		model := r.Model
+		if len(model) > 35 {
+			model = model[:35]
+		}
+		tbl.AddRow(r.Suite, model, r.Backend, r.TaskID, status,
+			fmt.Sprintf("%d", r.FilesCreated),
+			fmt.Sprintf("%ds", r.Duration),
+			fmt.Sprintf("%d", r.Attempts))
 	}
-
-	fmt.Printf("\n  Results: results/\n")
+	tbl.Print()
 }
