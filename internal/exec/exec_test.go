@@ -105,3 +105,41 @@ func TestBuildEnv_Empty(t *testing.T) {
 		t.Errorf("expected nil for empty env, got %v", env)
 	}
 }
+
+func TestRunSandboxed_DryRun(t *testing.T) {
+	config.DryRun = true
+	defer func() { config.DryRun = false }()
+
+	out, err := RunSandboxed(context.Background(), "npm", []string{"install"}, SandboxOpts{
+		Dir:   "/tmp/test",
+		Image: ImageNode,
+	})
+	if err != nil {
+		t.Fatalf("When dry-run is enabled, RunSandboxed should not error: %v", err)
+	}
+	if out != "" {
+		t.Errorf("When dry-run is enabled, RunSandboxed should return empty output, got %q", out)
+	}
+}
+
+func TestDockerAvailable(t *testing.T) {
+	result := dockerAvailable()
+	// Just verify it returns a boolean without panicking — actual availability depends on environment
+	_ = result
+}
+
+func TestSandboxOpts_Fields(t *testing.T) {
+	opts := SandboxOpts{Dir: "/work", Image: ImageGo}
+	if opts.Dir != "/work" {
+		t.Errorf("When setting Dir, it should be '/work', got %q", opts.Dir)
+	}
+	if opts.Image != "golang:1.22" {
+		t.Errorf("When using ImageGo, it should be 'golang:1.22', got %q", opts.Image)
+	}
+}
+
+func TestImageConstants(t *testing.T) {
+	if ImageNode == "" || ImageGo == "" || ImagePython == "" {
+		t.Error("When checking image constants, none should be empty")
+	}
+}

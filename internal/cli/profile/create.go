@@ -118,6 +118,9 @@ func runProfileCreate(name string, opts *createOpts) error {
 		Model:  modelFile,
 		MMProj: mmprojFile,
 	}
+	if mmprojFile != "" {
+		pc.Flags = []string{"--jinja"}
+	}
 	if err := addProfileToConfig(name, pc); err != nil {
 		return fmt.Errorf("cannot write config: %w", err)
 	}

@@ -15,20 +15,20 @@ func TestHost(t *testing.T) {
 }
 
 func TestConfiguredModels_Empty(t *testing.T) {
-	viper.Set("ollama.models", "")
+	viper.Set("ollama.models", []string{})
 	models := ConfiguredModels()
-	if models != nil {
-		t.Errorf("expected nil for empty, got %v", models)
+	if len(models) != 0 {
+		t.Errorf("expected empty for no models, got %v", models)
 	}
 }
 
-func TestConfiguredModels_SpaceSeparated(t *testing.T) {
-	viper.Set("ollama.models", "model1 model2 model3")
+func TestConfiguredModels_StringSlice(t *testing.T) {
+	viper.Set("ollama.models", []string{"qwen3:32b", "devstral", "gemma3:27b"})
 	models := ConfiguredModels()
 	if len(models) != 3 {
 		t.Errorf("expected 3 models, got %d", len(models))
 	}
-	if models[0] != "model1" || models[2] != "model3" {
+	if models[0] != "qwen3:32b" || models[2] != "gemma3:27b" {
 		t.Errorf("unexpected models: %v", models)
 	}
 }

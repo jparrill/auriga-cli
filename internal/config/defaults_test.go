@@ -43,7 +43,6 @@ func TestDefaultsNotEmpty(t *testing.T) {
 		{"DefaultGGUFDir", DefaultGGUFDir},
 		{"DefaultMMProjDir", DefaultMMProjDir},
 		{"DefaultLlamaServerBin", DefaultLlamaServerBin},
-		{"DefaultPiBin", DefaultPiBin},
 		{"DefaultOllamaHost", DefaultOllamaHost},
 		{"DefaultQuant", DefaultQuant},
 	}
@@ -59,7 +58,7 @@ func TestDefaultsNotEmpty(t *testing.T) {
 
 func TestDefaultsContainTilde(t *testing.T) {
 	paths := []string{
-		DefaultGGUFDir, DefaultMMProjDir, DefaultLlamaServerBin, DefaultPiBin,
+		DefaultGGUFDir, DefaultMMProjDir, DefaultLlamaServerBin,
 	}
 	for _, p := range paths {
 		if !strings.HasPrefix(p, "~/") {

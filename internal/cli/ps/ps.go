@@ -82,6 +82,9 @@ func gatherStatus() []processInfo {
 	procs = append(procs, checkOllama())
 	procs = append(procs, checkLlamaServers()...)
 	procs = append(procs, checkPi())
+	procs = append(procs, checkContainer("hermes", "Hermes gateway")...)
+	procs = append(procs, checkContainer("hermes-dashboard", "Hermes dashboard")...)
+	procs = append(procs, checkContainer("hermes-searxng", "SearXNG")...)
 	return procs
 }
 
@@ -206,6 +209,39 @@ func checkPi() processInfo {
 	return p
 }
 
+func checkContainer(name, label string) []processInfo {
+	ctx := context.Background()
+	// Try podman first, then docker
+	for _, runtime := range []string{"podman", "docker"} {
+		out, err := exec.RunCapture(ctx, runtime, []string{
+			"inspect", "--format", "{{.State.Status}}:{{.State.Pid}}", name,
+		}, exec.RunOpts{})
+		if err != nil {
+			continue
+		}
+		parts := strings.SplitN(strings.TrimSpace(out), ":", 2)
+		status := parts[0]
+		pid := "-"
+		if len(parts) > 1 && parts[1] != "0" {
+			pid = parts[1]
+		}
+
+		p := processInfo{
+			Component: label,
+			Status:    "stopped",
+			PID:       pid,
+			Port:      "-",
+			Model:     "-",
+			Extra:     runtime,
+		}
+		if status == "running" {
+			p.Status = "active"
+		}
+		return []processInfo{p}
+	}
+	return nil
+}
+
 func extractFlag(args, flag string) string {
 	fields := strings.Fields(args)
 	for i, f := range fields {
@@ -257,20 +293,40 @@ func resolveOllamaModelsDir() string {
 	return filepath.Join(home, ".ollama", "models")
 }
 
+func findAMDCard() string {
+	entries, err := filepath.Glob("/sys/class/drm/card*/device/vendor")
+	if err != nil {
+		return ""
+	}
+	for _, vendorPath := range entries {
+		data, err := os.ReadFile(vendorPath)
+		if err != nil {
+			continue
+		}
+		if strings.TrimSpace(string(data)) == "0x1002" {
+			return filepath.Dir(vendorPath)
+		}
+	}
+	return ""
+}
+
 func printGPUMemory() {
 	ctx := context.Background()
-	// Try reading from sysfs (AMD)
-	vramUsed, err := os.ReadFile("/sys/class/drm/card1/device/mem_info_vram_used")
-	vramTotal, err2 := os.ReadFile("/sys/class/drm/card1/device/mem_info_vram_total")
-	gttUsed, err3 := os.ReadFile("/sys/class/drm/card1/device/mem_info_gtt_used")
-	gttTotal, err4 := os.ReadFile("/sys/class/drm/card1/device/mem_info_gtt_total")
 
-	if err == nil && err2 == nil && err3 == nil && err4 == nil {
-		tbl := ui.NewTable("GPU Memory", "TYPE", "USED", "TOTAL")
-		tbl.AddRow("VRAM", formatBytesStr(vramUsed), formatBytesStr(vramTotal))
-		tbl.AddRow("GTT", formatBytesStr(gttUsed), formatBytesStr(gttTotal))
-		tbl.Print()
-		return
+	cardDevice := findAMDCard()
+	if cardDevice != "" {
+		vramUsed, err := os.ReadFile(filepath.Join(cardDevice, "mem_info_vram_used"))
+		vramTotal, err2 := os.ReadFile(filepath.Join(cardDevice, "mem_info_vram_total"))
+		gttUsed, err3 := os.ReadFile(filepath.Join(cardDevice, "mem_info_gtt_used"))
+		gttTotal, err4 := os.ReadFile(filepath.Join(cardDevice, "mem_info_gtt_total"))
+
+		if err == nil && err2 == nil && err3 == nil && err4 == nil {
+			tbl := ui.NewTable("GPU Memory", "TYPE", "USED", "TOTAL")
+			tbl.AddRow("VRAM", formatBytesStr(vramUsed), formatBytesStr(vramTotal))
+			tbl.AddRow("GTT", formatBytesStr(gttUsed), formatBytesStr(gttTotal))
+			tbl.Print()
+			return
+		}
 	}
 
 	// Fallback: try rocm-smi

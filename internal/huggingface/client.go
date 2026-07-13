@@ -4,8 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	goexec "os/exec"
 	"strings"
 	"time"
+
+	"github.com/jparrill/auriga-cli/internal/ui"
 )
 
 type RepoFile struct {
@@ -13,24 +17,68 @@ type RepoFile struct {
 	Size int64  `json:"size"`
 }
 
+func resolveToken() string {
+	if t := os.Getenv("HF_TOKEN"); t != "" {
+		return t
+	}
+	out, err := goexec.Command("pass", "HuggingFace/auriga-token").Output()
+	if err == nil {
+		token := strings.TrimSpace(string(out))
+		if token != "" {
+			return token
+		}
+	}
+	return ""
+}
+
 func ListFiles(repo string) ([]RepoFile, error) {
 	url := fmt.Sprintf("https://huggingface.co/api/models/%s/tree/main", repo)
-	client := &http.Client{Timeout: 15 * time.Second}
-	resp, err := client.Get(url)
-	if err != nil {
-		return nil, fmt.Errorf("HF API error for %s: %w", repo, err)
-	}
-	defer resp.Body.Close()
+	token := resolveToken()
 
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("HF API returned %d for %s", resp.StatusCode, repo)
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			backoff := time.Duration(attempt) * 2 * time.Second
+			ui.Logger.Debug("HF retry", "attempt", attempt+1, "backoff", backoff)
+			time.Sleep(backoff)
+		}
+
+		req, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			return nil, err
+		}
+		if token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
+
+		client := &http.Client{Timeout: 15 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			lastErr = fmt.Errorf("HF API error for %s: %w", repo, err)
+			continue
+		}
+
+		if resp.StatusCode == 429 || resp.StatusCode >= 500 {
+			resp.Body.Close()
+			lastErr = fmt.Errorf("HF API returned %d for %s", resp.StatusCode, repo)
+			continue
+		}
+
+		if resp.StatusCode != 200 {
+			resp.Body.Close()
+			return nil, fmt.Errorf("HF API returned %d for %s", resp.StatusCode, repo)
+		}
+
+		var files []RepoFile
+		err = json.NewDecoder(resp.Body).Decode(&files)
+		resp.Body.Close()
+		if err != nil {
+			return nil, fmt.Errorf("invalid HF response: %w", err)
+		}
+		return files, nil
 	}
 
-	var files []RepoFile
-	if err := json.NewDecoder(resp.Body).Decode(&files); err != nil {
-		return nil, fmt.Errorf("invalid HF response: %w", err)
-	}
-	return files, nil
+	return nil, lastErr
 }
 
 func ResolveGGUF(repo string, quantPriority []string) (string, int64, error) {
@@ -46,7 +94,6 @@ func ResolveGGUF(repo string, quantPriority []string) (string, int64, error) {
 		}
 	}
 
-	// Prefer Unsloth Dynamic (UD-) quants over standard
 	for _, q := range quantPriority {
 		for _, gf := range ggufFiles {
 			if strings.Contains(gf.Path, "UD-"+q) {
@@ -92,4 +139,17 @@ func ResolveMMProj(repo string) (string, int64, error) {
 
 func DownloadURL(repo, filename string) string {
 	return fmt.Sprintf("https://huggingface.co/%s/resolve/main/%s", repo, filename)
+}
+
+func ExpectedSize(repo, filename string) (int64, error) {
+	files, err := ListFiles(repo)
+	if err != nil {
+		return 0, err
+	}
+	for _, f := range files {
+		if f.Path == filename {
+			return f.Size, nil
+		}
+	}
+	return 0, fmt.Errorf("file %s not found in %s", filename, repo)
 }

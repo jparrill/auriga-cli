@@ -1,8 +1,8 @@
 package benchmark
 
 import (
+	"context"
 	"fmt"
-	goexec "os/exec"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/jparrill/auriga-cli/internal/benchmark/formats"
+	"github.com/jparrill/auriga-cli/internal/exec"
 )
 
 func init() {
@@ -104,75 +105,65 @@ Original task:
 }
 
 func runBuildCheck(workDir string, problem formats.Problem) (bool, string) {
-	var cmd *goexec.Cmd
+	var name string
+	var args []string
+	var image string
 
-	// Detect build command based on files present
 	if _, err := os.Stat(filepath.Join(workDir, "go.mod")); err == nil {
-		cmd = goexec.Command("go", "build", "./...")
+		name, args, image = "go", []string{"build", "./..."}, exec.ImageGo
 	} else if _, err := os.Stat(filepath.Join(workDir, "package.json")); err == nil {
-		cmd = goexec.Command("npm", "run", "build")
+		name, args, image = "npm", []string{"run", "build"}, exec.ImageNode
 	} else if _, err := os.Stat(filepath.Join(workDir, "Makefile")); err == nil {
-		cmd = goexec.Command("make", "build")
+		name, args, image = "make", []string{"build"}, exec.ImageGo
 	} else {
-		// Try go build on any .go files
 		matches, _ := filepath.Glob(filepath.Join(workDir, "*.go"))
 		if len(matches) > 0 {
-			cmd = goexec.Command("go", "build", "./...")
+			name, args, image = "go", []string{"build", "./..."}, exec.ImageGo
 		} else {
-			return true, "" // No build system detected, skip
+			return true, ""
 		}
 	}
 
-	cmd.Dir = workDir
-	timer := time.AfterFunc(60*time.Second, func() {
-		if cmd.Process != nil {
-			cmd.Process.Kill()
-		}
-	})
-	out, err := cmd.CombinedOutput()
-	timer.Stop()
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
 
+	out, err := exec.RunSandboxed(ctx, name, args, exec.SandboxOpts{Dir: workDir, Image: image})
 	if err != nil {
-		return false, truncateStr(string(out), 1500)
+		return false, truncateStr(out, 1500)
 	}
 	return true, ""
 }
 
 func runTestCheck(workDir string, problem formats.Problem) (bool, string) {
-	var cmd *goexec.Cmd
+	var name string
+	var args []string
+	var image string
 
 	if problem.TestCmd != "" {
 		parts := strings.Fields(problem.TestCmd)
-		cmd = goexec.Command(parts[0], parts[1:]...)
+		name, args = parts[0], parts[1:]
+		image = exec.ImageGo
 	} else if _, err := os.Stat(filepath.Join(workDir, "go.mod")); err == nil {
-		cmd = goexec.Command("go", "test", "./...")
+		name, args, image = "go", []string{"test", "./..."}, exec.ImageGo
 	} else if _, err := os.Stat(filepath.Join(workDir, "package.json")); err == nil {
-		cmd = goexec.Command("npm", "test")
+		name, args, image = "npm", []string{"test"}, exec.ImageNode
 	} else {
-		// Find *_test.go files
 		matches, _ := filepath.Glob(filepath.Join(workDir, "*_test.go"))
 		if len(matches) > 0 {
-			cmd = goexec.Command("go", "test", "./...")
+			name, args, image = "go", []string{"test", "./..."}, exec.ImageGo
 		} else {
-			return true, "" // No tests found, skip
+			return true, ""
 		}
 	}
 
-	cmd.Dir = workDir
-	timer := time.AfterFunc(120*time.Second, func() {
-		if cmd.Process != nil {
-			cmd.Process.Kill()
-		}
-	})
-	out, err := cmd.CombinedOutput()
-	timer.Stop()
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
 
+	out, err := exec.RunSandboxed(ctx, name, args, exec.SandboxOpts{Dir: workDir, Image: image})
 	if err != nil {
-		// Extract test failures
-		output := string(out)
 		failRe := regexp.MustCompile(`(?m)^--- FAIL.*$`)
-		failures := failRe.FindAllString(output, -1)
-		summary := truncateStr(output, 1500)
+		failures := failRe.FindAllString(out, -1)
+		summary := truncateStr(out, 1500)
 		if len(failures) > 0 {
 			summary = strings.Join(failures, "\n") + "\n\n" + summary
 		}

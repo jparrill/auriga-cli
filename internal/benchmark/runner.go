@@ -17,13 +17,14 @@ import (
 )
 
 type RunConfig struct {
-	Backend    string
-	Models     []string
-	MaxRetries int
-	MaxTokens  int
-	GenTimeout time.Duration
-	ResultsDir string
-	Host       string
+	Backend     string
+	Models      []string
+	MaxRetries  int
+	MaxTokens   int
+	GenTimeout  time.Duration
+	ResultsDir  string
+	Host        string
+	Temperature float64
 	// Legacy (used when no suite specified)
 	PlanFile   string
 	SourceHTML string
@@ -261,10 +262,10 @@ func runSingle(model, backend string, problem formats.Problem, suite formats.Sui
 
 		if backend == "ollama" {
 			ui.Logger.Debug("calling", "backend", "ollama", "model", model)
-			response, genErr = ollama.Generate(model, currentPrompt, cfg.MaxTokens, cfg.GenTimeout)
+			response, genErr = ollama.Generate(model, currentPrompt, cfg.MaxTokens, cfg.Temperature, cfg.GenTimeout)
 		} else {
 			ui.Logger.Debug("calling", "backend", "llama-server")
-			response, genErr = llamaserver.Generate(currentPrompt, cfg.MaxTokens, cfg.GenTimeout)
+			response, genErr = llamaserver.Generate(currentPrompt, cfg.MaxTokens, cfg.Temperature, cfg.GenTimeout)
 		}
 
 		duration := int(time.Since(start).Seconds())

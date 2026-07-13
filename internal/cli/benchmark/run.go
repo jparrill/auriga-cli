@@ -14,11 +14,12 @@ import (
 )
 
 type runOpts struct {
-	Backend    string
-	Models     string
-	GenTimeout int
-	Suite      string
-	Host       string
+	Backend     string
+	Models      string
+	GenTimeout  int
+	Suite       string
+	Host        string
+	Temperature float64
 }
 
 func newBenchmarkRunCmd() *cobra.Command {
@@ -45,6 +46,7 @@ Examples:
 	cmd.Flags().IntVar(&opts.GenTimeout, "timeout", 0, "Generation timeout in seconds (default from config)")
 	cmd.Flags().StringVar(&opts.Suite, "suite", "", "Benchmark suite to run (default: legacy webgen)")
 	cmd.Flags().StringVar(&opts.Host, "host", "", "Override host URL (e.g., http://remote:8090)")
+	cmd.Flags().Float64Var(&opts.Temperature, "temperature", 0.3, "LLM sampling temperature (0.0 = deterministic)")
 
 	return cmd
 }
@@ -97,14 +99,15 @@ func runBenchmarkRun(opts *runOpts) error {
 	}
 
 	cfg := bench.RunConfig{
-		Backend:    opts.Backend,
-		Models:     models,
-		MaxRetries: maxRetries,
-		MaxTokens:  maxTokens,
-		GenTimeout: time.Duration(genTimeout) * time.Second,
-		ResultsDir: resultsDir,
-		Host:       opts.Host,
-		SuiteName:  opts.Suite,
+		Backend:     opts.Backend,
+		Models:      models,
+		MaxRetries:  maxRetries,
+		MaxTokens:   maxTokens,
+		GenTimeout:  time.Duration(genTimeout) * time.Second,
+		ResultsDir:  resultsDir,
+		Host:        opts.Host,
+		Temperature: opts.Temperature,
+		SuiteName:   opts.Suite,
 		// Legacy fields (used when no suite)
 		PlanFile:   config.ExpandHome(viper.GetString("benchmark.plan_file")),
 		SourceHTML: config.ExpandHome(viper.GetString("benchmark.source_html")),

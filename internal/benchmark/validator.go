@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 	"os"
-	goexec "os/exec"
 	"path/filepath"
 	"time"
 
+	"github.com/jparrill/auriga-cli/internal/exec"
 	"github.com/jparrill/auriga-cli/internal/ui"
 )
 
@@ -20,27 +20,22 @@ func ValidateBuild(projectDir string) (bool, string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 
-	ui.Info("Running npm install...")
-	out, err := captureCmd(ctx, projectDir, "npm", "install", "--legacy-peer-deps")
+	sandbox := exec.SandboxOpts{Dir: projectDir, Image: exec.ImageNode}
+
+	ui.Info("Running npm install (sandboxed)...")
+	out, err := exec.RunSandboxed(ctx, "npm", []string{"install", "--legacy-peer-deps"}, sandbox)
 	if err != nil {
 		return false, fmt.Sprintf("npm install failed:\n%s", truncate(out, 1000))
 	}
 
-	ui.Info("Running npm run build...")
-	out, err = captureCmd(ctx, projectDir, "npm", "run", "build")
+	ui.Info("Running npm run build (sandboxed)...")
+	out, err = exec.RunSandboxed(ctx, "npm", []string{"run", "build"}, sandbox)
 	if err != nil {
 		return false, fmt.Sprintf("npm run build failed:\n%s", truncate(out, 1500))
 	}
 
 	ui.Ok("Build passed")
 	return true, ""
-}
-
-func captureCmd(ctx context.Context, dir, name string, args ...string) (string, error) {
-	cmd := goexec.CommandContext(ctx, name, args...)
-	cmd.Dir = dir
-	out, err := cmd.CombinedOutput()
-	return string(out), err
 }
 
 func truncate(s string, max int) string {

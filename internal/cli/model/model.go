@@ -20,6 +20,7 @@ Examples:
 	cmd.AddCommand(newModelListCmd())
 	cmd.AddCommand(newModelEnsureCmd())
 	cmd.AddCommand(newModelCreateCmd())
+	cmd.AddCommand(newModelPruneCmd())
 
 	return cmd
 }

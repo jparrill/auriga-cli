@@ -67,11 +67,7 @@ func MMProjDir() string {
 }
 
 func ConfiguredModels() []string {
-	raw := viper.GetString("llama_server.models")
-	if raw == "" {
-		return nil
-	}
-	return strings.Fields(raw)
+	return viper.GetStringSlice("llama_server.models")
 }
 
 func FindLocalGGUF(hfRepo string) string {
@@ -125,6 +121,10 @@ func IsOllamaRunning(ctx context.Context) bool {
 }
 
 func Start(ctx context.Context, modelPath string, mmprojPath string, extraFlags []string) (*os.Process, error) {
+	return StartWithCtx(ctx, modelPath, mmprojPath, extraFlags, 65536)
+}
+
+func StartWithCtx(ctx context.Context, modelPath string, mmprojPath string, extraFlags []string, ctxSize int) (*os.Process, error) {
 	bin := Bin()
 	port := Port()
 
@@ -136,13 +136,17 @@ func Start(ctx context.Context, modelPath string, mmprojPath string, extraFlags 
 		ui.Warn("Ollama is running — both will compete for GPU resources")
 	}
 
+	if ctxSize <= 0 {
+		ctxSize = 65536
+	}
+
 	args := []string{
 		"-m", modelPath,
 		"--host", "0.0.0.0",
 		"--port", fmt.Sprintf("%d", port),
 		"--flash-attn", "on",
 		"--gpu-layers", "99",
-		"--ctx-size", "65536",
+		"--ctx-size", fmt.Sprintf("%d", ctxSize),
 	}
 
 	if mmprojPath != "" {
@@ -153,7 +157,8 @@ func Start(ctx context.Context, modelPath string, mmprojPath string, extraFlags 
 	ui.Info(fmt.Sprintf("Starting llama-server with %s", filepath.Base(modelPath)))
 	ui.Logger.Debug("cmd", "bin", bin, "args", strings.Join(args, " "))
 
-	logFile, _ := os.Create("/tmp/llama-server-auriga.log")
+	logPath := fmt.Sprintf("/tmp/llama-server-auriga-%s.log", time.Now().Format("2006-01-02_1504"))
+	logFile, _ := os.Create(logPath)
 
 	attr := &os.ProcAttr{
 		Dir: "/tmp",
@@ -174,6 +179,7 @@ func Start(ctx context.Context, modelPath string, mmprojPath string, extraFlags 
 	}
 
 	ui.Ok(fmt.Sprintf("llama-server ready on port %d (PID %d)", port, proc.Pid))
+	ui.Info(fmt.Sprintf("Log: %s", logPath))
 	return proc, nil
 }
 
@@ -202,14 +208,18 @@ func WaitForHealth(timeout time.Duration) error {
 	return fmt.Errorf("llama-server health check timeout after %s", timeout)
 }
 
-func Generate(prompt string, maxTokens int, timeout time.Duration) (string, error) {
+func Generate(prompt string, maxTokens int, temperature float64, timeout time.Duration) (string, error) {
+	if temperature == 0 {
+		temperature = 0.3
+	}
+
 	payload := chatRequest{
 		Model: "local",
 		Messages: []chatMessage{
 			{Role: "user", Content: prompt},
 		},
 		MaxTokens:   maxTokens,
-		Temperature: 0.3,
+		Temperature: temperature,
 		Stream:      false,
 	}
 

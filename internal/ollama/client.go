@@ -38,11 +38,7 @@ func Host() string {
 }
 
 func ConfiguredModels() []string {
-	raw := viper.GetString("ollama.models")
-	if raw == "" {
-		return nil
-	}
-	return strings.Fields(raw)
+	return viper.GetStringSlice("ollama.models")
 }
 
 func ListModels() ([]Model, error) {
@@ -77,16 +73,41 @@ func StopModel(model string) {
 	goexec.Command("ollama", "stop", model).Run()
 }
 
-func Generate(model, prompt string, maxTokens int, timeout time.Duration) (string, error) {
+func DeleteModel(name string) error {
+	payload := fmt.Sprintf(`{"name":%q}`, name)
+	req, err := http.NewRequest(http.MethodDelete, Host()+"/api/delete", strings.NewReader(payload))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("cannot reach Ollama: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("Ollama returned %d", resp.StatusCode)
+	}
+	return nil
+}
+
+func Generate(model, prompt string, maxTokens int, temperature float64, timeout time.Duration) (string, error) {
 	_ = config.DryRun
+
+	if temperature == 0 {
+		temperature = 0.3
+	}
 
 	payload := generateRequest{
 		Model:  model,
 		Prompt: prompt,
 		Stream: false,
-		Options: map[string]interface{}{
+		Options: map[string]any{
 			"num_predict": maxTokens,
-			"temperature": 0.3,
+			"temperature": temperature,
 		},
 	}
 

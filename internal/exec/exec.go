@@ -93,6 +93,48 @@ func RunStreaming(ctx context.Context, name string, args []string, opts RunOpts)
 	return cmd.Run()
 }
 
+const (
+	ImageNode   = "node:20-slim"
+	ImageGo     = "golang:1.22"
+	ImagePython = "python:3.12-slim"
+)
+
+type SandboxOpts struct {
+	Dir   string
+	Image string
+}
+
+func RunSandboxed(ctx context.Context, name string, args []string, opts SandboxOpts) (string, error) {
+	if config.DryRun {
+		cmdStr := fmt.Sprintf("docker run --rm -v %s:/work -w /work %s %s %s",
+			opts.Dir, opts.Image, name, strings.Join(args, " "))
+		fmt.Println(ui.MutedStyle.Render("[dry-run]"), cmdStr)
+		return "", nil
+	}
+
+	if !dockerAvailable() {
+		ui.Warn("Docker not available — running validation without sandbox")
+		return RunCapture(ctx, name, args, RunOpts{Dir: opts.Dir})
+	}
+
+	dockerArgs := []string{
+		"run", "--rm",
+		"-v", opts.Dir + ":/work",
+		"-w", "/work",
+		opts.Image,
+		name,
+	}
+	dockerArgs = append(dockerArgs, args...)
+
+	ui.Logger.Debug("sandbox", "image", opts.Image, "cmd", name+" "+strings.Join(args, " "))
+	return RunCapture(ctx, "docker", dockerArgs, RunOpts{})
+}
+
+func dockerAvailable() bool {
+	cmd := exec.Command("docker", "info")
+	return cmd.Run() == nil
+}
+
 func buildEnv(extra map[string]string) []string {
 	if len(extra) == 0 {
 		return nil

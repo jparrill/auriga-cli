@@ -4,7 +4,6 @@ import (
 	"strings"
 
 	"github.com/jparrill/auriga-cli/internal/cli/benchmark"
-	"github.com/jparrill/auriga-cli/internal/cli/fix"
 	"github.com/jparrill/auriga-cli/internal/cli/model"
 	"github.com/jparrill/auriga-cli/internal/cli/profile"
 	"github.com/jparrill/auriga-cli/internal/cli/ps"
@@ -34,9 +33,7 @@ Examples:
   auriga benchmark list                      # Show all benchmark results
   auriga benchmark list --failed             # Only failed results
 
-  auriga fix                                 # Interactive fix with Pi (fzf picker)
-  auriga fix --failed                        # Only pick from failed results
-  auriga fix --model gemma4                  # Jump to a specific model`,
+  auriga ps                                  # Show running components`,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			ui.InitLogger(config.Verbose)
 			return nil
@@ -57,7 +54,6 @@ Examples:
 	cmd.AddCommand(newVersionCmd())
 	cmd.AddCommand(profile.NewProfileCmd())
 	cmd.AddCommand(model.NewModelCmd())
-	cmd.AddCommand(fix.NewFixCmd())
 	cmd.AddCommand(benchmark.NewBenchmarkCmd())
 	cmd.AddCommand(ps.NewPsCmd())
 
@@ -106,7 +102,6 @@ func initViper(cfgFile string) {
 	viper.SetDefault("benchmark.max_tokens", 32768)
 	viper.SetDefault("benchmark.max_retries", 5)
 	viper.SetDefault("benchmark.gen_timeout", 900)
-	viper.SetDefault("pi.bin", config.DefaultPiBin)
 
 	viper.ReadInConfig()
 }

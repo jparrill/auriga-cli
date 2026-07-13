@@ -19,7 +19,10 @@ import (
 const pidFile = "/tmp/auriga-llama-server.pid"
 
 func newProfileServeCmd() *cobra.Command {
-	var daemon bool
+	var (
+		daemon bool
+		ctxSize int
+	)
 
 	cmd := &cobra.Command{
 		Use:   "serve <profile-name>",
@@ -30,19 +33,20 @@ If the profile has vision (mmproj), --jinja is added automatically.
 Examples:
   auriga profile serve qwen3.6-vision            # Foreground (Ctrl+C to stop)
   auriga profile serve qwen3.6-vision --daemon    # Background (use 'auriga profile stop' to stop)
-  auriga profile serve gemma4-12b-vision --daemon`,
+  auriga profile serve gemma4-12b-vision --ctx-size 131072`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runProfileServe(args[0], daemon)
+			return runProfileServe(args[0], daemon, ctxSize)
 		},
 	}
 
 	cmd.Flags().BoolVarP(&daemon, "daemon", "d", false, "Run in background")
+	cmd.Flags().IntVar(&ctxSize, "ctx-size", 65536, "Context window size for llama-server")
 
 	return cmd
 }
 
-func runProfileServe(name string, daemon bool) error {
+func runProfileServe(name string, daemon bool, ctxSize int) error {
 	profileKey := fmt.Sprintf("profiles.%s", name)
 	modelFile := viper.GetString(profileKey + ".model")
 	if modelFile == "" {
@@ -94,13 +98,13 @@ func runProfileServe(name string, daemon bool) error {
 		return err
 	}
 
-	var extraFlags []string
-	if mmprojFile != "" {
+	extraFlags := viper.GetStringSlice(profileKey + ".flags")
+	if mmprojFile != "" && !containsFlag(extraFlags, "--jinja") {
 		extraFlags = append(extraFlags, "--jinja")
 	}
 
 	ctx := context.Background()
-	proc, err := llamaserver.Start(ctx, modelPath, mmprojPath, extraFlags)
+	proc, err := llamaserver.StartWithCtx(ctx, modelPath, mmprojPath, extraFlags, ctxSize)
 	if err != nil {
 		return err
 	}
@@ -138,6 +142,15 @@ func readPID() int {
 		return 0
 	}
 	return pid
+}
+
+func containsFlag(flags []string, target string) bool {
+	for _, f := range flags {
+		if f == target {
+			return true
+		}
+	}
+	return false
 }
 
 func processExists(pid int) bool {

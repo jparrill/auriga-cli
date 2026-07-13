@@ -1,8 +1,8 @@
 package benchmark
 
 import (
+	"context"
 	"fmt"
-	goexec "os/exec"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/jparrill/auriga-cli/internal/benchmark/formats"
+	"github.com/jparrill/auriga-cli/internal/exec"
 )
 
 func init() {
@@ -35,34 +36,21 @@ func (h *HumanEvalRunner) ValidateResponse(response string, problem formats.Prob
 	fullCode := problem.Prompt + code + "\n\n" + problem.Test + "\n"
 	fullCode += fmt.Sprintf("\ncheck(%s)\n", problem.EntryPoint)
 
-	testFile := filepath.Join(workDir, fmt.Sprintf("%s.py", sanitizeTaskID(problem.TaskID)))
+	testFileName := fmt.Sprintf("%s.py", sanitizeTaskID(problem.TaskID))
+	testFile := filepath.Join(workDir, testFileName)
 	os.MkdirAll(workDir, 0755)
 	os.WriteFile(testFile, []byte(fullCode), 0644)
 
-	// Run with timeout
-	cmd := goexec.Command("python3", testFile)
-	cmd.Dir = workDir
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
-	done := make(chan error, 1)
-	var out []byte
-	go func() {
-		var e error
-		out, e = cmd.CombinedOutput()
-		done <- e
-	}()
-
-	var err error
-	select {
-	case err = <-done:
-	case <-time.After(30 * time.Second):
-		if cmd.Process != nil {
-			cmd.Process.Kill()
-		}
-		err = fmt.Errorf("timeout after 30s")
-	}
+	out, err := exec.RunSandboxed(ctx, "python3", []string{testFileName}, exec.SandboxOpts{
+		Dir:   workDir,
+		Image: exec.ImagePython,
+	})
 
 	if err != nil {
-		return false, fmt.Sprintf("test_fail: %s\n%s", err.Error(), truncateStr(string(out), 500)), nil
+		return false, fmt.Sprintf("test_fail: %s\n%s", err.Error(), truncateStr(out, 500)), nil
 	}
 
 	return true, "", nil

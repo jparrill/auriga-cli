@@ -3,89 +3,66 @@ package profile
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/jparrill/auriga-cli/internal/config"
 	"github.com/spf13/viper"
+	"gopkg.in/yaml.v3"
 )
 
 type ProfileConfig struct {
-	Repo   string `yaml:"repo,omitempty"`
-	Model  string `yaml:"model"`
-	MMProj string `yaml:"mmproj,omitempty"`
+	Repo   string   `yaml:"repo,omitempty"`
+	Model  string   `yaml:"model"`
+	MMProj string   `yaml:"mmproj,omitempty"`
+	Flags  []string `yaml:"flags,omitempty"`
 }
 
 func addProfileToConfig(name string, pc ProfileConfig) error {
-	cfgPath := configPath()
-	content, err := os.ReadFile(cfgPath)
+	doc, err := readConfigDoc()
 	if err != nil {
-		return fmt.Errorf("cannot read config: %w", err)
+		return err
 	}
 
-	lines := strings.Split(string(content), "\n")
-	var result []string
-	profilesIdx := -1
-	insertIdx := -1
+	root := doc.Content[0] // mapping node
 
-	for i, line := range lines {
-		if strings.TrimSpace(line) == "profiles:" {
-			profilesIdx = i
-		}
-		result = append(result, line)
+	profilesNode := findMappingKey(root, "profiles")
+	if profilesNode == nil {
+		root.Content = append(root.Content,
+			&yaml.Node{Kind: yaml.ScalarNode, Value: "profiles"},
+			&yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"},
+		)
+		profilesNode = root.Content[len(root.Content)-1]
 	}
 
-	block := buildProfileBlock(name, pc)
+	profileValueNode := buildProfileNode(pc)
+	profilesNode.Content = append(profilesNode.Content,
+		&yaml.Node{Kind: yaml.ScalarNode, Value: name},
+		profileValueNode,
+	)
 
-	if profilesIdx == -1 {
-		result = append(result, "", "profiles:")
-		result = append(result, block...)
-	} else {
-		insertIdx = findProfilesEnd(lines, profilesIdx)
-		// Walk back over trailing blank lines to insert right after last profile content
-		for insertIdx > profilesIdx+1 && strings.TrimSpace(lines[insertIdx-1]) == "" {
-			insertIdx--
-		}
-		tail := make([]string, len(result[insertIdx:]))
-		copy(tail, result[insertIdx:])
-		result = append(result[:insertIdx], block...)
-		result = append(result, tail...)
-	}
-
-	return os.WriteFile(cfgPath, []byte(strings.Join(result, "\n")), 0644)
+	return writeConfigDoc(doc)
 }
 
 func removeProfileFromConfig(name string) error {
-	cfgPath := configPath()
-	content, err := os.ReadFile(cfgPath)
+	doc, err := readConfigDoc()
 	if err != nil {
-		return fmt.Errorf("cannot read config: %w", err)
+		return err
 	}
 
-	lines := strings.Split(string(content), "\n")
-	var result []string
-	skip := false
-	profileIndent := ""
-
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == name+":" && skip == false {
-			indent := len(line) - len(strings.TrimLeft(line, " "))
-			if indent >= 2 {
-				skip = true
-				profileIndent = strings.Repeat(" ", indent)
-				continue
-			}
-		}
-		if skip {
-			if strings.HasPrefix(line, profileIndent+"  ") || strings.TrimSpace(line) == "" {
-				continue
-			}
-			skip = false
-		}
-		result = append(result, line)
+	root := doc.Content[0]
+	profilesNode := findMappingKey(root, "profiles")
+	if profilesNode == nil {
+		return nil
 	}
 
-	return os.WriteFile(cfgPath, []byte(strings.Join(result, "\n")), 0644)
+	var filtered []*yaml.Node
+	for i := 0; i+1 < len(profilesNode.Content); i += 2 {
+		if profilesNode.Content[i].Value != name {
+			filtered = append(filtered, profilesNode.Content[i], profilesNode.Content[i+1])
+		}
+	}
+	profilesNode.Content = filtered
+
+	return writeConfigDoc(doc)
 }
 
 func buildProfileBlock(name string, pc ProfileConfig) []string {
@@ -98,20 +75,91 @@ func buildProfileBlock(name string, pc ProfileConfig) []string {
 	if pc.MMProj != "" {
 		lines = append(lines, fmt.Sprintf("    mmproj: %s", pc.MMProj))
 	}
+	if len(pc.Flags) > 0 {
+		var flagNodes string
+		for i, f := range pc.Flags {
+			if i > 0 {
+				flagNodes += ", "
+			}
+			flagNodes += f
+		}
+		lines = append(lines, fmt.Sprintf("    flags: [%s]", flagNodes))
+	}
 	return lines
 }
 
-func findProfilesEnd(lines []string, profilesIdx int) int {
-	for i := profilesIdx + 1; i < len(lines); i++ {
-		line := lines[i]
-		if strings.TrimSpace(line) == "" {
-			continue
+func buildProfileNode(pc ProfileConfig) *yaml.Node {
+	node := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+
+	if pc.Repo != "" {
+		node.Content = append(node.Content,
+			&yaml.Node{Kind: yaml.ScalarNode, Value: "repo"},
+			&yaml.Node{Kind: yaml.ScalarNode, Value: pc.Repo},
+		)
+	}
+
+	node.Content = append(node.Content,
+		&yaml.Node{Kind: yaml.ScalarNode, Value: "model"},
+		&yaml.Node{Kind: yaml.ScalarNode, Value: pc.Model},
+	)
+
+	if pc.MMProj != "" {
+		node.Content = append(node.Content,
+			&yaml.Node{Kind: yaml.ScalarNode, Value: "mmproj"},
+			&yaml.Node{Kind: yaml.ScalarNode, Value: pc.MMProj},
+		)
+	}
+
+	if len(pc.Flags) > 0 {
+		flagSeq := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq", Style: yaml.FlowStyle}
+		for _, f := range pc.Flags {
+			flagSeq.Content = append(flagSeq.Content,
+				&yaml.Node{Kind: yaml.ScalarNode, Value: f},
+			)
 		}
-		if !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "\t") {
-			return i
+		node.Content = append(node.Content,
+			&yaml.Node{Kind: yaml.ScalarNode, Value: "flags"},
+			flagSeq,
+		)
+	}
+
+	return node
+}
+
+func findMappingKey(mapping *yaml.Node, key string) *yaml.Node {
+	for i := 0; i+1 < len(mapping.Content); i += 2 {
+		if mapping.Content[i].Value == key {
+			return mapping.Content[i+1]
 		}
 	}
-	return len(lines)
+	return nil
+}
+
+func readConfigDoc() (*yaml.Node, error) {
+	cfgPath := configPath()
+	data, err := os.ReadFile(cfgPath)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read config: %w", err)
+	}
+
+	var doc yaml.Node
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return nil, fmt.Errorf("cannot parse config: %w", err)
+	}
+
+	if len(doc.Content) == 0 {
+		doc.Content = append(doc.Content, &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"})
+	}
+
+	return &doc, nil
+}
+
+func writeConfigDoc(doc *yaml.Node) error {
+	data, err := yaml.Marshal(doc)
+	if err != nil {
+		return fmt.Errorf("cannot marshal config: %w", err)
+	}
+	return os.WriteFile(configPath(), data, 0644)
 }
 
 func configPath() string {

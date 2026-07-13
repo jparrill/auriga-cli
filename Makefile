@@ -39,6 +39,8 @@ deploy-remote: cross-linux
 	@ssh auriga "cp ~/bin/$(BINARY) ~/infra/bin/$(BINARY) 2>/dev/null || true"
 	@ssh auriga "test -f ~/.config/auriga/config.yaml" || rsync -avz config.yaml.example auriga:~/.config/auriga/config.yaml
 	rsync -avz --ignore-existing internal/benchmark/prompts/*.md auriga:~/.config/auriga/prompts/
+	rsync -avz --ignore-existing suites/ auriga:~/.config/auriga/suites/
+	@ssh auriga "test -f ~/.config/auriga/sensitive-patterns.yaml" || rsync -avz sensitive-patterns.yaml.example auriga:~/.config/auriga/sensitive-patterns.yaml
 
 .PHONY: cross-linux
 cross-linux:
