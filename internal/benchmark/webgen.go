@@ -1,7 +1,6 @@
 package benchmark
 
 import (
-	"os"
 	"path/filepath"
 
 	"github.com/jparrill/auriga-cli/internal/benchmark/formats"
@@ -60,11 +59,4 @@ func (w *WebgenRunner) BuildRetryPrompt(problem formats.Problem, workDir string,
 	}
 
 	return "", nil
-}
-
-func setupWorkDir(workDir string, attempt int) {
-	if attempt == 1 {
-		os.RemoveAll(workDir)
-	}
-	os.MkdirAll(workDir, 0755)
 }
