@@ -93,16 +93,35 @@ func FindLocalGGUF(hfRepo string) string {
 	return ""
 }
 
-func StopOllama(ctx context.Context) {
-	ui.Info("Stopping Ollama to free GPU...")
-	exec.RunCapture(ctx, "sudo", []string{"systemctl", "stop", "ollama"}, exec.RunOpts{})
+func StopSystemdService(ctx context.Context, unit string, sudo bool) {
+	ui.Info(fmt.Sprintf("Stopping %s...", unit))
+	args := []string{"systemctl", "stop", unit}
+	cmd := "systemctl"
+	if sudo {
+		cmd = "sudo"
+	} else {
+		args = args[1:]
+	}
+	exec.RunCapture(ctx, cmd, args, exec.RunOpts{})
 	time.Sleep(2 * time.Second)
 }
 
-func StartOllama(ctx context.Context) {
-	ui.Info("Restarting Ollama...")
-	exec.RunCapture(ctx, "sudo", []string{"systemctl", "start", "ollama"}, exec.RunOpts{})
-	ui.Ok("Ollama restarted")
+func StartSystemdService(ctx context.Context, unit string, sudo bool) {
+	ui.Info(fmt.Sprintf("Starting %s...", unit))
+	args := []string{"systemctl", "start", unit}
+	cmd := "systemctl"
+	if sudo {
+		cmd = "sudo"
+	} else {
+		args = args[1:]
+	}
+	exec.RunCapture(ctx, cmd, args, exec.RunOpts{})
+	ui.Ok(fmt.Sprintf("%s started", unit))
+}
+
+func IsOllamaRunning(ctx context.Context) bool {
+	out, err := exec.RunCapture(ctx, "pgrep", []string{"-f", "ollama serve"}, exec.RunOpts{})
+	return err == nil && strings.TrimSpace(out) != ""
 }
 
 func Start(ctx context.Context, modelPath string, mmprojPath string, extraFlags []string) (*os.Process, error) {
@@ -113,7 +132,9 @@ func Start(ctx context.Context, modelPath string, mmprojPath string, extraFlags 
 		return nil, fmt.Errorf("llama-server binary not found: %s", bin)
 	}
 
-	StopOllama(ctx)
+	if IsOllamaRunning(ctx) {
+		ui.Warn("Ollama is running — both will compete for GPU resources")
+	}
 
 	args := []string{
 		"-m", modelPath,
@@ -163,7 +184,6 @@ func Stop(proc *os.Process) {
 		proc.Wait()
 	}
 	time.Sleep(2 * time.Second)
-	StartOllama(context.Background())
 }
 
 func WaitForHealth(timeout time.Duration) error {

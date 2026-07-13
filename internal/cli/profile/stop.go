@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/jparrill/auriga-cli/internal/exec"
-	"github.com/jparrill/auriga-cli/internal/llamaserver"
 	"github.com/jparrill/auriga-cli/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -16,7 +15,7 @@ import (
 func newProfileStopCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "stop",
-		Short: "Stop llama-server and restart Ollama",
+		Short: "Stop llama-server",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runProfileStop()
 		},
@@ -52,7 +51,6 @@ func runProfileStop() error {
 	}
 
 	time.Sleep(2 * time.Second)
-	llamaserver.StartOllama(ctx)
 
 	return nil
 }
