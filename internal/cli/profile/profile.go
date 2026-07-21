@@ -24,6 +24,7 @@ Examples:
 	}
 
 	cmd.AddCommand(newProfileCreateCmd())
+	cmd.AddCommand(newProfileSetupCmd())
 	cmd.AddCommand(newProfileListCmd())
 	cmd.AddCommand(newProfileServeCmd())
 	cmd.AddCommand(newProfileStopCmd())
