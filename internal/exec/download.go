@@ -2,6 +2,7 @@ package exec
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"io"
 	"net/http"
@@ -210,4 +211,81 @@ func FormatSpeed(bytesPerSec float64) string {
 	default:
 		return fmt.Sprintf("%.0f B/s", bytesPerSec)
 	}
+}
+
+func HashFileSHA256(path, label string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	info, err := f.Stat()
+	if err != nil {
+		return "", err
+	}
+	totalSize := info.Size()
+
+	h := sha256.New()
+	isTTY := isTTYOutput()
+	hashed := int64(0)
+	startTime := time.Now()
+	lastRender := time.Time{}
+	buf := make([]byte, 64*1024)
+
+	for {
+		n, readErr := f.Read(buf)
+		if n > 0 {
+			h.Write(buf[:n])
+			hashed += int64(n)
+
+			if isTTY && time.Since(lastRender) >= 150*time.Millisecond {
+				elapsed := time.Since(startTime).Seconds()
+				var speed float64
+				if elapsed > 0 {
+					speed = float64(hashed) / elapsed
+				}
+				renderHashProgress(label, hashed, totalSize, speed)
+				lastRender = time.Now()
+			}
+		}
+		if readErr == io.EOF {
+			break
+		}
+		if readErr != nil {
+			clearLine(isTTY)
+			return "", readErr
+		}
+	}
+
+	clearLine(isTTY)
+	return fmt.Sprintf("%x", h.Sum(nil)), nil
+}
+
+func renderHashProgress(label string, hashed, total int64, speed float64) {
+	width := getTermWidth()
+
+	sizeStr := FormatSize(hashed)
+	totalStr := FormatSize(total)
+	speedStr := FormatSpeed(speed)
+
+	pct := float64(hashed) / float64(total) * 100
+	filled := int(pct / 100 * progressBarWidth)
+	if filled > progressBarWidth {
+		filled = progressBarWidth
+	}
+	bar := strings.Repeat("█", filled) + strings.Repeat("░", progressBarWidth-filled)
+
+	fixedWidth := 4 + 2 + progressBarWidth + 6 + 2 + len(sizeStr) + 1 + len(totalStr) + 2 + len(speedStr)
+	truncLabel := truncateStr(label, width-fixedWidth)
+
+	fmt.Printf("\r\033[K  %s %s  %s  %3.0f%%  %s/%s  %s",
+		ui.MutedStyle.Render("#"),
+		truncLabel,
+		ui.AccentStyle.Render(bar),
+		pct,
+		sizeStr,
+		totalStr,
+		ui.MutedStyle.Render(speedStr),
+	)
 }

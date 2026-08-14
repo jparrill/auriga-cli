@@ -82,15 +82,7 @@ func SyncProfile(name string) SyncResult {
 	modelExists := fileExists(modelPath)
 
 	if modelExists && repo != "" {
-		expected, err := huggingface.ExpectedSize(repo, model)
-		if err == nil && expected > 0 {
-			info, _ := os.Stat(modelPath)
-			if info != nil && info.Size() != expected {
-				ui.Warn(fmt.Sprintf("[%s] Incomplete: %s (%s/%s)",
-					name, model, exec.FormatSize(info.Size()), exec.FormatSize(expected)))
-				modelExists = false
-			}
-		}
+		modelExists = verifyFile(name, model, modelPath, repo, model)
 	}
 
 	mmprojExists := true
@@ -100,15 +92,7 @@ func SyncProfile(name string) SyncResult {
 
 		if mmprojExists && repo != "" {
 			originalName := repoFilename(mmproj, repo)
-			expected, err := huggingface.ExpectedSize(repo, originalName)
-			if err == nil && expected > 0 {
-				info, _ := os.Stat(mmprojPath)
-				if info != nil && info.Size() != expected {
-					ui.Warn(fmt.Sprintf("[%s] Incomplete: %s (%s/%s)",
-						name, mmproj, exec.FormatSize(info.Size()), exec.FormatSize(expected)))
-					mmprojExists = false
-				}
-			}
+			mmprojExists = verifyFile(name, mmproj, mmprojPath, repo, originalName)
 		}
 	}
 
@@ -219,6 +203,46 @@ func repoFilename(profileName, repo string) string {
 		return profileName[len(repoBase)+1:]
 	}
 	return profileName
+}
+
+// verifyFile checks size and SHA256 hash of a local file against HuggingFace.
+// Returns true if file is valid, false if incomplete or corrupted.
+func verifyFile(profileName, displayName, localPath, repo, repoFilename string) bool {
+	expectedHash, expectedSize, err := huggingface.ExpectedHash(repo, repoFilename)
+	if err != nil {
+		return true
+	}
+
+	info, _ := os.Stat(localPath)
+	if info == nil {
+		return false
+	}
+
+	if expectedSize > 0 && info.Size() != expectedSize {
+		ui.Warn(fmt.Sprintf("[%s] Incomplete: %s (%s, expected %s)",
+			profileName, displayName, exec.FormatSize(info.Size()), exec.FormatSize(expectedSize)))
+		return false
+	}
+
+	if expectedHash == "" {
+		return true
+	}
+
+	label := fmt.Sprintf("[%s] %s", profileName, displayName)
+	localHash, hashErr := exec.HashFileSHA256(localPath, label)
+	if hashErr != nil {
+		ui.Warn(fmt.Sprintf("[%s] Cannot verify hash: %v", profileName, hashErr))
+		return true
+	}
+
+	if localHash != expectedHash {
+		ui.Warn(fmt.Sprintf("[%s] Corrupted: %s (SHA256 mismatch)", profileName, displayName))
+		os.Remove(localPath)
+		return false
+	}
+
+	ui.Ok(fmt.Sprintf("[%s] Verified: %s", profileName, displayName))
+	return true
 }
 
 func fileExists(path string) bool {

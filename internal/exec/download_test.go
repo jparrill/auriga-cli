@@ -230,3 +230,46 @@ func TestGetTermWidth_NoPanic(t *testing.T) {
 		t.Errorf("When getting terminal width, it should return positive value, got %d", w)
 	}
 }
+
+func TestHashFileSHA256_KnownContent(t *testing.T) {
+	content := "hello world"
+	// SHA256 of "hello world" = b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9
+	expectedHash := "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
+
+	f, _ := os.CreateTemp("", "hash-test-*")
+	f.Write([]byte(content))
+	f.Close()
+	defer os.Remove(f.Name())
+
+	got, err := HashFileSHA256(f.Name(), "test")
+	if err != nil {
+		t.Fatalf("When hashing a valid file, it should not error, got: %v", err)
+	}
+	if got != expectedHash {
+		t.Errorf("When hashing known content, got %q, want %q", got, expectedHash)
+	}
+}
+
+func TestHashFileSHA256_EmptyFile(t *testing.T) {
+	// SHA256 of empty = e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+	expectedHash := "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+
+	f, _ := os.CreateTemp("", "hash-empty-*")
+	f.Close()
+	defer os.Remove(f.Name())
+
+	got, err := HashFileSHA256(f.Name(), "empty")
+	if err != nil {
+		t.Fatalf("When hashing an empty file, it should not error, got: %v", err)
+	}
+	if got != expectedHash {
+		t.Errorf("got %q, want %q", got, expectedHash)
+	}
+}
+
+func TestHashFileSHA256_FileNotFound(t *testing.T) {
+	_, err := HashFileSHA256("/nonexistent/file.gguf", "missing")
+	if err == nil {
+		t.Error("When file does not exist, it should return an error")
+	}
+}

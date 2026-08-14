@@ -12,9 +12,15 @@ import (
 	"github.com/jparrill/auriga-cli/internal/ui"
 )
 
-type RepoFile struct {
-	Path string `json:"path"`
+type LFSInfo struct {
+	OID  string `json:"oid"`
 	Size int64  `json:"size"`
+}
+
+type RepoFile struct {
+	Path string   `json:"path"`
+	Size int64    `json:"size"`
+	LFS  *LFSInfo `json:"lfs,omitempty"`
 }
 
 func resolveToken() string {
@@ -152,4 +158,20 @@ func ExpectedSize(repo, filename string) (int64, error) {
 		}
 	}
 	return 0, fmt.Errorf("file %s not found in %s", filename, repo)
+}
+
+func ExpectedHash(repo, filename string) (hash string, size int64, err error) {
+	files, err := ListFiles(repo)
+	if err != nil {
+		return "", 0, err
+	}
+	for _, f := range files {
+		if f.Path == filename {
+			if f.LFS != nil && f.LFS.OID != "" {
+				return f.LFS.OID, f.LFS.Size, nil
+			}
+			return "", f.Size, nil
+		}
+	}
+	return "", 0, fmt.Errorf("file %s not found in %s", filename, repo)
 }
