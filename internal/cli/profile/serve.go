@@ -3,12 +3,14 @@ package profile
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"syscall"
+	"time"
 
 	"github.com/jparrill/auriga-cli/internal/config"
 	"github.com/jparrill/auriga-cli/internal/llamaserver"
@@ -117,6 +119,10 @@ func runProfileServe(name string, daemon bool, ctxSize int) error {
 		os.Remove(pf)
 	}
 
+	if portInUse(port) {
+		return fmt.Errorf("port %d already in use — another process may be running\nRun: auriga profile stop", port)
+	}
+
 	mmprojFile := viper.GetString(profileKey + ".mmproj")
 	ggufDir := config.ExpandHome(viper.GetString("llama_server.gguf_dir"))
 	mmprojDir := config.ExpandHome(viper.GetString("llama_server.mmproj_dir"))
@@ -195,6 +201,17 @@ func containsFlag(flags []string, target string) bool {
 		}
 	}
 	return false
+}
+
+func portInUse(port int) bool {
+	host := llamaserver.HostForPort(port)
+	client := &http.Client{Timeout: 2 * time.Second}
+	resp, err := client.Get(host + "/health")
+	if err != nil {
+		return false
+	}
+	resp.Body.Close()
+	return true
 }
 
 func processExists(pid int) bool {

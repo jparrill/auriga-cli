@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"syscall"
 	"time"
 
@@ -39,17 +40,15 @@ Examples:
 
 func runProfileStopAll() error {
 	ports := allProfilePorts()
-	stopped := false
 
 	for _, port := range ports {
-		if err := stopOnPort(port); err == nil {
-			stopped = true
-		}
+		stopOnPort(port)
 	}
 
-	if !stopped {
-		ui.Info("Stopping llama-server via pkill (fallback)...")
-		ctx := context.Background()
+	ctx := context.Background()
+	out, _ := exec.RunCapture(ctx, "pgrep", []string{"-f", "llama-server"}, exec.RunOpts{})
+	if strings.TrimSpace(out) != "" {
+		ui.Info("Cleaning up remaining llama-server processes...")
 		exec.RunCapture(ctx, "pkill", []string{"-f", "llama-server"}, exec.RunOpts{})
 	}
 
