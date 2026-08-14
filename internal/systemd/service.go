@@ -10,12 +10,14 @@ import (
 	"github.com/jparrill/auriga-cli/internal/exec"
 )
 
-const UnitName = "auriga-llama-server.service"
-
 type ServiceConfig struct {
 	ProfileName string
 	ExecStart   string
 	Environment []string
+}
+
+func UnitNameForPort(port int) string {
+	return fmt.Sprintf("auriga-llama-server-%d.service", port)
 }
 
 func GenerateUnit(cfg ServiceConfig) string {
@@ -49,15 +51,15 @@ func UnitDir() (string, error) {
 	return filepath.Join(home, ".config", "systemd", "user"), nil
 }
 
-func UnitPath() (string, error) {
+func UnitPathForPort(port int) (string, error) {
 	dir, err := UnitDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, UnitName), nil
+	return filepath.Join(dir, UnitNameForPort(port)), nil
 }
 
-func Install(content string) error {
+func Install(port int, content string) error {
 	dir, err := UnitDir()
 	if err != nil {
 		return err
@@ -65,7 +67,7 @@ func Install(content string) error {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("cannot create systemd user dir: %w", err)
 	}
-	path := filepath.Join(dir, UnitName)
+	path := filepath.Join(dir, UnitNameForPort(port))
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		return fmt.Errorf("cannot write service file: %w", err)
 	}
@@ -78,33 +80,33 @@ func DaemonReload() error {
 	return err
 }
 
-func Enable() error {
+func Enable(port int) error {
 	ctx := context.Background()
-	_, err := exec.RunCapture(ctx, "systemctl", []string{"--user", "enable", UnitName}, exec.RunOpts{})
+	_, err := exec.RunCapture(ctx, "systemctl", []string{"--user", "enable", UnitNameForPort(port)}, exec.RunOpts{})
 	return err
 }
 
-func Start() error {
+func Start(port int) error {
 	ctx := context.Background()
-	_, err := exec.RunCapture(ctx, "systemctl", []string{"--user", "start", UnitName}, exec.RunOpts{})
+	_, err := exec.RunCapture(ctx, "systemctl", []string{"--user", "start", UnitNameForPort(port)}, exec.RunOpts{})
 	return err
 }
 
-func Stop() error {
+func Stop(port int) error {
 	ctx := context.Background()
-	_, err := exec.RunCapture(ctx, "systemctl", []string{"--user", "stop", UnitName}, exec.RunOpts{})
+	_, err := exec.RunCapture(ctx, "systemctl", []string{"--user", "stop", UnitNameForPort(port)}, exec.RunOpts{})
 	return err
 }
 
-func Disable() error {
+func Disable(port int) error {
 	ctx := context.Background()
-	_, err := exec.RunCapture(ctx, "systemctl", []string{"--user", "disable", UnitName}, exec.RunOpts{})
+	_, err := exec.RunCapture(ctx, "systemctl", []string{"--user", "disable", UnitNameForPort(port)}, exec.RunOpts{})
 	return err
 }
 
-func IsActive() bool {
+func IsActiveOnPort(port int) bool {
 	ctx := context.Background()
-	out, err := exec.RunCapture(ctx, "systemctl", []string{"--user", "is-active", UnitName}, exec.RunOpts{})
+	out, err := exec.RunCapture(ctx, "systemctl", []string{"--user", "is-active", UnitNameForPort(port)}, exec.RunOpts{})
 	if err != nil {
 		return false
 	}

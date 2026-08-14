@@ -130,9 +130,8 @@ func TestBuildExecStart_BasicModel(t *testing.T) {
 	defer viper.Reset()
 
 	viper.Set("llama_server.bin", "/usr/bin/llama-server")
-	viper.Set("llama_server.host", "http://localhost:8090")
 
-	got := buildExecStart("/models/model.gguf", "", nil, 65536)
+	got := buildExecStart("/models/model.gguf", "", nil, 65536, 8090)
 
 	checks := []struct {
 		name string
@@ -161,9 +160,8 @@ func TestBuildExecStart_WithMmproj(t *testing.T) {
 	defer viper.Reset()
 
 	viper.Set("llama_server.bin", "/usr/bin/llama-server")
-	viper.Set("llama_server.host", "http://localhost:8090")
 
-	got := buildExecStart("/models/model.gguf", "/models/mmproj.gguf", nil, 65536)
+	got := buildExecStart("/models/model.gguf", "/models/mmproj.gguf", nil, 65536, 8090)
 
 	if !strings.Contains(got, "--mmproj /models/mmproj.gguf") {
 		t.Errorf("When mmproj set, ExecStart should contain --mmproj, got: %s", got)
@@ -178,9 +176,8 @@ func TestBuildExecStart_WithExtraFlags(t *testing.T) {
 	defer viper.Reset()
 
 	viper.Set("llama_server.bin", "/usr/bin/llama-server")
-	viper.Set("llama_server.host", "http://localhost:8090")
 
-	got := buildExecStart("/models/model.gguf", "", []string{"--threads", "16"}, 65536)
+	got := buildExecStart("/models/model.gguf", "", []string{"--threads", "16"}, 65536, 8090)
 
 	if !strings.Contains(got, "--threads 16") {
 		t.Errorf("When extra flags set, ExecStart should contain them, got: %s", got)
@@ -192,9 +189,8 @@ func TestBuildExecStart_CustomCtxSize(t *testing.T) {
 	defer viper.Reset()
 
 	viper.Set("llama_server.bin", "/usr/bin/llama-server")
-	viper.Set("llama_server.host", "http://localhost:8090")
 
-	got := buildExecStart("/models/model.gguf", "", nil, 131072)
+	got := buildExecStart("/models/model.gguf", "", nil, 131072, 8090)
 
 	if !strings.Contains(got, "--ctx-size 131072") {
 		t.Errorf("When custom ctx-size, ExecStart should use it, got: %s", got)
@@ -206,15 +202,40 @@ func TestBuildExecStart_NoMmprojNoJinja(t *testing.T) {
 	defer viper.Reset()
 
 	viper.Set("llama_server.bin", "/usr/bin/llama-server")
-	viper.Set("llama_server.host", "http://localhost:8090")
 
-	got := buildExecStart("/models/model.gguf", "", nil, 65536)
+	got := buildExecStart("/models/model.gguf", "", nil, 65536, 8090)
 
 	if strings.Contains(got, "--mmproj") {
 		t.Errorf("When no mmproj, ExecStart should not have --mmproj, got: %s", got)
 	}
 	if strings.Contains(got, "--jinja") {
 		t.Errorf("When no mmproj, ExecStart should not have --jinja, got: %s", got)
+	}
+}
+
+func TestBuildExecStart_MoePort(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	viper.Set("llama_server.bin", "/usr/bin/llama-server")
+
+	got := buildExecStart("/models/moe-model.gguf", "", nil, 65536, 8091)
+
+	if !strings.Contains(got, "--port 8091") {
+		t.Errorf("When MoE port, ExecStart should use port 8091, got: %s", got)
+	}
+}
+
+func TestBuildExecStart_CustomPort(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	viper.Set("llama_server.bin", "/usr/bin/llama-server")
+
+	got := buildExecStart("/models/model.gguf", "", nil, 65536, 9000)
+
+	if !strings.Contains(got, "--port 9000") {
+		t.Errorf("When custom port override, ExecStart should use it, got: %s", got)
 	}
 }
 
@@ -231,4 +252,222 @@ func TestProfileCmd_HasSwitchSubcommand(t *testing.T) {
 	if !found {
 		t.Error("When listing profile subcommands, switch should be registered")
 	}
+}
+
+func TestDetectModelType(t *testing.T) {
+	tests := []struct {
+		name      string
+		modelName string
+		want      string
+	}{
+		{"When model has A3B suffix, it should detect MoE", "Qwen3.6-35B-A3B-Q8_0.gguf", "moe"},
+		{"When model has A4B suffix, it should detect MoE", "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf", "moe"},
+		{"When model is dense, it should detect dense", "Qwen3.6-27B-UD-Q8_K_XL.gguf", "dense"},
+		{"When model is DeepSeek distill, it should detect dense", "DeepSeek-R1-Distill-Qwen-32B-Q8_0.gguf", "dense"},
+		{"When model has A10B, it should detect MoE", "SomeModel-A10B-Q4.gguf", "moe"},
+		{"When model name is empty, it should default dense", "", "dense"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := detectModelType(tt.modelName)
+			if got != tt.want {
+				t.Errorf("detectModelType(%q) = %q, want %q", tt.modelName, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestProfilePort_DenseDefault(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	viper.Set("profiles.test-dense.model", "Qwen3.6-27B-UD-Q8_K_XL.gguf")
+	viper.Set("llama_server.dense_port", 8090)
+	viper.Set("llama_server.host", "http://localhost:8090")
+
+	port := profilePort("test-dense")
+	if port != 8090 {
+		t.Errorf("When dense profile, port should be 8090, got %d", port)
+	}
+}
+
+func TestProfilePort_MoeDefault(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	viper.Set("profiles.test-moe.model", "Qwen3.6-35B-A3B-Q8_0.gguf")
+	viper.Set("llama_server.moe_port", 8091)
+
+	port := profilePort("test-moe")
+	if port != 8091 {
+		t.Errorf("When MoE profile, port should be 8091, got %d", port)
+	}
+}
+
+func TestProfilePort_ExplicitType(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	viper.Set("profiles.override.model", "Qwen3.6-27B-UD-Q8_K_XL.gguf")
+	viper.Set("profiles.override.type", "moe")
+	viper.Set("llama_server.moe_port", 8091)
+
+	port := profilePort("override")
+	if port != 8091 {
+		t.Errorf("When type explicitly set to moe, port should be 8091, got %d", port)
+	}
+}
+
+func TestProfilePort_ExplicitPortOverride(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	viper.Set("profiles.custom.model", "model.gguf")
+	viper.Set("profiles.custom.port", 9000)
+
+	port := profilePort("custom")
+	if port != 9000 {
+		t.Errorf("When port explicitly set, it should override, got %d", port)
+	}
+}
+
+func TestProfileType_ExplicitOverridesDetection(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	viper.Set("profiles.test.model", "Qwen3.6-27B-UD-Q8_K_XL.gguf")
+	viper.Set("profiles.test.type", "moe")
+
+	pType := profileType("test")
+	if pType != "moe" {
+		t.Errorf("When type explicitly set, it should override detection, got %q", pType)
+	}
+}
+
+func TestProfileType_AutoDetection(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	viper.Set("profiles.auto.model", "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf")
+
+	pType := profileType("auto")
+	if pType != "moe" {
+		t.Errorf("When type not set and model is MoE, it should auto-detect moe, got %q", pType)
+	}
+}
+
+func TestPidFileForPort(t *testing.T) {
+	tests := []struct {
+		name string
+		port int
+		want string
+	}{
+		{"When dense port, PID file uses port", 8090, "/tmp/auriga-llama-server-8090.pid"},
+		{"When MoE port, PID file uses port", 8091, "/tmp/auriga-llama-server-8091.pid"},
+		{"When custom port, PID file uses port", 9000, "/tmp/auriga-llama-server-9000.pid"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := pidFileForPort(tt.port)
+			if got != tt.want {
+				t.Errorf("pidFileForPort(%d) = %q, want %q", tt.port, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestReadPIDForPort_NoFile(t *testing.T) {
+	pid := readPIDForPort(59999)
+	if pid != 0 {
+		t.Errorf("When no PID file, readPIDForPort should return 0, got %d", pid)
+	}
+}
+
+func TestReadPIDForPort_ValidFile(t *testing.T) {
+	os.WriteFile("/tmp/auriga-llama-server-59998.pid", []byte("12345"), 0644)
+	defer os.Remove("/tmp/auriga-llama-server-59998.pid")
+
+	pid := readPIDForPort(59998)
+	if pid != 12345 {
+		t.Errorf("When PID file has valid PID, should return it, got %d", pid)
+	}
+}
+
+func TestReadPIDForPort_InvalidContent(t *testing.T) {
+	os.WriteFile("/tmp/auriga-llama-server-59997.pid", []byte("not-a-number"), 0644)
+	defer os.Remove("/tmp/auriga-llama-server-59997.pid")
+
+	pid := readPIDForPort(59997)
+	if pid != 0 {
+		t.Errorf("When PID file has invalid content, should return 0, got %d", pid)
+	}
+}
+
+func TestAllProfilePorts_IncludesDefaults(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	viper.Set("llama_server.dense_port", 8090)
+	viper.Set("llama_server.moe_port", 8091)
+	viper.Set("llama_server.host", "http://localhost:8090")
+
+	ports := allProfilePorts()
+
+	hasDense := false
+	hasMoe := false
+	for _, p := range ports {
+		if p == 8090 {
+			hasDense = true
+		}
+		if p == 8091 {
+			hasMoe = true
+		}
+	}
+	if !hasDense {
+		t.Error("When listing all ports, it should include dense port")
+	}
+	if !hasMoe {
+		t.Error("When listing all ports, it should include MoE port")
+	}
+}
+
+func TestAllProfilePorts_IncludesCustomPorts(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	viper.Set("llama_server.dense_port", 8090)
+	viper.Set("llama_server.moe_port", 8091)
+	viper.Set("llama_server.host", "http://localhost:8090")
+	viper.Set("profiles.custom.model", "model.gguf")
+	viper.Set("profiles.custom.port", 9000)
+
+	ports := allProfilePorts()
+
+	hasCustom := false
+	for _, p := range ports {
+		if p == 9000 {
+			hasCustom = true
+		}
+	}
+	if !hasCustom {
+		t.Error("When profile has custom port, allProfilePorts should include it")
+	}
+}
+
+func TestNewProfileStopCmd_AcceptsOptionalArg(t *testing.T) {
+	cmd := newProfileStopCmd()
+
+	if cmd.Use != "stop [profile-name]" {
+		t.Errorf("When creating stop command, Use should be 'stop [profile-name]', got %q", cmd.Use)
+	}
+}
+
+func TestWarnTypeMismatch_NoWarningWhenMatch(t *testing.T) {
+	warnTypeMismatch("test", "moe", "Qwen3.6-35B-A3B-Q8_0.gguf")
+}
+
+func TestWarnTypeMismatch_NoWarningWhenTypeEmpty(t *testing.T) {
+	warnTypeMismatch("test", "", "Qwen3.6-35B-A3B-Q8_0.gguf")
 }

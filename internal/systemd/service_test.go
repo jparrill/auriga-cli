@@ -93,16 +93,47 @@ func TestGenerateUnit_VisionProfile(t *testing.T) {
 	}
 }
 
-func TestUnitPath_ContainsServiceName(t *testing.T) {
-	path, err := UnitPath()
+func TestUnitNameForPort(t *testing.T) {
+	tests := []struct {
+		name string
+		port int
+		want string
+	}{
+		{"When dense port, unit name includes port", 8090, "auriga-llama-server-8090.service"},
+		{"When MoE port, unit name includes port", 8091, "auriga-llama-server-8091.service"},
+		{"When custom port, unit name includes port", 9000, "auriga-llama-server-9000.service"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := UnitNameForPort(tt.port)
+			if got != tt.want {
+				t.Errorf("UnitNameForPort(%d) = %q, want %q", tt.port, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestUnitPathForPort_ContainsServiceName(t *testing.T) {
+	path, err := UnitPathForPort(8090)
 	if err != nil {
 		t.Fatalf("When getting unit path, it should not error: %v", err)
 	}
-	if !strings.HasSuffix(path, UnitName) {
-		t.Errorf("When getting unit path, it should end with %s, got %s", UnitName, path)
+	want := UnitNameForPort(8090)
+	if !strings.HasSuffix(path, want) {
+		t.Errorf("When getting unit path, it should end with %s, got %s", want, path)
 	}
 	if !strings.Contains(path, filepath.Join(".config", "systemd", "user")) {
 		t.Errorf("When getting unit path, it should be in systemd user dir, got %s", path)
+	}
+}
+
+func TestUnitPathForPort_DifferentPorts(t *testing.T) {
+	path8090, _ := UnitPathForPort(8090)
+	path8091, _ := UnitPathForPort(8091)
+
+	if path8090 == path8091 {
+		t.Error("When different ports, unit paths should be different")
 	}
 }
 
@@ -129,7 +160,8 @@ func TestInstall_WritesFile(t *testing.T) {
 
 	dir := filepath.Join(tmpDir, ".config", "systemd", "user")
 	os.MkdirAll(dir, 0755)
-	path := filepath.Join(dir, UnitName)
+	unitName := UnitNameForPort(8090)
+	path := filepath.Join(dir, unitName)
 	err := os.WriteFile(path, []byte(content), 0644)
 	if err != nil {
 		t.Fatalf("When writing service file, it should not error: %v", err)
@@ -145,11 +177,5 @@ func TestInstall_WritesFile(t *testing.T) {
 	}
 	if !strings.Contains(string(data), "[Service]") {
 		t.Error("When installing service, file should contain Service section")
-	}
-}
-
-func TestUnitName_IsCorrect(t *testing.T) {
-	if UnitName != "auriga-llama-server.service" {
-		t.Errorf("When checking unit name, got %s, want auriga-llama-server.service", UnitName)
 	}
 }

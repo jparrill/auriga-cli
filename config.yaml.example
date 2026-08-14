@@ -15,22 +15,54 @@ llama_server:
   gguf_dir: ~/infra/ai/models/gguf
   mmproj_dir: ~/infra/ai/models/mmproj
   quant: Q4_K_M
+  dense_port: 8090
+  moe_port: 8091
 
 profiles:
+  qwen3.6-27b:
+    type: dense
+    repo: unsloth/Qwen3.6-27B-GGUF
+    model: Qwen3.6-27B-UD-Q8_K_XL.gguf
+    mmproj: mmproj-F32.gguf
+    flags: [--cache-type-k, q8_0, --cache-type-v, q8_0, --batch-size, "2048", --ubatch-size, "512", --threads, "16"]
   qwen3.6-vision:
-    model: Qwen3.6-35B-A3B-UD-Q4_K_M.gguf
+    type: moe
+    repo: unsloth/Qwen3.6-35B-A3B-GGUF
+    model: Qwen3.6-35B-A3B-Q8_0.gguf
     mmproj: Qwen3.6-35B-A3B-mmproj-BF16.gguf
     flags: [--jinja]
   qwen3.6-uncensored-vision:
+    type: moe
+    repo: HauhauCS/Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive
     model: Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive-Q4_K_M.gguf
     mmproj: mmproj-Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive-f16.gguf
     flags: [--jinja]
   gemma4-26b:
+    type: moe
+    repo: unsloth/gemma-4-26B-A4B-it-GGUF
     model: gemma-4-26B-A4B-it-UD-Q4_K_M.gguf
   qwen3-coder:
+    type: moe
+    repo: unsloth/Qwen3-Coder-Next-GGUF
     model: Qwen3-Coder-Next-UD-Q4_K_M.gguf
   qwen3-30b:
+    type: moe
+    repo: unsloth/Qwen3-30B-A3B-GGUF
     model: Qwen3-30B-A3B-Q4_K_M.gguf
+  deepseek-r1-distill-qwen32b:
+    type: dense
+    repo: bartowski/DeepSeek-R1-Distill-Qwen-32B-GGUF
+    model: DeepSeek-R1-Distill-Qwen-32B-Q8_0.gguf
+  gemma4-12b-vision:
+    type: dense
+    repo: unsloth/gemma-4-12b-it-GGUF
+    model: gemma-4-12b-it-UD-Q4_K_XL.gguf
+    mmproj: gemma-4-12b-it-mmproj-BF16.gguf
+  # Custom port override example:
+  # custom-model:
+  #   type: dense
+  #   port: 9000
+  #   model: some-model.gguf
 
 benchmark:
   max_tokens: 32768

@@ -89,30 +89,30 @@ func FindLocalGGUF(hfRepo string) string {
 	return ""
 }
 
-func StopSystemdService(ctx context.Context, unit string, sudo bool) {
-	ui.Info(fmt.Sprintf("Stopping %s...", unit))
-	args := []string{"systemctl", "stop", unit}
-	cmd := "systemctl"
-	if sudo {
-		cmd = "sudo"
-	} else {
-		args = args[1:]
+func DensePort() int {
+	p := viper.GetInt("llama_server.dense_port")
+	if p > 0 {
+		return p
 	}
-	exec.RunCapture(ctx, cmd, args, exec.RunOpts{})
-	time.Sleep(2 * time.Second)
+	return Port()
 }
 
-func StartSystemdService(ctx context.Context, unit string, sudo bool) {
-	ui.Info(fmt.Sprintf("Starting %s...", unit))
-	args := []string{"systemctl", "start", unit}
-	cmd := "systemctl"
-	if sudo {
-		cmd = "sudo"
-	} else {
-		args = args[1:]
+func MoePort() int {
+	p := viper.GetInt("llama_server.moe_port")
+	if p > 0 {
+		return p
 	}
-	exec.RunCapture(ctx, cmd, args, exec.RunOpts{})
-	ui.Ok(fmt.Sprintf("%s started", unit))
+	return 8091
+}
+
+func HostForPort(port int) string {
+	host := Host()
+	parts := strings.Split(host, ":")
+	if len(parts) >= 3 {
+		parts[len(parts)-1] = fmt.Sprintf("%d", port)
+		return strings.Join(parts, ":")
+	}
+	return fmt.Sprintf("http://localhost:%d", port)
 }
 
 func IsOllamaRunning(ctx context.Context) bool {
@@ -121,12 +121,11 @@ func IsOllamaRunning(ctx context.Context) bool {
 }
 
 func Start(ctx context.Context, modelPath string, mmprojPath string, extraFlags []string) (*os.Process, error) {
-	return StartWithCtx(ctx, modelPath, mmprojPath, extraFlags, 65536)
+	return StartWithCtx(ctx, modelPath, mmprojPath, extraFlags, 65536, Port())
 }
 
-func StartWithCtx(ctx context.Context, modelPath string, mmprojPath string, extraFlags []string, ctxSize int) (*os.Process, error) {
+func StartWithCtx(ctx context.Context, modelPath string, mmprojPath string, extraFlags []string, ctxSize int, port int) (*os.Process, error) {
 	bin := Bin()
-	port := Port()
 
 	if _, err := os.Stat(bin); err != nil {
 		return nil, fmt.Errorf("llama-server binary not found: %s", bin)
@@ -138,6 +137,9 @@ func StartWithCtx(ctx context.Context, modelPath string, mmprojPath string, extr
 
 	if ctxSize <= 0 {
 		ctxSize = 65536
+	}
+	if port <= 0 {
+		port = Port()
 	}
 
 	args := []string{
@@ -172,7 +174,7 @@ func StartWithCtx(ctx context.Context, modelPath string, mmprojPath string, extr
 		return nil, fmt.Errorf("failed to start llama-server: %w", err)
 	}
 
-	if err := WaitForHealth(90 * time.Second); err != nil {
+	if err := WaitForHealthOnPort(port, 90*time.Second); err != nil {
 		logFile.Close()
 		proc.Kill()
 		return nil, err
@@ -193,7 +195,11 @@ func Stop(proc *os.Process) {
 }
 
 func WaitForHealth(timeout time.Duration) error {
-	url := fmt.Sprintf("%s/health", Host())
+	return WaitForHealthOnPort(Port(), timeout)
+}
+
+func WaitForHealthOnPort(port int, timeout time.Duration) error {
+	url := fmt.Sprintf("%s/health", HostForPort(port))
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		resp, err := http.Get(url)

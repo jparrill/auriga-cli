@@ -58,20 +58,22 @@ ollama:
 
 llama_server:
   host: http://localhost:8090
-  port: 8090
   bin: ~/infra/bin/llama-server
   gguf_dir: ~/infra/ai/models/gguf
   mmproj_dir: ~/infra/ai/models/mmproj
   quant: Q4_K_M
+  dense_port: 8090
+  moe_port: 8091
 
 profiles:
+  qwen3.6-27b:
+    type: dense
+    model: Qwen3.6-27B-UD-Q8_K_XL.gguf
+    flags: [--cache-type-k, q8_0, --cache-type-v, q8_0]
   qwen3.6-vision:
-    model: Qwen3.6-35B-A3B-UD-Q4_K_M.gguf
+    type: moe
+    model: Qwen3.6-35B-A3B-Q8_0.gguf
     mmproj: Qwen3.6-35B-A3B-mmproj-BF16.gguf
-    flags: [--jinja]
-  qwen3.6-uncensored-vision:
-    model: Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive-Q4_K_M.gguf
-    mmproj: mmproj-Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive-f16.gguf
     flags: [--jinja]
 
 benchmark:
@@ -100,24 +102,42 @@ Compatible with the Python scripts `.envrc` — same env vars work:
 
 Precedence: CLI flag > env var > config file > default.
 
+## Multi-Instance (Dense + MoE)
+
+Auriga supports running a dense and MoE model simultaneously on separate ports. MoE models MUST NOT run on the same port as dense models.
+
+```bash
+# Start dense model on port 8090
+auriga profile serve qwen3.6-27b --daemon
+
+# Start MoE model on port 8091
+auriga profile serve qwen3.6-vision --daemon
+
+# Check both instances
+auriga ps
+
+# Stop specific profile
+auriga profile stop qwen3.6-27b
+
+# Stop all instances
+auriga profile stop
+```
+
+Model type is auto-detected from the model name (`-A3B`, `-A4B` patterns indicate MoE) or can be set explicitly with `--type` or the `type:` field in config.
+
+Port resolution: `profile.port` (explicit) > type-derived (`dense_port`/`moe_port`) > `dense_port` > 8090.
+
 ## Vision Support
 
 Auriga supports multimodal inference via llama-server with `--mmproj` projectors:
 
 ```bash
 # Start with vision profile
-auriga serve start qwen3.6-uncensored-vision
+auriga profile serve qwen3.6-vision
 
 # Use with Pi
 pi --model local -p @screenshot.png "What's wrong with this UI?"
 ```
-
-Models with vision support:
-
-| Model | mmproj | Size |
-|-------|--------|------|
-| Qwen3.6-35B-A3B | `Qwen3.6-35B-A3B-mmproj-BF16.gguf` | 861 MB |
-| Qwen3.6 Uncensored (HauhauCS) | `mmproj-...-Aggressive-f16.gguf` | 858 MB |
 
 ## Fix Workflow
 

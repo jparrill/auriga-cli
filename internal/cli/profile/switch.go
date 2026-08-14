@@ -84,26 +84,33 @@ func runProfileSwitch(name string, persistent bool, ctxSize int) error {
 		}
 	}
 
+	port := profilePort(name)
+
+	configuredType := viper.GetString(profileKey + ".type")
+	warnTypeMismatch(name, configuredType, modelFile)
+
 	mode := "daemon"
 	if persistent {
 		mode = "persistent (systemd)"
 	}
+	pType := profileType(name)
 	params := []ui.OrderedParam{
 		{Key: "Profile", Value: name},
 		{Key: "Model", Value: modelFile},
+		{Key: "Type", Value: pType},
 		{Key: "Mode", Value: mode},
 	}
 	if mmprojFile != "" {
 		params = append(params, ui.OrderedParam{Key: "Vision", Value: mmprojFile})
 	}
-	params = append(params, ui.OrderedParam{Key: "Port", Value: fmt.Sprintf("%d", llamaserver.Port())})
+	params = append(params, ui.OrderedParam{Key: "Port", Value: fmt.Sprintf("%d", port)})
 
 	confirmed, err := ui.ConfirmOperationOrdered("Switch llama-server profile", params, "", false)
 	if err != nil || !confirmed {
 		return err
 	}
 
-	stopRunningServer()
+	stopRunningServer(port)
 
 	extraFlags := viper.GetStringSlice(profileKey + ".flags")
 	if mmprojFile != "" && !containsFlag(extraFlags, "--jinja") {
@@ -111,28 +118,28 @@ func runProfileSwitch(name string, persistent bool, ctxSize int) error {
 	}
 
 	if persistent {
-		return switchPersistent(name, modelPath, mmprojPath, extraFlags, ctxSize)
+		return switchPersistent(name, modelPath, mmprojPath, extraFlags, ctxSize, port)
 	}
-	return switchDaemon(name, modelPath, mmprojPath, extraFlags, ctxSize)
+	return switchDaemon(name, modelPath, mmprojPath, extraFlags, ctxSize, port)
 }
 
-func switchDaemon(name, modelPath, mmprojPath string, extraFlags []string, ctxSize int) error {
+func switchDaemon(name, modelPath, mmprojPath string, extraFlags []string, ctxSize, port int) error {
 	ctx := context.Background()
-	proc, err := llamaserver.StartWithCtx(ctx, modelPath, mmprojPath, extraFlags, ctxSize)
+	proc, err := llamaserver.StartWithCtx(ctx, modelPath, mmprojPath, extraFlags, ctxSize, port)
 	if err != nil {
 		return err
 	}
 
-	os.WriteFile(pidFile, fmt.Appendf(nil, "%d", proc.Pid), 0644)
+	os.WriteFile(pidFileForPort(port), fmt.Appendf(nil, "%d", proc.Pid), 0644)
 	proc.Release()
 
-	ui.Ok(fmt.Sprintf("Switched to %s (PID %d)", name, proc.Pid))
+	ui.Ok(fmt.Sprintf("Switched to %s (PID %d) on port %d", name, proc.Pid, port))
 	ui.Info("Stop with: auriga profile stop")
 	return nil
 }
 
-func switchPersistent(name, modelPath, mmprojPath string, extraFlags []string, ctxSize int) error {
-	execStart := buildExecStart(modelPath, mmprojPath, extraFlags, ctxSize)
+func switchPersistent(name, modelPath, mmprojPath string, extraFlags []string, ctxSize, port int) error {
+	execStart := buildExecStart(modelPath, mmprojPath, extraFlags, ctxSize, port)
 
 	cfg := systemd.ServiceConfig{
 		ProfileName: name,
@@ -141,16 +148,17 @@ func switchPersistent(name, modelPath, mmprojPath string, extraFlags []string, c
 	}
 
 	content := systemd.GenerateUnit(cfg)
+	unitName := systemd.UnitNameForPort(port)
 
-	if err := systemd.Install(content); err != nil {
+	if err := systemd.Install(port, content); err != nil {
 		return fmt.Errorf("failed to install service: %w", err)
 	}
 
-	if err := systemd.Enable(); err != nil {
+	if err := systemd.Enable(port); err != nil {
 		return fmt.Errorf("failed to enable service: %w", err)
 	}
 
-	if err := systemd.Start(); err != nil {
+	if err := systemd.Start(port); err != nil {
 		return fmt.Errorf("failed to start service: %w", err)
 	}
 
@@ -159,21 +167,20 @@ func switchPersistent(name, modelPath, mmprojPath string, extraFlags []string, c
 		ui.Info("Service may not survive logout — run: loginctl enable-linger")
 	}
 
-	if err := llamaserver.WaitForHealth(90 * time.Second); err != nil {
+	if err := llamaserver.WaitForHealthOnPort(port, 90*time.Second); err != nil {
 		return fmt.Errorf("service started but health check failed: %w", err)
 	}
 
-	path, _ := systemd.UnitPath()
-	ui.Ok(fmt.Sprintf("Switched to %s (systemd persistent)", name))
+	path, _ := systemd.UnitPathForPort(port)
+	ui.Ok(fmt.Sprintf("Switched to %s (systemd persistent) on port %d", name, port))
 	ui.Info(fmt.Sprintf("Service: %s", path))
-	ui.Info("Stop with: systemctl --user stop auriga-llama-server")
-	ui.Info("Logs with: journalctl --user -u auriga-llama-server -f")
+	ui.Info(fmt.Sprintf("Stop with: systemctl --user stop %s", unitName))
+	ui.Info(fmt.Sprintf("Logs with: journalctl --user -u %s -f", unitName))
 	return nil
 }
 
-func buildExecStart(modelPath, mmprojPath string, extraFlags []string, ctxSize int) string {
+func buildExecStart(modelPath, mmprojPath string, extraFlags []string, ctxSize, port int) string {
 	bin := llamaserver.Bin()
-	port := llamaserver.Port()
 
 	args := []string{
 		bin,
@@ -193,17 +200,18 @@ func buildExecStart(modelPath, mmprojPath string, extraFlags []string, ctxSize i
 	return strings.Join(args, " ")
 }
 
-func stopRunningServer() {
-	if systemd.IsActive() {
-		ui.Info("Stopping systemd-managed llama-server...")
-		systemd.Stop()
+func stopRunningServer(port int) {
+	if systemd.IsActiveOnPort(port) {
+		ui.Info(fmt.Sprintf("Stopping systemd-managed llama-server on port %d...", port))
+		systemd.Stop(port)
 		time.Sleep(2 * time.Second)
 		return
 	}
 
-	if pid := readPID(); pid > 0 {
+	pf := pidFileForPort(port)
+	if pid := readPIDForPort(port); pid > 0 {
 		if processExists(pid) {
-			ui.Info(fmt.Sprintf("Stopping llama-server (PID %d)...", pid))
+			ui.Info(fmt.Sprintf("Stopping llama-server (PID %d) on port %d...", pid, port))
 			proc, err := os.FindProcess(pid)
 			if err == nil {
 				proc.Signal(syscall.SIGTERM)
@@ -211,11 +219,11 @@ func stopRunningServer() {
 				proc.Kill()
 			}
 		}
-		os.Remove(pidFile)
+		os.Remove(pf)
 		return
 	}
 
 	ctx := context.Background()
-	exec.RunCapture(ctx, "pkill", []string{"-f", "llama-server"}, exec.RunOpts{})
+	exec.RunCapture(ctx, "pkill", []string{"-f", fmt.Sprintf("llama-server.*--port %d", port)}, exec.RunOpts{})
 	time.Sleep(1 * time.Second)
 }

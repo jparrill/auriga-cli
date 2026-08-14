@@ -17,6 +17,8 @@ type createOpts struct {
 	Repo   string
 	Model  string
 	Vision bool
+	Type   string
+	Port   int
 }
 
 func newProfileCreateCmd() *cobra.Command {
@@ -41,6 +43,8 @@ Examples:
 	cmd.Flags().StringVar(&opts.Repo, "repo", "", "HuggingFace repo (e.g., unsloth/gemma-4-12b-it-GGUF)")
 	cmd.Flags().StringVar(&opts.Model, "model", "", "GGUF filename (auto-resolved from repo if omitted)")
 	cmd.Flags().BoolVar(&opts.Vision, "vision", false, "Enable vision (auto-discover mmproj from repo)")
+	cmd.Flags().StringVar(&opts.Type, "type", "", "Model type: dense or moe (auto-detected from model name if omitted)")
+	cmd.Flags().IntVar(&opts.Port, "port", 0, "Port override (default: derived from type)")
 	cmd.MarkFlagRequired("repo")
 
 	return cmd
@@ -95,16 +99,24 @@ func runProfileCreate(name string, opts *createOpts) error {
 		ui.Ok(fmt.Sprintf("MMProj: %s (%.0f MB)", mmprojFile, sizeMB))
 	}
 
-	// Show summary
+	modelType := opts.Type
+	if modelType == "" {
+		modelType = detectModelType(modelFile)
+	}
+
 	params := []ui.OrderedParam{
 		{Key: "Name", Value: name},
 		{Key: "Repo", Value: opts.Repo},
 		{Key: "Model", Value: modelFile},
+		{Key: "Type", Value: modelType},
 	}
 	if mmprojFile != "" {
 		params = append(params, ui.OrderedParam{Key: "Vision", Value: mmprojFile})
 	} else {
 		params = append(params, ui.OrderedParam{Key: "Vision", Value: "no"})
+	}
+	if opts.Port > 0 {
+		params = append(params, ui.OrderedParam{Key: "Port", Value: fmt.Sprintf("%d (override)", opts.Port)})
 	}
 
 	confirmed, err := ui.ConfirmOperationOrdered("Create Profile", params, "", false)
@@ -112,11 +124,12 @@ func runProfileCreate(name string, opts *createOpts) error {
 		return err
 	}
 
-	// Write to config (direct YAML manipulation, preserves formatting)
 	pc := ProfileConfig{
 		Repo:   opts.Repo,
 		Model:  modelFile,
 		MMProj: mmprojFile,
+		Type:   modelType,
+		Port:   opts.Port,
 	}
 	if mmprojFile != "" {
 		pc.Flags = []string{"--jinja"}

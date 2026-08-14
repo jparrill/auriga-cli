@@ -19,6 +19,8 @@ type setupOpts struct {
 	Repo   string
 	Vision bool
 	Quant  string
+	Type   string
+	Port   int
 }
 
 func newProfileSetupCmd() *cobra.Command {
@@ -44,6 +46,8 @@ Examples:
 	cmd.Flags().StringVar(&opts.Repo, "repo", "", "HuggingFace repo (e.g., unsloth/Qwen3.6-35B-A3B-GGUF)")
 	cmd.Flags().BoolVar(&opts.Vision, "vision", false, "Also download mmproj for vision support")
 	cmd.Flags().StringVar(&opts.Quant, "quant", "", "Quantization level (default from config)")
+	cmd.Flags().StringVar(&opts.Type, "type", "", "Model type: dense or moe (auto-detected from model name if omitted)")
+	cmd.Flags().IntVar(&opts.Port, "port", 0, "Port override (default: derived from type)")
 	cmd.MarkFlagRequired("repo")
 
 	return cmd
@@ -94,15 +98,23 @@ func runProfileSetup(name string, opts *setupOpts) error {
 		ui.Ok(fmt.Sprintf("MMProj: %s (%.0f MB)", mmprojFile, sizeMB))
 	}
 
-	// Confirmation
+	modelType := opts.Type
+	if modelType == "" {
+		modelType = detectModelType(modelFile)
+	}
+
 	params := []ui.OrderedParam{
 		{Key: "Profile", Value: name},
 		{Key: "Repo", Value: opts.Repo},
 		{Key: "Model", Value: fmt.Sprintf("%s (%.1f GB)", modelFile, sizeGB)},
+		{Key: "Type", Value: modelType},
 		{Key: "Quant", Value: quant},
 	}
 	if mmprojFile != "" {
 		params = append(params, ui.OrderedParam{Key: "Vision", Value: mmprojFile})
+	}
+	if opts.Port > 0 {
+		params = append(params, ui.OrderedParam{Key: "Port", Value: fmt.Sprintf("%d (override)", opts.Port)})
 	}
 	params = append(params, ui.OrderedParam{Key: "GGUF dir", Value: ggufDir})
 
@@ -167,11 +179,12 @@ skipModelDownload:
 		}
 	}
 
-	// Create profile
 	pc := ProfileConfig{
 		Repo:   opts.Repo,
 		Model:  modelFile,
 		MMProj: mmprojFile,
+		Type:   modelType,
+		Port:   opts.Port,
 	}
 	if mmprojFile != "" {
 		pc.Flags = []string{"--jinja"}

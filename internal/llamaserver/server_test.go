@@ -78,3 +78,98 @@ func TestBin(t *testing.T) {
 		t.Error("expected expanded path, got unexpanded")
 	}
 }
+
+func TestDensePort_FromConfig(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	viper.Set("llama_server.dense_port", 8090)
+	viper.Set("llama_server.host", "http://localhost:8090")
+
+	p := DensePort()
+	if p != 8090 {
+		t.Errorf("When dense_port set, DensePort should return it, got %d", p)
+	}
+}
+
+func TestDensePort_FallbackToPort(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	viper.Set("llama_server.host", "http://localhost:9090")
+
+	p := DensePort()
+	if p != 9090 {
+		t.Errorf("When dense_port not set, DensePort should fallback to Port(), got %d", p)
+	}
+}
+
+func TestMoePort_FromConfig(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	viper.Set("llama_server.moe_port", 8091)
+
+	p := MoePort()
+	if p != 8091 {
+		t.Errorf("When moe_port set, MoePort should return it, got %d", p)
+	}
+}
+
+func TestMoePort_FallbackDefault(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	p := MoePort()
+	if p != 8091 {
+		t.Errorf("When moe_port not set, MoePort should return 8091, got %d", p)
+	}
+}
+
+func TestHostForPort_ReplacesPort(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	viper.Set("llama_server.host", "http://localhost:8090")
+
+	got := HostForPort(8091)
+	if got != "http://localhost:8091" {
+		t.Errorf("When replacing port, HostForPort should update it, got %q", got)
+	}
+}
+
+func TestHostForPort_DifferentHost(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	viper.Set("llama_server.host", "http://auriga:8090")
+
+	got := HostForPort(9000)
+	if got != "http://auriga:9000" {
+		t.Errorf("When custom host, HostForPort should keep hostname, got %q", got)
+	}
+}
+
+func TestHostForPort_NoPortInHost(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	viper.Set("llama_server.host", "http://localhost")
+
+	got := HostForPort(8091)
+	if got != "http://localhost:8091" {
+		t.Errorf("When no port in host, HostForPort should construct URL, got %q", got)
+	}
+}
+
+func TestHostForPort_SamePort(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	viper.Set("llama_server.host", "http://localhost:8090")
+
+	got := HostForPort(8090)
+	if got != "http://localhost:8090" {
+		t.Errorf("When same port, HostForPort should return unchanged, got %q", got)
+	}
+}

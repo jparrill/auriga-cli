@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"syscall"
 
@@ -16,7 +17,57 @@ import (
 	"github.com/spf13/viper"
 )
 
-const pidFile = "/tmp/auriga-llama-server.pid"
+var moePattern = regexp.MustCompile(`-A\d+B`)
+
+func pidFileForPort(port int) string {
+	return fmt.Sprintf("/tmp/auriga-llama-server-%d.pid", port)
+}
+
+func readPIDForPort(port int) int {
+	data, err := os.ReadFile(pidFileForPort(port))
+	if err != nil {
+		return 0
+	}
+	pid, err := strconv.Atoi(string(data))
+	if err != nil {
+		return 0
+	}
+	return pid
+}
+
+func profilePort(name string) int {
+	profileKey := fmt.Sprintf("profiles.%s", name)
+	if p := viper.GetInt(profileKey + ".port"); p > 0 {
+		return p
+	}
+	t := profileType(name)
+	if t == "moe" {
+		return llamaserver.MoePort()
+	}
+	return llamaserver.DensePort()
+}
+
+func profileType(name string) string {
+	profileKey := fmt.Sprintf("profiles.%s", name)
+	if t := viper.GetString(profileKey + ".type"); t != "" {
+		return t
+	}
+	return detectModelType(viper.GetString(profileKey + ".model"))
+}
+
+func detectModelType(modelName string) string {
+	if moePattern.MatchString(modelName) {
+		return "moe"
+	}
+	return "dense"
+}
+
+func warnTypeMismatch(name, configuredType, modelName string) {
+	detected := detectModelType(modelName)
+	if configuredType != "" && configuredType != detected {
+		ui.Warn(fmt.Sprintf("Profile %q has type=%s but model name suggests %s", name, configuredType, detected))
+	}
+}
 
 func newProfileServeCmd() *cobra.Command {
 	var (
@@ -53,12 +104,17 @@ func runProfileServe(name string, daemon bool, ctxSize int) error {
 		return fmt.Errorf("profile %q not found — run: auriga profile list", name)
 	}
 
-	// Check if already running
-	if existingPID := readPID(); existingPID > 0 {
+	port := profilePort(name)
+	pf := pidFileForPort(port)
+
+	configuredType := viper.GetString(profileKey + ".type")
+	warnTypeMismatch(name, configuredType, modelFile)
+
+	if existingPID := readPIDForPort(port); existingPID > 0 {
 		if processExists(existingPID) {
-			return fmt.Errorf("llama-server already running (PID %d) — run: auriga profile stop", existingPID)
+			return fmt.Errorf("llama-server already running on port %d (PID %d) — run: auriga profile stop", port, existingPID)
 		}
-		os.Remove(pidFile)
+		os.Remove(pf)
 	}
 
 	mmprojFile := viper.GetString(profileKey + ".mmproj")
@@ -83,15 +139,17 @@ func runProfileServe(name string, daemon bool, ctxSize int) error {
 		mode = "daemon"
 	}
 
+	pType := profileType(name)
 	params := []ui.OrderedParam{
 		{Key: "Profile", Value: name},
 		{Key: "Model", Value: modelFile},
+		{Key: "Type", Value: pType},
 		{Key: "Mode", Value: mode},
 	}
 	if mmprojFile != "" {
 		params = append(params, ui.OrderedParam{Key: "Vision", Value: mmprojFile})
 	}
-	params = append(params, ui.OrderedParam{Key: "Port", Value: fmt.Sprintf("%d", llamaserver.Port())})
+	params = append(params, ui.OrderedParam{Key: "Port", Value: fmt.Sprintf("%d", port)})
 
 	confirmed, err := ui.ConfirmOperationOrdered("Start llama-server", params, "", false)
 	if err != nil || !confirmed {
@@ -104,18 +162,16 @@ func runProfileServe(name string, daemon bool, ctxSize int) error {
 	}
 
 	ctx := context.Background()
-	proc, err := llamaserver.StartWithCtx(ctx, modelPath, mmprojPath, extraFlags, ctxSize)
+	proc, err := llamaserver.StartWithCtx(ctx, modelPath, mmprojPath, extraFlags, ctxSize, port)
 	if err != nil {
 		return err
 	}
 
-	// Save PID
-	os.WriteFile(pidFile, []byte(strconv.Itoa(proc.Pid)), 0644)
+	os.WriteFile(pf, []byte(strconv.Itoa(proc.Pid)), 0644)
 
 	if daemon {
-		ui.Ok(fmt.Sprintf("llama-server running in background (PID %d)", proc.Pid))
+		ui.Ok(fmt.Sprintf("llama-server running in background (PID %d) on port %d", proc.Pid, port))
 		ui.Info("Stop with: auriga profile stop")
-		// Release the process so it survives after CLI exits
 		proc.Release()
 		return nil
 	}
@@ -126,22 +182,10 @@ func runProfileServe(name string, daemon bool, ctxSize int) error {
 	<-sigCh
 
 	fmt.Println()
-	os.Remove(pidFile)
+	os.Remove(pf)
 	llamaserver.Stop(proc)
 
 	return nil
-}
-
-func readPID() int {
-	data, err := os.ReadFile(pidFile)
-	if err != nil {
-		return 0
-	}
-	pid, err := strconv.Atoi(string(data))
-	if err != nil {
-		return 0
-	}
-	return pid
 }
 
 func containsFlag(flags []string, target string) bool {

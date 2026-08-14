@@ -13,6 +13,8 @@ type ProfileConfig struct {
 	Repo   string   `yaml:"repo,omitempty"`
 	Model  string   `yaml:"model"`
 	MMProj string   `yaml:"mmproj,omitempty"`
+	Type   string   `yaml:"type,omitempty"`
+	Port   int      `yaml:"port,omitempty"`
 	Flags  []string `yaml:"flags,omitempty"`
 }
 
@@ -75,6 +77,12 @@ func buildProfileBlock(name string, pc ProfileConfig) []string {
 	if pc.MMProj != "" {
 		lines = append(lines, fmt.Sprintf("    mmproj: %s", pc.MMProj))
 	}
+	if pc.Type != "" {
+		lines = append(lines, fmt.Sprintf("    type: %s", pc.Type))
+	}
+	if pc.Port > 0 {
+		lines = append(lines, fmt.Sprintf("    port: %d", pc.Port))
+	}
 	if len(pc.Flags) > 0 {
 		var flagNodes string
 		for i, f := range pc.Flags {
@@ -107,6 +115,20 @@ func buildProfileNode(pc ProfileConfig) *yaml.Node {
 		node.Content = append(node.Content,
 			&yaml.Node{Kind: yaml.ScalarNode, Value: "mmproj"},
 			&yaml.Node{Kind: yaml.ScalarNode, Value: pc.MMProj},
+		)
+	}
+
+	if pc.Type != "" {
+		node.Content = append(node.Content,
+			&yaml.Node{Kind: yaml.ScalarNode, Value: "type"},
+			&yaml.Node{Kind: yaml.ScalarNode, Value: pc.Type},
+		)
+	}
+
+	if pc.Port > 0 {
+		node.Content = append(node.Content,
+			&yaml.Node{Kind: yaml.ScalarNode, Value: "port"},
+			&yaml.Node{Kind: yaml.ScalarNode, Value: fmt.Sprintf("%d", pc.Port)},
 		)
 	}
 

@@ -98,6 +98,8 @@ func initViper(cfgFile string) {
 	viper.SetDefault("llama_server.gguf_dir", config.DefaultGGUFDir)
 	viper.SetDefault("llama_server.mmproj_dir", config.DefaultMMProjDir)
 	viper.SetDefault("llama_server.quant", config.DefaultQuant)
+	viper.SetDefault("llama_server.dense_port", 8090)
+	viper.SetDefault("llama_server.moe_port", 8091)
 	viper.SetDefault("benchmark.results_dir", config.DefaultResultsDir)
 	viper.SetDefault("benchmark.max_tokens", 32768)
 	viper.SetDefault("benchmark.max_retries", 5)

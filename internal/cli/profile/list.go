@@ -25,7 +25,7 @@ func runProfileList() error {
 		return nil
 	}
 
-	tbl := ui.NewTable("Profiles", "PROFILE", "REPO", "MODEL", "VISION")
+	tbl := ui.NewTable("Profiles", "PROFILE", "TYPE", "PORT", "REPO", "MODEL", "VISION")
 
 	for name := range profiles {
 		repo := viper.GetString(fmt.Sprintf("profiles.%s.repo", name))
@@ -35,7 +35,9 @@ func runProfileList() error {
 		if mmproj != "" {
 			vision = ui.SuccessStyle.Render("yes")
 		}
-		tbl.AddRow(name, repo, model, vision)
+		pType := profileType(name)
+		port := profilePort(name)
+		tbl.AddRow(name, pType, fmt.Sprintf("%d", port), repo, model, vision)
 	}
 
 	tbl.Print()
