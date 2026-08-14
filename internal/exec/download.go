@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/x/term"
 	"github.com/jparrill/auriga-cli/internal/config"
 	"github.com/jparrill/auriga-cli/internal/ui"
 )
@@ -113,6 +114,11 @@ func DownloadFile(ctx context.Context, url, dest, label string, opts DownloadOpt
 const progressBarWidth = 20
 
 func renderDownloadProgress(label string, downloaded, total int64, speed float64) {
+	width := getTermWidth()
+
+	sizeStr := FormatSize(downloaded)
+	speedStr := FormatSpeed(speed)
+
 	if total > 0 {
 		pct := float64(downloaded) / float64(total) * 100
 		filled := int(pct / 100 * progressBarWidth)
@@ -120,24 +126,50 @@ func renderDownloadProgress(label string, downloaded, total int64, speed float64
 			filled = progressBarWidth
 		}
 		bar := strings.Repeat("█", filled) + strings.Repeat("░", progressBarWidth-filled)
+		totalStr := FormatSize(total)
 
-		fmt.Printf("\r  %s %s  %s  %3.0f%%  %s/%s  %s",
+		// visible chars: "  ↓ " + label + "  " + bar(20) + "  XXX%" + "  size/total" + "  speed"
+		fixedWidth := 4 + 2 + progressBarWidth + 6 + 2 + len(sizeStr) + 1 + len(totalStr) + 2 + len(speedStr)
+		truncLabel := truncateStr(label, width-fixedWidth)
+
+		fmt.Printf("\r\033[K  %s %s  %s  %3.0f%%  %s/%s  %s",
 			ui.InfoStyle.Render("↓"),
-			label,
+			truncLabel,
 			ui.AccentStyle.Render(bar),
 			pct,
-			FormatSize(downloaded),
-			FormatSize(total),
-			ui.MutedStyle.Render(FormatSpeed(speed)),
+			sizeStr,
+			totalStr,
+			ui.MutedStyle.Render(speedStr),
 		)
 	} else {
-		fmt.Printf("\r  %s %s  %s  %s",
+		fixedWidth := 4 + 2 + len(sizeStr) + 2 + len(speedStr)
+		truncLabel := truncateStr(label, width-fixedWidth)
+
+		fmt.Printf("\r\033[K  %s %s  %s  %s",
 			ui.InfoStyle.Render("↓"),
-			label,
-			FormatSize(downloaded),
-			ui.MutedStyle.Render(FormatSpeed(speed)),
+			truncLabel,
+			sizeStr,
+			ui.MutedStyle.Render(speedStr),
 		)
 	}
+}
+
+func getTermWidth() int {
+	w, _, err := term.GetSize(os.Stdout.Fd())
+	if err != nil || w <= 0 {
+		return 80
+	}
+	return w
+}
+
+func truncateStr(s string, maxLen int) string {
+	if maxLen < 4 {
+		maxLen = 4
+	}
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-3] + "..."
 }
 
 func clearLine(isTTY bool) {

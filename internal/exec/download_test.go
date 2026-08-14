@@ -199,3 +199,34 @@ func TestClearLine_NoPanic(t *testing.T) {
 	clearLine(true)
 	clearLine(false)
 }
+
+func TestTruncateStr(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  string
+		maxLen int
+		want   string
+	}{
+		{"When string fits, it should return as-is", "short", 10, "short"},
+		{"When string equals max, it should return as-is", "exact", 5, "exact"},
+		{"When string exceeds max, it should truncate with ellipsis", "very-long-filename.gguf", 15, "very-long-fi..."},
+		{"When maxLen is very small, it should use minimum of 4", "abcdef", 2, "a..."},
+		{"When string is empty, it should return empty", "", 10, ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := truncateStr(tt.input, tt.maxLen)
+			if got != tt.want {
+				t.Errorf("got %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGetTermWidth_NoPanic(t *testing.T) {
+	w := getTermWidth()
+	if w <= 0 {
+		t.Errorf("When getting terminal width, it should return positive value, got %d", w)
+	}
+}
