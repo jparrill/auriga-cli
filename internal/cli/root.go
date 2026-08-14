@@ -7,6 +7,7 @@ import (
 	"github.com/jparrill/auriga-cli/internal/cli/model"
 	"github.com/jparrill/auriga-cli/internal/cli/profile"
 	"github.com/jparrill/auriga-cli/internal/cli/ps"
+	"github.com/jparrill/auriga-cli/internal/cli/show"
 	"github.com/jparrill/auriga-cli/internal/config"
 	"github.com/jparrill/auriga-cli/internal/ui"
 	"github.com/spf13/cobra"
@@ -56,6 +57,7 @@ Examples:
 	cmd.AddCommand(model.NewModelCmd())
 	cmd.AddCommand(benchmark.NewBenchmarkCmd())
 	cmd.AddCommand(ps.NewPsCmd())
+	cmd.AddCommand(show.NewShowCmd())
 
 	return cmd
 }
