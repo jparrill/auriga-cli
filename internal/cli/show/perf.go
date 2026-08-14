@@ -40,13 +40,14 @@ Examples:
 }
 
 type perfResult struct {
-	Port    int
-	Profile string
-	Model   string
-	TTFT    time.Duration
-	NoThink benchResult
-	Think   benchResult
-	Error   string
+	Port      int
+	Profile   string
+	ModelType string
+	Model     string
+	TTFT      time.Duration
+	NoThink   benchResult
+	Think     benchResult
+	Error     string
 }
 
 type benchResult struct {
@@ -206,7 +207,11 @@ func isPortHealthy(port int) bool {
 }
 
 func benchPort(port int, profile string) perfResult {
-	result := perfResult{Port: port, Profile: profile}
+	pType := viper.GetString(fmt.Sprintf("profiles.%s.type", profile))
+	if pType == "" {
+		pType = detectModelTypeShow(viper.GetString(fmt.Sprintf("profiles.%s.model", profile)))
+	}
+	result := perfResult{Port: port, Profile: profile, ModelType: pType}
 
 	ui.Info(fmt.Sprintf("Testing %s (port %d)...", profile, port))
 
@@ -334,7 +339,7 @@ func runBench(port int, thinking bool) benchResult {
 func printPerfResults(results []perfResult) {
 	fmt.Println()
 	tbl := ui.NewTable("Performance",
-		"PROFILE", "PORT", "MODEL",
+		"PROFILE", "TYPE", "PORT", "MODEL",
 		"TTFT",
 		"NO-THINK PROMPT", "NO-THINK GEN",
 		"THINK PROMPT", "THINK GEN",
@@ -342,7 +347,7 @@ func printPerfResults(results []perfResult) {
 
 	for _, r := range results {
 		if r.Error != "" {
-			tbl.AddRow(r.Profile, fmt.Sprintf("%d", r.Port), "-", "-", "-", "-", "-", "-")
+			tbl.AddRow(r.Profile, "-", fmt.Sprintf("%d", r.Port), "-", "-", "-", "-", "-", "-")
 			continue
 		}
 
@@ -355,6 +360,7 @@ func printPerfResults(results []perfResult) {
 
 		tbl.AddRow(
 			r.Profile,
+			r.ModelType,
 			fmt.Sprintf("%d", r.Port),
 			r.Model,
 			ttft,
