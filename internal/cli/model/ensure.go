@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/jparrill/auriga-cli/internal/cli/profile"
 	"github.com/jparrill/auriga-cli/internal/config"
 	"github.com/jparrill/auriga-cli/internal/exec"
 	"github.com/jparrill/auriga-cli/internal/huggingface"
@@ -18,21 +19,34 @@ import (
 
 func newModelEnsureCmd() *cobra.Command {
 	var backend string
+	var profileName string
 
 	cmd := &cobra.Command{
 		Use:   "ensure",
 		Short: "Download missing models",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runModelEnsure(backend)
+			return runModelEnsure(backend, profileName)
 		},
 	}
 
 	cmd.Flags().StringVar(&backend, "backend", "all", "Backend (ollama, llama-server, all)")
+	cmd.Flags().StringVar(&profileName, "profile", "", "Ensure only this profile (skip ollama/llama-server)")
 
 	return cmd
 }
 
-func runModelEnsure(backend string) error {
+func runModelEnsure(backend, profileName string) error {
+	if profileName != "" {
+		existing := viper.GetStringMap(fmt.Sprintf("profiles.%s", profileName))
+		if len(existing) == 0 {
+			return fmt.Errorf("profile %q not found", profileName)
+		}
+		fmt.Printf("\n  %s\n", ui.BoldStyle.Render("Ensuring profile:"))
+		result := profile.SyncProfile(profileName)
+		profile.PrintSyncSummary([]profile.SyncResult{result})
+		return nil
+	}
+
 	ctx := context.Background()
 
 	if backend == "all" || backend == "ollama" {
@@ -106,6 +120,14 @@ func runModelEnsure(backend string) error {
 					}
 				}
 			}
+		}
+	}
+
+	if backend == "all" || backend == "llama-server" {
+		profiles := viper.GetStringMap("profiles")
+		if len(profiles) > 0 {
+			results := profile.SyncAllProfiles()
+			profile.PrintSyncSummary(results)
 		}
 	}
 
