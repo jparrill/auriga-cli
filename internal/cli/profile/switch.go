@@ -133,8 +133,10 @@ func switchDaemon(name, modelPath, mmprojPath string, extraFlags []string, ctxSi
 	os.WriteFile(pidFileForPort(port), fmt.Appendf(nil, "%d", proc.Pid), 0644)
 	proc.Release()
 
+	pType := profileType(name)
 	ui.Ok(fmt.Sprintf("Switched to %s (PID %d) on port %d", name, proc.Pid, port))
 	ui.Info("Stop with: auriga profile stop")
+	printHermesTip(viper.GetString(fmt.Sprintf("profiles.%s.model", name)), pType, port)
 	return nil
 }
 
@@ -172,10 +174,12 @@ func switchPersistent(name, modelPath, mmprojPath string, extraFlags []string, c
 	}
 
 	path, _ := systemd.UnitPathForPort(port)
+	pType := profileType(name)
 	ui.Ok(fmt.Sprintf("Switched to %s (systemd persistent) on port %d", name, port))
 	ui.Info(fmt.Sprintf("Service: %s", path))
 	ui.Info(fmt.Sprintf("Stop with: systemctl --user stop %s", unitName))
 	ui.Info(fmt.Sprintf("Logs with: journalctl --user -u %s -f", unitName))
+	printHermesTip(viper.GetString(fmt.Sprintf("profiles.%s.model", name)), pType, port)
 	return nil
 }
 

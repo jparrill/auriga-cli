@@ -102,6 +102,8 @@ func initViper(cfgFile string) {
 	viper.SetDefault("llama_server.quant", config.DefaultQuant)
 	viper.SetDefault("llama_server.dense_port", 8090)
 	viper.SetDefault("llama_server.moe_port", 8091)
+	viper.SetDefault("hermes.moe_profile", "local")
+	viper.SetDefault("hermes.dense_profile", "planning")
 	viper.SetDefault("benchmark.results_dir", config.DefaultResultsDir)
 	viper.SetDefault("benchmark.max_tokens", 32768)
 	viper.SetDefault("benchmark.max_retries", 5)

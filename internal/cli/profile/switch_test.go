@@ -471,3 +471,78 @@ func TestWarnTypeMismatch_NoWarningWhenMatch(t *testing.T) {
 func TestWarnTypeMismatch_NoWarningWhenTypeEmpty(t *testing.T) {
 	warnTypeMismatch("test", "", "Qwen3.6-35B-A3B-Q8_0.gguf")
 }
+
+func TestPrintHermesTip_MoeUsesLocalProfile(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	viper.Set("hermes.moe_profile", "local")
+	viper.Set("hermes.dense_profile", "planning")
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	printHermesTip("Qwen3.6-35B-A3B-Q8_0.gguf", "moe", 8091)
+
+	w.Close()
+	os.Stdout = old
+	buf := make([]byte, 4096)
+	n, _ := r.Read(buf)
+	output := string(buf[:n])
+
+	if !strings.Contains(output, "local") {
+		t.Error("When MoE model, tip should reference local profile")
+	}
+	if !strings.Contains(output, "8091") {
+		t.Error("When MoE model, tip should show MoE port")
+	}
+}
+
+func TestPrintHermesTip_DenseUsesPlanningProfile(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	viper.Set("hermes.moe_profile", "local")
+	viper.Set("hermes.dense_profile", "planning")
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	printHermesTip("Qwen3.6-27B-UD-Q8_K_XL.gguf", "dense", 8090)
+
+	w.Close()
+	os.Stdout = old
+	buf := make([]byte, 4096)
+	n, _ := r.Read(buf)
+	output := string(buf[:n])
+
+	if !strings.Contains(output, "planning") {
+		t.Error("When dense model, tip should reference planning profile")
+	}
+	if !strings.Contains(output, "hermes profile create planning") {
+		t.Error("When dense model, tip should show create command for planning profile")
+	}
+}
+
+func TestPrintHermesTip_NoOutputWhenUnconfigured(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	printHermesTip("model.gguf", "moe", 8091)
+
+	w.Close()
+	os.Stdout = old
+	buf := make([]byte, 4096)
+	n, _ := r.Read(buf)
+	output := string(buf[:n])
+
+	if strings.Contains(output, "hermes") {
+		t.Error("When hermes profiles not configured, should not print tip")
+	}
+}

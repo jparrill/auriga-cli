@@ -178,6 +178,7 @@ func runProfileServe(name string, daemon bool, ctxSize int) error {
 	if daemon {
 		ui.Ok(fmt.Sprintf("llama-server running in background (PID %d) on port %d", proc.Pid, port))
 		ui.Info("Stop with: auriga profile stop")
+		printHermesTip(modelFile, pType, port)
 		proc.Release()
 		return nil
 	}
@@ -221,4 +222,24 @@ func processExists(pid int) bool {
 	}
 	err = proc.Signal(syscall.Signal(0))
 	return err == nil
+}
+
+func printHermesTip(modelFile, modelType string, port int) {
+	hermesProfile := viper.GetString("hermes.moe_profile")
+	if modelType == "dense" {
+		hermesProfile = viper.GetString("hermes.dense_profile")
+	}
+	if hermesProfile == "" {
+		return
+	}
+
+	fmt.Println()
+	ui.Info(fmt.Sprintf("Hermes: update %q profile for this %s model", hermesProfile, modelType))
+	fmt.Printf("  hermes profile use %s\n", hermesProfile)
+	fmt.Printf("  hermes config set model.base_url http://localhost:%d/v1\n", port)
+	fmt.Printf("  hermes config set model.default %s\n", modelFile)
+	if modelType == "dense" {
+		fmt.Printf("\n  # Create profile first if it doesn't exist:\n")
+		fmt.Printf("  hermes profile create %s --clone-from local --description \"Deep planning with dense models\"\n", hermesProfile)
+	}
 }
