@@ -24,6 +24,10 @@ type processInfo struct {
 	Port      string
 	Model     string
 	Extra     string
+	Profile   string
+	ModelType string
+	Managed   string
+	Health    string
 }
 
 func NewPsCmd() *cobra.Command {
@@ -73,8 +77,31 @@ func printStatus() {
 	}
 	tbl.Print()
 
+	printLlamaServerDetail(procs)
 	printDiskUsage()
 	printGPUMemory()
+}
+
+func printLlamaServerDetail(procs []processInfo) {
+	var servers []processInfo
+	for _, p := range procs {
+		if strings.HasPrefix(p.Component, "llama-server") && p.Status == "active" {
+			servers = append(servers, p)
+		}
+	}
+	if len(servers) == 0 {
+		return
+	}
+
+	tbl := ui.NewTable("llama-server instances", "PROFILE", "TYPE", "PORT", "HEALTH", "MANAGED", "DETAILS")
+	for _, s := range servers {
+		health := ui.ErrorStyle.Render(s.Health)
+		if s.Health == "healthy" {
+			health = ui.SuccessStyle.Render(s.Health)
+		}
+		tbl.AddRow(s.Profile, s.ModelType, s.Port, health, s.Managed, s.Extra)
+	}
+	tbl.Print()
 }
 
 func gatherStatus() []processInfo {
@@ -148,7 +175,18 @@ func checkLlamaServers() []processInfo {
 			continue
 		}
 
-		p := processInfo{Component: "llama-server", Status: "active", PID: "-", Port: "-", Model: "-", Extra: "-"}
+		p := processInfo{
+			Component: "llama-server",
+			Status:    "active",
+			PID:       "-",
+			Port:      "-",
+			Model:     "-",
+			Profile:   "-",
+			ModelType: "-",
+			Managed:   "process",
+			Health:    "unknown",
+			Extra:     "-",
+		}
 		parts := strings.SplitN(line, " ", 2)
 		p.PID = parts[0]
 
@@ -164,9 +202,29 @@ func checkLlamaServers() []processInfo {
 				p.Port = port
 			}
 
+			p.Profile, p.ModelType = resolveProfile(p.Model)
+
+			p.Managed = detectManagement(p.Port)
+
+			var details []string
 			mmproj := extractFlag(args, "--mmproj")
 			if mmproj != "" {
-				p.Extra = "vision: " + filepath.Base(mmproj)
+				details = append(details, "vision")
+			}
+			ctxSize := extractFlag(args, "--ctx-size")
+			if ctxSize != "" {
+				details = append(details, "ctx:"+ctxSize)
+			}
+			cacheK := extractFlag(args, "--cache-type-k")
+			if cacheK != "" {
+				details = append(details, "kv:"+cacheK)
+			}
+			if len(details) > 0 {
+				p.Extra = strings.Join(details, " ")
+			}
+
+			if port != "" {
+				p.Health = checkHealth(port)
 			}
 		}
 		procs = append(procs, p)
@@ -176,6 +234,80 @@ func checkLlamaServers() []processInfo {
 		return []processInfo{{Component: "llama-server", Status: "stopped", PID: "-", Port: "-", Model: "-", Extra: "-"}}
 	}
 	return procs
+}
+
+func resolveProfile(modelFilename string) (profile, modelType string) {
+	if modelFilename == "" || modelFilename == "-" {
+		return "-", "-"
+	}
+	profiles := viper.GetStringMap("profiles")
+	for name := range profiles {
+		m := viper.GetString(fmt.Sprintf("profiles.%s.model", name))
+		if m == modelFilename {
+			t := viper.GetString(fmt.Sprintf("profiles.%s.type", name))
+			if t == "" {
+				t = detectType(modelFilename)
+			}
+			return name, t
+		}
+	}
+	return "-", detectType(modelFilename)
+}
+
+func detectType(modelName string) string {
+	if strings.Contains(modelName, "-A") {
+		for i := strings.Index(modelName, "-A") + 2; i < len(modelName); i++ {
+			if modelName[i] >= '0' && modelName[i] <= '9' {
+				continue
+			}
+			if modelName[i] == 'B' {
+				return "moe"
+			}
+			break
+		}
+	}
+	return "dense"
+}
+
+func detectManagement(port string) string {
+	if port == "" || port == "-" {
+		return "process"
+	}
+	unitName := fmt.Sprintf("auriga-llama-server-%s.service", port)
+	ctx := context.Background()
+	out, err := exec.RunCapture(ctx, "systemctl", []string{"--user", "is-active", unitName}, exec.RunOpts{})
+	if err == nil && strings.TrimSpace(out) == "active" {
+		return "systemd"
+	}
+
+	pidFile := fmt.Sprintf("/tmp/auriga-llama-server-%s.pid", port)
+	if _, err := os.Stat(pidFile); err == nil {
+		return "pid-file"
+	}
+	return "process"
+}
+
+func checkHealth(port string) string {
+	host := viper.GetString("llama_server.host")
+	parts := strings.Split(host, ":")
+	var url string
+	if len(parts) >= 3 {
+		parts[len(parts)-1] = port
+		url = strings.Join(parts, ":") + "/health"
+	} else {
+		url = fmt.Sprintf("http://localhost:%s/health", port)
+	}
+
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		return "unreachable"
+	}
+	resp.Body.Close()
+	if resp.StatusCode == 200 {
+		return "healthy"
+	}
+	return fmt.Sprintf("http-%d", resp.StatusCode)
 }
 
 func checkPi() processInfo {
