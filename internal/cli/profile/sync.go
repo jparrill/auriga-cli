@@ -81,10 +81,35 @@ func SyncProfile(name string) SyncResult {
 	modelPath := filepath.Join(ggufDir, model)
 	modelExists := fileExists(modelPath)
 
+	if modelExists && repo != "" {
+		expected, err := huggingface.ExpectedSize(repo, model)
+		if err == nil && expected > 0 {
+			info, _ := os.Stat(modelPath)
+			if info != nil && info.Size() != expected {
+				ui.Warn(fmt.Sprintf("[%s] Incomplete: %s (%s/%s)",
+					name, model, exec.FormatSize(info.Size()), exec.FormatSize(expected)))
+				modelExists = false
+			}
+		}
+	}
+
 	mmprojExists := true
 	if mmproj != "" {
 		mmprojPath := filepath.Join(mmprojDir, mmproj)
 		mmprojExists = fileExists(mmprojPath)
+
+		if mmprojExists && repo != "" {
+			originalName := repoFilename(mmproj, repo)
+			expected, err := huggingface.ExpectedSize(repo, originalName)
+			if err == nil && expected > 0 {
+				info, _ := os.Stat(mmprojPath)
+				if info != nil && info.Size() != expected {
+					ui.Warn(fmt.Sprintf("[%s] Incomplete: %s (%s/%s)",
+						name, mmproj, exec.FormatSize(info.Size()), exec.FormatSize(expected)))
+					mmprojExists = false
+				}
+			}
+		}
 	}
 
 	if modelExists && mmprojExists {
