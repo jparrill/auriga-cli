@@ -225,9 +225,12 @@ func processExists(pid int) bool {
 }
 
 func printHermesTip(modelFile, modelType string, port int) {
-	hermesProfile := viper.GetString("hermes.moe_profile")
+	moeProfile := viper.GetString("hermes.moe_profile")
+	denseProfile := viper.GetString("hermes.dense_profile")
+
+	hermesProfile := moeProfile
 	if modelType == "dense" {
-		hermesProfile = viper.GetString("hermes.dense_profile")
+		hermesProfile = denseProfile
 	}
 	if hermesProfile == "" {
 		return
@@ -238,8 +241,13 @@ func printHermesTip(modelFile, modelType string, port int) {
 	fmt.Printf("  hermes profile use %s\n", hermesProfile)
 	fmt.Printf("  hermes config set model.base_url http://localhost:%d/v1\n", port)
 	fmt.Printf("  hermes config set model.default %s\n", modelFile)
-	if modelType == "dense" {
-		fmt.Printf("\n  # Create profile first if it doesn't exist:\n")
-		fmt.Printf("  hermes profile create %s --clone-from local --description \"Deep planning with dense models\"\n", hermesProfile)
+
+	if modelType == "dense" && moeProfile != "" {
+		fmt.Printf("\n  # Also update fallback in %q profile:\n", moeProfile)
+		fmt.Printf("  hermes profile use %s\n", moeProfile)
+		fmt.Printf("  hermes config set fallback_providers.0.model %s\n", modelFile)
+		fmt.Printf("  systemctl --user restart hermes-gateway.service\n")
+		fmt.Printf("\n  # Create %q profile first if it doesn't exist:\n", denseProfile)
+		fmt.Printf("  hermes profile create %s --clone-from %s --description \"Deep planning with dense models\"\n", denseProfile, moeProfile)
 	}
 }

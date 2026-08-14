@@ -524,6 +524,12 @@ func TestPrintHermesTip_DenseUsesPlanningProfile(t *testing.T) {
 	if !strings.Contains(output, "hermes profile create planning") {
 		t.Error("When dense model, tip should show create command for planning profile")
 	}
+	if !strings.Contains(output, "fallback") {
+		t.Error("When dense model, tip should mention updating fallback in moe profile")
+	}
+	if !strings.Contains(output, "hermes-gateway") {
+		t.Error("When dense model, tip should remind to restart gateway")
+	}
 }
 
 func TestPrintHermesTip_NoOutputWhenUnconfigured(t *testing.T) {
