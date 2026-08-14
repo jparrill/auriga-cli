@@ -104,8 +104,7 @@ func runModelEnsure(backend, profileName string) error {
 					url := huggingface.DownloadURL(repo, filename)
 					dest := filepath.Join(ggufDir, filename)
 
-					ui.Info(fmt.Sprintf("Downloading %s...", filename))
-					_, err = exec.Run(ctx, "wget", []string{"-c", url, "-O", dest}, exec.RunOpts{})
+					err = exec.DownloadFile(ctx, url, dest, filename, exec.DownloadOpts{Resume: true})
 					if err != nil {
 						ui.Fail(fmt.Sprintf("Download failed: %v", err))
 					} else {

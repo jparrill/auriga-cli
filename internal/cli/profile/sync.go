@@ -109,8 +109,8 @@ func SyncProfile(name string) SyncResult {
 
 	if !modelExists {
 		url := huggingface.DownloadURL(repo, model)
-		ui.Info(fmt.Sprintf("[%s] Downloading %s...", name, model))
-		_, err := exec.Run(ctx, "wget", []string{"-c", url, "-O", modelPath}, exec.RunOpts{})
+		label := fmt.Sprintf("[%s] %s", name, model)
+		err := exec.DownloadFile(ctx, url, modelPath, label, exec.DownloadOpts{Resume: true})
 		if err != nil {
 			detail := fmt.Sprintf("model download failed: %v", err)
 			ui.Fail(fmt.Sprintf("[%s] %s", name, detail))
@@ -127,11 +127,12 @@ func SyncProfile(name string) SyncResult {
 		originalName := repoFilename(mmproj, repo)
 		url := huggingface.DownloadURL(repo, originalName)
 		mmprojPath := filepath.Join(mmprojDir, mmproj)
-		ui.Info(fmt.Sprintf("[%s] Downloading %s...", name, mmproj))
-		_, err := exec.Run(ctx, "wget", []string{"-c", url, "-O", mmprojPath}, exec.RunOpts{})
+		label := fmt.Sprintf("[%s] %s", name, mmproj)
+		err := exec.DownloadFile(ctx, url, mmprojPath, label, exec.DownloadOpts{Resume: true})
 		if err != nil {
+			os.Remove(mmprojPath)
 			url = huggingface.DownloadURL(repo, mmproj)
-			_, err = exec.Run(ctx, "wget", []string{"-c", url, "-O", mmprojPath}, exec.RunOpts{})
+			err = exec.DownloadFile(ctx, url, mmprojPath, label, exec.DownloadOpts{Resume: true})
 			if err != nil {
 				detail := fmt.Sprintf("mmproj download failed: %v", err)
 				ui.Fail(fmt.Sprintf("[%s] %s", name, detail))

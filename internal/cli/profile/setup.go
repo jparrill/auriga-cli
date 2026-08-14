@@ -125,8 +125,7 @@ func runProfileSetup(name string, opts *setupOpts) error {
 
 	{
 		url := huggingface.DownloadURL(opts.Repo, modelFile)
-		ui.Info(fmt.Sprintf("Downloading %s...", modelFile))
-		_, err = exec.Run(ctx, "wget", []string{"-c", url, "-O", modelDest}, exec.RunOpts{})
+		err = exec.DownloadFile(ctx, url, modelDest, modelFile, exec.DownloadOpts{Resume: true})
 		if err != nil {
 			return fmt.Errorf("download failed: %w", err)
 		}
@@ -146,21 +145,14 @@ skipModelDownload:
 		if _, err := os.Stat(mmprojDest); err == nil {
 			ui.Ok(fmt.Sprintf("Already downloaded: %s", mmprojFile))
 		} else {
-			// mmproj might have a different name in the repo — try original name
-			originalMmproj := filepath.Base(mmprojFile)
-			repoBase := filepath.Base(opts.Repo)
-			repoBase = strings.TrimSuffix(repoBase, "-GGUF")
-			if strings.HasPrefix(originalMmproj, repoBase+"-") {
-				originalMmproj = originalMmproj[len(repoBase)+1:]
-			}
+			originalMmproj := repoFilename(mmprojFile, opts.Repo)
 
 			url := huggingface.DownloadURL(opts.Repo, originalMmproj)
-			ui.Info(fmt.Sprintf("Downloading %s...", mmprojFile))
-			_, err = exec.Run(ctx, "wget", []string{"-c", url, "-O", mmprojDest}, exec.RunOpts{})
+			err = exec.DownloadFile(ctx, url, mmprojDest, mmprojFile, exec.DownloadOpts{Resume: true})
 			if err != nil {
-				ui.Warn(fmt.Sprintf("mmproj download failed: %v — trying with renamed path", err))
+				os.Remove(mmprojDest)
 				url = huggingface.DownloadURL(opts.Repo, mmprojFile)
-				_, err = exec.Run(ctx, "wget", []string{"-c", url, "-O", mmprojDest}, exec.RunOpts{})
+				err = exec.DownloadFile(ctx, url, mmprojDest, mmprojFile, exec.DownloadOpts{Resume: true})
 				if err != nil {
 					return fmt.Errorf("mmproj download failed: %w", err)
 				}
