@@ -19,6 +19,11 @@ func newTestServer(model string) *httptest.Server {
 		case r.URL.Path == "/health":
 			w.WriteHeader(http.StatusOK)
 			fmt.Fprint(w, `{"status":"ok"}`)
+		case r.URL.Path == "/v1/models":
+			resp := map[string]any{
+				"data": []map[string]string{{"id": model}},
+			}
+			json.NewEncoder(w).Encode(resp)
 		case r.URL.Path == "/v1/chat/completions":
 			var req map[string]any
 			json.NewDecoder(r.Body).Decode(&req)
@@ -216,6 +221,44 @@ func extractTestPort(t *testing.T, srv *httptest.Server) int {
 		t.Fatalf("could not extract port from %s: %v", addr, err)
 	}
 	return port
+}
+
+func TestGetRunningModel_ReturnsModelID(t *testing.T) {
+	srv := newTestServer("test-model.gguf")
+	defer srv.Close()
+	port := extractTestPort(t, srv)
+
+	model := getRunningModel(port)
+	if model != "test-model.gguf" {
+		t.Errorf("When server returns model, getRunningModel should return it, got %q", model)
+	}
+}
+
+func TestGetRunningModel_NoServer(t *testing.T) {
+	model := getRunningModel(59878)
+	if model != "" {
+		t.Errorf("When no server, getRunningModel should return empty, got %q", model)
+	}
+}
+
+func TestResolveProfileForPort_MatchesRunningModel(t *testing.T) {
+	srv := newTestServer("correct-model.gguf")
+	defer srv.Close()
+	port := extractTestPort(t, srv)
+
+	viper.Reset()
+	defer viper.Reset()
+
+	viper.Set("profiles.wrong-profile.model", "other-model.gguf")
+	viper.Set("profiles.wrong-profile.port", port)
+	viper.Set("profiles.correct-profile.model", "correct-model.gguf")
+	viper.Set("profiles.correct-profile.port", port)
+	viper.Set("llama_server.host", "http://localhost:8090")
+
+	profile := resolveProfileForPort(port)
+	if profile != "correct-profile" {
+		t.Errorf("When multiple profiles on same port, should match running model, got %q", profile)
+	}
 }
 
 func TestPrintPerfResults_NoError(t *testing.T) {

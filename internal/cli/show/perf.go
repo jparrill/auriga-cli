@@ -158,13 +158,41 @@ func resolveProfilePort(name string) int {
 }
 
 func resolveProfileForPort(port int) string {
+	runningModel := getRunningModel(port)
 	profiles := viper.GetStringMap("profiles")
 	for name := range profiles {
 		if resolveProfilePort(name) == port {
-			return name
+			if runningModel == "" {
+				return name
+			}
+			if viper.GetString(fmt.Sprintf("profiles.%s.model", name)) == runningModel {
+				return name
+			}
 		}
 	}
 	return fmt.Sprintf("port-%d", port)
+}
+
+func getRunningModel(port int) string {
+	client := &http.Client{Timeout: 2 * time.Second}
+	resp, err := client.Get(fmt.Sprintf("http://localhost:%d/v1/models", port))
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return ""
+	}
+	var result struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if json.Unmarshal(body, &result) == nil && len(result.Data) > 0 {
+		return result.Data[0].ID
+	}
+	return ""
 }
 
 func isPortHealthy(port int) bool {
