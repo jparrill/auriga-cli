@@ -246,7 +246,7 @@ func printHermesTip(modelFile, modelType string, port int) {
 		fmt.Printf("\n  # Also update fallback in %q profile:\n", moeProfile)
 		fmt.Printf("  hermes profile use %s\n", moeProfile)
 		fmt.Printf("  hermes config set fallback_providers.0.model %s\n", modelFile)
-		fmt.Printf("  systemctl --user restart hermes-gateway.service\n")
+		fmt.Printf("  hermes gateway restart\n")
 		fmt.Printf("\n  # Create %q profile first if it doesn't exist:\n", denseProfile)
 		fmt.Printf("  hermes profile create %s --clone-from %s --description \"Deep planning with dense models\"\n", denseProfile, moeProfile)
 	}
