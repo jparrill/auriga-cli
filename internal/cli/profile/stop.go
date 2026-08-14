@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jparrill/auriga-cli/internal/exec"
+	"github.com/jparrill/auriga-cli/internal/systemd"
 	"github.com/jparrill/auriga-cli/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -26,22 +27,31 @@ func runProfileStop() error {
 	ctx := context.Background()
 	stopped := false
 
-	// Try PID file first
-	if pid := readPID(); pid > 0 {
-		if processExists(pid) {
-			ui.Info(fmt.Sprintf("Stopping llama-server (PID %d)...", pid))
-			proc, err := os.FindProcess(pid)
-			if err == nil {
-				proc.Signal(syscall.SIGTERM)
-				time.Sleep(2 * time.Second)
-				proc.Kill()
-				stopped = true
-			}
+	if systemd.IsActive() {
+		ui.Info("Stopping systemd-managed llama-server...")
+		if err := systemd.Stop(); err != nil {
+			ui.Warn(fmt.Sprintf("systemctl stop failed: %v", err))
+		} else {
+			stopped = true
 		}
-		os.Remove(pidFile)
 	}
 
-	// Fallback: pkill
+	if !stopped {
+		if pid := readPID(); pid > 0 {
+			if processExists(pid) {
+				ui.Info(fmt.Sprintf("Stopping llama-server (PID %d)...", pid))
+				proc, err := os.FindProcess(pid)
+				if err == nil {
+					proc.Signal(syscall.SIGTERM)
+					time.Sleep(2 * time.Second)
+					proc.Kill()
+					stopped = true
+				}
+			}
+			os.Remove(pidFile)
+		}
+	}
+
 	if !stopped {
 		ui.Info("Stopping llama-server via pkill...")
 		out, err := exec.RunCapture(ctx, "pkill", []string{"-f", "llama-server"}, exec.RunOpts{})

@@ -29,6 +29,7 @@ Examples:
 	cmd.AddCommand(newProfileListCmd())
 	cmd.AddCommand(newProfileServeCmd())
 	cmd.AddCommand(newProfileStopCmd())
+	cmd.AddCommand(newProfileSwitchCmd())
 	cmd.AddCommand(newProfileDeleteCmd())
 
 	return cmd
