@@ -11,6 +11,7 @@ func NewShowCmd() *cobra.Command {
 	}
 
 	cmd.AddCommand(newShowConfigCmd())
+	cmd.AddCommand(newShowPerfCmd())
 
 	return cmd
 }
