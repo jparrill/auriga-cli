@@ -31,6 +31,7 @@ Examples:
 	cmd.AddCommand(newProfileStopCmd())
 	cmd.AddCommand(newProfileSwitchCmd())
 	cmd.AddCommand(newProfileDeleteCmd())
+	cmd.AddCommand(newProfilePruneCmd())
 
 	return cmd
 }
