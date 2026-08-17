@@ -102,6 +102,7 @@ func initViper(cfgFile string) {
 	viper.SetDefault("llama_server.quant", config.DefaultQuant)
 	viper.SetDefault("llama_server.dense_port", 8090)
 	viper.SetDefault("llama_server.moe_port", 8091)
+	viper.SetDefault("llama_server.ctx_size", 131072)
 	viper.SetDefault("hermes.moe_profile", "local")
 	viper.SetDefault("hermes.dense_profile", "planning")
 	viper.SetDefault("benchmark.results_dir", config.DefaultResultsDir)

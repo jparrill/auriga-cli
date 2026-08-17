@@ -54,8 +54,8 @@ func TestNewProfileSwitchCmd_CtxSizeDefault(t *testing.T) {
 	cmd := newProfileSwitchCmd()
 
 	flag := cmd.Flags().Lookup("ctx-size")
-	if flag.DefValue != "65536" {
-		t.Errorf("When checking ctx-size default, got %q, want 65536", flag.DefValue)
+	if flag.DefValue != "131072" {
+		t.Errorf("When checking ctx-size default, got %q, want 131072", flag.DefValue)
 	}
 }
 
@@ -72,7 +72,7 @@ func TestRunProfileSwitch_ProfileNotFound(t *testing.T) {
 	viper.Reset()
 	defer viper.Reset()
 
-	err := runProfileSwitch("nonexistent", false, 65536)
+	err := runProfileSwitch("nonexistent", false, 131072)
 
 	if err == nil {
 		t.Error("When profile not found, it should return error")
@@ -89,7 +89,7 @@ func TestRunProfileSwitch_ModelFileMissing(t *testing.T) {
 	viper.Set("profiles.test-profile.model", "nonexistent.gguf")
 	viper.Set("llama_server.gguf_dir", "/tmp/auriga-test-nonexistent")
 
-	err := runProfileSwitch("test-profile", false, 65536)
+	err := runProfileSwitch("test-profile", false, 131072)
 
 	if err == nil {
 		t.Error("When model file missing, it should return error")
@@ -115,7 +115,7 @@ func TestRunProfileSwitch_MmprojFileMissing(t *testing.T) {
 	viper.Set("llama_server.gguf_dir", tmpDir)
 	viper.Set("llama_server.mmproj_dir", "/tmp/auriga-test-nonexistent")
 
-	err := runProfileSwitch("test-profile", false, 65536)
+	err := runProfileSwitch("test-profile", false, 131072)
 
 	if err == nil {
 		t.Error("When mmproj file missing, it should return error")
@@ -131,7 +131,7 @@ func TestBuildExecStart_BasicModel(t *testing.T) {
 
 	viper.Set("llama_server.bin", "/usr/bin/llama-server")
 
-	got := buildExecStart("/models/model.gguf", "", nil, 65536, 8090)
+	got := buildExecStart("/models/model.gguf", "", nil, 131072, 8090)
 
 	checks := []struct {
 		name string
@@ -143,7 +143,7 @@ func TestBuildExecStart_BasicModel(t *testing.T) {
 		{"When building ExecStart, it should have port", "--port 8090"},
 		{"When building ExecStart, it should have flash-attn", "--flash-attn on"},
 		{"When building ExecStart, it should have gpu-layers", "--gpu-layers 99"},
-		{"When building ExecStart, it should have ctx-size", "--ctx-size 65536"},
+		{"When building ExecStart, it should have ctx-size", "--ctx-size 131072"},
 	}
 
 	for _, c := range checks {
@@ -161,7 +161,7 @@ func TestBuildExecStart_WithMmproj(t *testing.T) {
 
 	viper.Set("llama_server.bin", "/usr/bin/llama-server")
 
-	got := buildExecStart("/models/model.gguf", "/models/mmproj.gguf", []string{"--jinja"}, 65536, 8090)
+	got := buildExecStart("/models/model.gguf", "/models/mmproj.gguf", []string{"--jinja"}, 131072, 8090)
 
 	if !strings.Contains(got, "--mmproj /models/mmproj.gguf") {
 		t.Errorf("When mmproj set, ExecStart should contain --mmproj, got: %s", got)
@@ -180,7 +180,7 @@ func TestBuildExecStart_WithExtraFlags(t *testing.T) {
 
 	viper.Set("llama_server.bin", "/usr/bin/llama-server")
 
-	got := buildExecStart("/models/model.gguf", "", []string{"--threads", "16"}, 65536, 8090)
+	got := buildExecStart("/models/model.gguf", "", []string{"--threads", "16"}, 131072, 8090)
 
 	if !strings.Contains(got, "--threads 16") {
 		t.Errorf("When extra flags set, ExecStart should contain them, got: %s", got)
@@ -206,7 +206,7 @@ func TestBuildExecStart_NoMmprojNoJinja(t *testing.T) {
 
 	viper.Set("llama_server.bin", "/usr/bin/llama-server")
 
-	got := buildExecStart("/models/model.gguf", "", nil, 65536, 8090)
+	got := buildExecStart("/models/model.gguf", "", nil, 131072, 8090)
 
 	if strings.Contains(got, "--mmproj") {
 		t.Errorf("When no mmproj, ExecStart should not have --mmproj, got: %s", got)
@@ -222,7 +222,7 @@ func TestBuildExecStart_MoePort(t *testing.T) {
 
 	viper.Set("llama_server.bin", "/usr/bin/llama-server")
 
-	got := buildExecStart("/models/moe-model.gguf", "", nil, 65536, 8091)
+	got := buildExecStart("/models/moe-model.gguf", "", nil, 131072, 8091)
 
 	if !strings.Contains(got, "--port 8091") {
 		t.Errorf("When MoE port, ExecStart should use port 8091, got: %s", got)
@@ -235,7 +235,7 @@ func TestBuildExecStart_CustomPort(t *testing.T) {
 
 	viper.Set("llama_server.bin", "/usr/bin/llama-server")
 
-	got := buildExecStart("/models/model.gguf", "", nil, 65536, 9000)
+	got := buildExecStart("/models/model.gguf", "", nil, 131072, 9000)
 
 	if !strings.Contains(got, "--port 9000") {
 		t.Errorf("When custom port override, ExecStart should use it, got: %s", got)
@@ -473,6 +473,45 @@ func TestWarnTypeMismatch_NoWarningWhenMatch(t *testing.T) {
 
 func TestWarnTypeMismatch_NoWarningWhenTypeEmpty(t *testing.T) {
 	warnTypeMismatch("test", "", "Qwen3.6-35B-A3B-Q8_0.gguf")
+}
+
+func TestProfileCtxSize_Default(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	viper.Set("profiles.test.model", "model.gguf")
+
+	got := profileCtxSize("test")
+	if got != 131072 {
+		t.Errorf("When no ctx_size configured, should return 131072, got %d", got)
+	}
+}
+
+func TestProfileCtxSize_GlobalOverride(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	viper.Set("profiles.test.model", "model.gguf")
+	viper.Set("llama_server.ctx_size", 65536)
+
+	got := profileCtxSize("test")
+	if got != 65536 {
+		t.Errorf("When global ctx_size set, should use it, got %d", got)
+	}
+}
+
+func TestProfileCtxSize_ProfileOverride(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	viper.Set("profiles.test.model", "model.gguf")
+	viper.Set("profiles.test.ctx_size", 32768)
+	viper.Set("llama_server.ctx_size", 65536)
+
+	got := profileCtxSize("test")
+	if got != 32768 {
+		t.Errorf("When profile ctx_size set, should override global, got %d", got)
+	}
 }
 
 func TestPrintHermesTip_MoeUsesLocalProfile(t *testing.T) {

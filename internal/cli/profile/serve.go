@@ -64,6 +64,17 @@ func detectModelType(modelName string) string {
 	return "dense"
 }
 
+func profileCtxSize(name string) int {
+	profileKey := fmt.Sprintf("profiles.%s", name)
+	if c := viper.GetInt(profileKey + ".ctx_size"); c > 0 {
+		return c
+	}
+	if c := viper.GetInt("llama_server.ctx_size"); c > 0 {
+		return c
+	}
+	return 131072
+}
+
 func warnTypeMismatch(name, configuredType, modelName string) {
 	detected := detectModelType(modelName)
 	if configuredType != "" && configuredType != detected {
@@ -83,18 +94,23 @@ func newProfileServeCmd() *cobra.Command {
 		Long: `Start llama-server with the model and optional mmproj from a configured profile.
 If the profile has vision (mmproj), --jinja is added automatically.
 
+Context size resolves: --ctx-size flag > profile ctx_size > llama_server.ctx_size > 131072.
+
 Examples:
   auriga profile serve qwen3.6-vision            # Foreground (Ctrl+C to stop)
   auriga profile serve qwen3.6-vision --daemon    # Background (use 'auriga profile stop' to stop)
-  auriga profile serve gemma4-12b-vision --ctx-size 131072`,
+  auriga profile serve gemma4-12b-vision --ctx-size 65536`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if !cmd.Flags().Changed("ctx-size") {
+				ctxSize = profileCtxSize(args[0])
+			}
 			return runProfileServe(args[0], daemon, ctxSize)
 		},
 	}
 
 	cmd.Flags().BoolVarP(&daemon, "daemon", "d", false, "Run in background")
-	cmd.Flags().IntVar(&ctxSize, "ctx-size", 65536, "Context window size for llama-server")
+	cmd.Flags().IntVar(&ctxSize, "ctx-size", 131072, "Context window size (default from config)")
 
 	return cmd
 }

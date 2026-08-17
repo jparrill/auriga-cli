@@ -31,18 +31,23 @@ func newProfileSwitchCmd() *cobra.Command {
 Files are verified before switching. Use --persistent to create a systemd
 user service that survives reboots.
 
+Context size resolves: --ctx-size flag > profile ctx_size > llama_server.ctx_size > 131072.
+
 Examples:
   auriga profile switch qwen3.6-vision
   auriga profile switch gemma4-26b --persistent
-  auriga profile switch qwen3-coder --ctx-size 131072 --persistent`,
+  auriga profile switch qwen3-coder --ctx-size 65536 --persistent`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if !cmd.Flags().Changed("ctx-size") {
+				ctxSize = profileCtxSize(args[0])
+			}
 			return runProfileSwitch(args[0], persistent, ctxSize)
 		},
 	}
 
 	cmd.Flags().BoolVar(&persistent, "persistent", false, "Create systemd user service for reboot persistence")
-	cmd.Flags().IntVar(&ctxSize, "ctx-size", 65536, "Context window size for llama-server")
+	cmd.Flags().IntVar(&ctxSize, "ctx-size", 131072, "Context window size (default from config)")
 
 	return cmd
 }
