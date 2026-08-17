@@ -32,7 +32,7 @@ type profileValidation struct {
 	Type      string
 	CtxSize   int
 	CtxMax    int
-	HasMTP    bool
+	SpecType  string
 	ModelSize int64
 	KVEst     int64
 	TotalEst  int64
@@ -138,7 +138,7 @@ func runProfileValidate() error {
 		}
 	}
 
-	profileTbl := ui.NewTable("Profiles", "STATUS", "PROFILE", "TYPE", "CTX", "MTP", "MEMORY")
+	profileTbl := ui.NewTable("Profiles", "STATUS", "PROFILE", "TYPE", "CTX", "SPEC", "MEMORY")
 	for _, v := range validations {
 		status := ui.SuccessStyle.Render("✓")
 		if len(v.Errors) > 0 {
@@ -157,12 +157,12 @@ func runProfileValidate() error {
 			memCol = fmt.Sprintf("%.1f GB", float64(v.TotalEst)/1e9)
 		}
 
-		mtpCol := "no"
-		if v.HasMTP {
-			mtpCol = ui.SuccessStyle.Render("yes")
+		specCol := "-"
+		if v.SpecType != "" {
+			specCol = ui.SuccessStyle.Render(v.SpecType)
 		}
 
-		profileTbl.AddRow(status, v.Name, v.Type, ctxCol, mtpCol, memCol)
+		profileTbl.AddRow(status, v.Name, v.Type, ctxCol, specCol, memCol)
 	}
 	profileTbl.Print()
 
@@ -312,7 +312,6 @@ func validateProfile(name, ggufDir string) profileValidation {
 	}
 
 	v.CtxMax = meta.CtxTrain
-	v.HasMTP = meta.HasMTP
 
 	if meta.CtxTrain > 0 && v.CtxSize > meta.CtxTrain {
 		v.Errors = append(v.Errors, fmt.Sprintf("ctx_size %d > model max %d", v.CtxSize, meta.CtxTrain))
@@ -352,6 +351,13 @@ func validateProfile(name, ggufDir string) profileValidation {
 		if !containsFlag(flags, "--model-draft") {
 			v.Warnings = append(v.Warnings, fmt.Sprintf("%s set but --model-draft not in flags", drafter.field))
 		}
+	}
+
+	if dflash != "" {
+		v.SpecType = "dflash"
+	}
+	if meta.HasMTP || mtpDrafter != "" || containsFlag(flags, "draft-mtp") {
+		v.SpecType = "mtp"
 	}
 
 	if containsFlag(flags, "draft-mtp") && !meta.HasMTP && mtpDrafter == "" {

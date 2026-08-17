@@ -28,7 +28,7 @@ type processInfo struct {
 	ModelType string
 	Managed   string
 	Health    string
-	MTP       bool
+	SpecType  string
 }
 
 func NewPsCmd() *cobra.Command {
@@ -94,17 +94,17 @@ func printLlamaServerDetail(procs []processInfo) {
 		return
 	}
 
-	tbl := ui.NewTable("llama-server instances", "PROFILE", "TYPE", "PORT", "MTP", "HEALTH", "MANAGED", "DETAILS")
+	tbl := ui.NewTable("llama-server instances", "PROFILE", "TYPE", "PORT", "SPEC", "HEALTH", "MANAGED", "DETAILS")
 	for _, s := range servers {
 		health := ui.ErrorStyle.Render(s.Health)
 		if s.Health == "healthy" {
 			health = ui.SuccessStyle.Render(s.Health)
 		}
-		mtp := "no"
-		if s.MTP {
-			mtp = ui.SuccessStyle.Render("yes")
+		spec := "-"
+		if s.SpecType != "" {
+			spec = ui.SuccessStyle.Render(s.SpecType)
 		}
-		tbl.AddRow(s.Profile, s.ModelType, s.Port, mtp, health, s.Managed, s.Extra)
+		tbl.AddRow(s.Profile, s.ModelType, s.Port, spec, health, s.Managed, s.Extra)
 	}
 	tbl.Print()
 }
@@ -230,7 +230,9 @@ func checkLlamaServers() []processInfo {
 
 			specType := extractFlag(args, "--spec-type")
 			if specType == "draft-mtp" {
-				p.MTP = true
+				p.SpecType = "mtp"
+			} else if extractFlag(args, "--model-draft") != "" {
+				p.SpecType = "dflash"
 			}
 
 			if port != "" {
