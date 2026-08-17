@@ -294,6 +294,54 @@ func TestBenchPort_MoETypeFromRunningModel(t *testing.T) {
 	}
 }
 
+func TestResolveSpecType_DFlash(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	viper.Set("profiles.glimmer.dflash", "dflash-kquant.gguf")
+
+	got := resolveSpecType("glimmer")
+	if got != "dflash" {
+		t.Errorf("When dflash set, spec should be dflash, got %q", got)
+	}
+}
+
+func TestResolveSpecType_MTPFromFlags(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	viper.Set("profiles.qwen.flags", []string{"--spec-type", "draft-mtp", "--spec-draft-n-max", "2"})
+
+	got := resolveSpecType("qwen")
+	if got != "mtp" {
+		t.Errorf("When draft-mtp in flags, spec should be mtp, got %q", got)
+	}
+}
+
+func TestResolveSpecType_MTPFromDrafter(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	viper.Set("profiles.gemma.mtp_drafter", "mtp-gemma.gguf")
+
+	got := resolveSpecType("gemma")
+	if got != "mtp" {
+		t.Errorf("When mtp_drafter set, spec should be mtp, got %q", got)
+	}
+}
+
+func TestResolveSpecType_None(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	viper.Set("profiles.plain.model", "model.gguf")
+
+	got := resolveSpecType("plain")
+	if got != "-" {
+		t.Errorf("When no spec config, should be -, got %q", got)
+	}
+}
+
 func TestPrintPerfResults_NoError(t *testing.T) {
 	results := []perfResult{
 		{

@@ -44,6 +44,7 @@ type perfResult struct {
 	Port      int
 	Profile   string
 	ModelType string
+	SpecType  string
 	Model     string
 	TTFT      time.Duration
 	NoThink   benchResult
@@ -208,11 +209,13 @@ func isPortHealthy(port int) bool {
 }
 
 func benchPort(port int, profile string) perfResult {
-	pType := viper.GetString(fmt.Sprintf("profiles.%s.type", profile))
+	profileKey := fmt.Sprintf("profiles.%s", profile)
+	pType := viper.GetString(profileKey + ".type")
 	if pType == "" {
-		pType = detectModelTypeShow(viper.GetString(fmt.Sprintf("profiles.%s.model", profile)))
+		pType = detectModelTypeShow(viper.GetString(profileKey + ".model"))
 	}
-	result := perfResult{Port: port, Profile: profile, ModelType: pType}
+	specType := resolveSpecType(profile)
+	result := perfResult{Port: port, Profile: profile, ModelType: pType, SpecType: specType}
 
 	ui.Info(fmt.Sprintf("Testing %s (port %d)...", profile, port))
 
@@ -343,15 +346,19 @@ func runBench(port int, thinking bool) benchResult {
 func printPerfResults(results []perfResult) {
 	fmt.Println()
 	tbl := ui.NewTable("Performance",
-		"PROFILE", "TYPE", "PORT", "MODEL",
+		"PROFILE", "TYPE", "PORT", "SPEC", "MODEL",
 		"TTFT",
 		"NO-THINK PROMPT", "NO-THINK GEN",
 		"THINK PROMPT", "THINK GEN",
 	)
 
 	for _, r := range results {
+		spec := r.SpecType
+		if spec != "-" {
+			spec = ui.SuccessStyle.Render(spec)
+		}
 		if r.Error != "" {
-			tbl.AddRow(r.Profile, "-", fmt.Sprintf("%d", r.Port), "-", "-", "-", "-", "-", "-")
+			tbl.AddRow(r.Profile, "-", fmt.Sprintf("%d", r.Port), spec, "-", "-", "-", "-", "-", "-")
 			continue
 		}
 
@@ -366,6 +373,7 @@ func printPerfResults(results []perfResult) {
 			r.Profile,
 			r.ModelType,
 			fmt.Sprintf("%d", r.Port),
+			spec,
 			r.Model,
 			ttft,
 			noThinkPrompt, noThinkGen,
@@ -373,6 +381,23 @@ func printPerfResults(results []perfResult) {
 		)
 	}
 	tbl.Print()
+}
+
+func resolveSpecType(profile string) string {
+	profileKey := fmt.Sprintf("profiles.%s", profile)
+	if viper.GetString(profileKey+".dflash") != "" {
+		return "dflash"
+	}
+	flags := viper.GetStringSlice(profileKey + ".flags")
+	for _, f := range flags {
+		if f == "draft-mtp" {
+			return "mtp"
+		}
+	}
+	if viper.GetString(profileKey+".mtp_drafter") != "" {
+		return "mtp"
+	}
+	return "-"
 }
 
 func fmtTokS(tokPerSec float64, err string) string {
