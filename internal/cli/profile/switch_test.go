@@ -161,13 +161,16 @@ func TestBuildExecStart_WithMmproj(t *testing.T) {
 
 	viper.Set("llama_server.bin", "/usr/bin/llama-server")
 
-	got := buildExecStart("/models/model.gguf", "/models/mmproj.gguf", nil, 65536, 8090)
+	got := buildExecStart("/models/model.gguf", "/models/mmproj.gguf", []string{"--jinja"}, 65536, 8090)
 
 	if !strings.Contains(got, "--mmproj /models/mmproj.gguf") {
 		t.Errorf("When mmproj set, ExecStart should contain --mmproj, got: %s", got)
 	}
 	if !strings.Contains(got, "--jinja") {
-		t.Errorf("When mmproj set, ExecStart should contain --jinja, got: %s", got)
+		t.Errorf("When mmproj set, ExecStart should contain --jinja via extraFlags, got: %s", got)
+	}
+	if strings.Count(got, "--jinja") > 1 {
+		t.Errorf("When mmproj set, --jinja should appear only once, got: %s", got)
 	}
 }
 

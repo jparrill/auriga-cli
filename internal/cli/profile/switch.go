@@ -197,7 +197,7 @@ func buildExecStart(modelPath, mmprojPath string, extraFlags []string, ctxSize, 
 	}
 
 	if mmprojPath != "" {
-		args = append(args, "--mmproj", mmprojPath, "--jinja")
+		args = append(args, "--mmproj", mmprojPath)
 	}
 	args = append(args, extraFlags...)
 
