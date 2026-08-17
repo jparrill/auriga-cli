@@ -136,7 +136,7 @@ func runProfileValidate() error {
 		}
 	}
 
-	profileTbl := ui.NewTable("Profiles", "STATUS", "PROFILE", "TYPE", "CTX", "MEMORY", "ISSUES")
+	profileTbl := ui.NewTable("Profiles", "STATUS", "PROFILE", "TYPE", "CTX", "MEMORY")
 	for _, v := range validations {
 		status := ui.SuccessStyle.Render("✓")
 		if len(v.Errors) > 0 {
@@ -155,21 +155,29 @@ func runProfileValidate() error {
 			memCol = fmt.Sprintf("%.1f GB", float64(v.TotalEst)/1e9)
 		}
 
-		issues := make([]string, 0, len(v.Errors)+len(v.Warnings))
-		for _, e := range v.Errors {
-			issues = append(issues, e)
-		}
-		for _, w := range v.Warnings {
-			issues = append(issues, w)
-		}
-		issueCol := "-"
-		if len(issues) > 0 {
-			issueCol = strings.Join(issues, "; ")
-		}
-
-		profileTbl.AddRow(status, v.Name, v.Type, ctxCol, memCol, issueCol)
+		profileTbl.AddRow(status, v.Name, v.Type, ctxCol, memCol)
 	}
 	profileTbl.Print()
+
+	var hasIssues bool
+	for _, v := range validations {
+		if len(v.Errors) > 0 || len(v.Warnings) > 0 {
+			hasIssues = true
+			break
+		}
+	}
+	if hasIssues {
+		fmt.Printf("  %s\n", ui.BoldStyle.Render("Issues"))
+		for _, v := range validations {
+			for _, e := range v.Errors {
+				fmt.Printf("  %s %s: %s\n", ui.ErrorStyle.Render("✗"), v.Name, e)
+			}
+			for _, w := range v.Warnings {
+				fmt.Printf("  %s %s: %s\n", ui.WarningStyle.Render("⚠"), v.Name, w)
+			}
+		}
+		fmt.Println()
+	}
 
 	// --- Dual-instance ---
 	if gtt > 0 && len(denseProfiles) > 0 && len(moeProfiles) > 0 {
