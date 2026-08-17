@@ -261,6 +261,39 @@ func TestResolveProfileForPort_MatchesRunningModel(t *testing.T) {
 	}
 }
 
+func TestResolveProfileForPort_MatchesFullPathModel(t *testing.T) {
+	srv := newTestServer("/home/user/models/gguf/Qwen3.6-35B-A3B-Q8_0.gguf")
+	defer srv.Close()
+	port := extractTestPort(t, srv)
+
+	viper.Reset()
+	defer viper.Reset()
+
+	viper.Set("profiles.qwen-vision.model", "Qwen3.6-35B-A3B-Q8_0.gguf")
+	viper.Set("profiles.qwen-vision.type", "moe")
+	viper.Set("profiles.qwen-vision.port", port)
+	viper.Set("llama_server.host", "http://localhost:8090")
+
+	profile := resolveProfileForPort(port)
+	if profile != "qwen-vision" {
+		t.Errorf("When server returns full path, should match by basename, got %q", profile)
+	}
+}
+
+func TestBenchPort_MoETypeFromRunningModel(t *testing.T) {
+	srv := newTestServer("/home/user/models/gguf/Qwen3.6-35B-A3B-Q8_0.gguf")
+	defer srv.Close()
+	port := extractTestPort(t, srv)
+
+	viper.Reset()
+	defer viper.Reset()
+
+	result := benchPort(port, fmt.Sprintf("port-%d", port))
+	if result.ModelType != "moe" {
+		t.Errorf("When running model has A3B pattern, type should be moe, got %q", result.ModelType)
+	}
+}
+
 func TestPrintPerfResults_NoError(t *testing.T) {
 	results := []perfResult{
 		{

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path/filepath"
 	"time"
 
 	"github.com/jparrill/auriga-cli/internal/llamaserver"
@@ -159,7 +160,7 @@ func resolveProfilePort(name string) int {
 }
 
 func resolveProfileForPort(port int) string {
-	runningModel := getRunningModel(port)
+	runningModel := filepath.Base(getRunningModel(port))
 	profiles := viper.GetStringMap("profiles")
 	for name := range profiles {
 		if resolveProfilePort(name) == port {
@@ -215,10 +216,13 @@ func benchPort(port int, profile string) perfResult {
 
 	ui.Info(fmt.Sprintf("Testing %s (port %d)...", profile, port))
 
-	// TTFT: measure time to first token via streaming
 	ttft, model := measureTTFT(port)
 	result.TTFT = ttft
 	result.Model = model
+
+	if result.ModelType == "dense" && model != "" {
+		result.ModelType = detectModelTypeShow(filepath.Base(model))
+	}
 
 	// No-think test
 	ui.Info("  without thinking...")
