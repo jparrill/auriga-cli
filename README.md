@@ -44,8 +44,15 @@ auriga serve list                                 # List available profiles
 auriga model list [--backend ollama|llama-server]  # List installed models + GGUFs
 auriga model ensure [--backend ...]               # Download missing models
 auriga model create --name X [--gguf|--modelfile]  # Create Ollama model from GGUF/Modelfile
-auriga benchmark list [--failed]                   # List meta-benchmark results
-auriga fix [--list] [--failed] [--model X]         # Interactive fix workflow with Pi
+auriga model prune                                # Interactive model cleanup (all backends)
+auriga profile list                               # List configured profiles with type/port
+auriga profile sync [--name X]                    # Download missing GGUF/mmproj from HuggingFace
+auriga profile prune [--dry-run]                  # Delete orphaned model files
+auriga profile serve <name> [--daemon]            # Start llama-server with a profile
+auriga profile switch <name> [--persistent]       # Switch to a different profile
+auriga profile stop [name]                        # Stop running llama-server instance(s)
+auriga benchmark list [--failed]                  # List meta-benchmark results
+auriga fix [--list] [--failed] [--model X]        # Interactive fix workflow with Pi
 ```
 
 ## Configuration
@@ -65,16 +72,30 @@ llama_server:
   dense_port: 8090
   moe_port: 8091
 
+  reasoning_budget: 4096
+
 profiles:
   qwen3.6-27b:
     type: dense
-    model: Qwen3.6-27B-UD-Q8_K_XL.gguf
-    flags: [--cache-type-k, q8_0, --cache-type-v, q8_0]
+    repo: unsloth/Qwen3.6-27B-MTP-GGUF
+    model: Qwen3.6-27B-Q8_0.gguf
+    mmproj: mmproj-BF16.gguf
+    flags: [--jinja, --cache-type-k, q8_0, --cache-type-v, q8_0,
+            --spec-type, draft-mtp, --spec-draft-n-max, "2"]
   qwen3.6-vision:
     type: moe
+    repo: unsloth/Qwen3.6-35B-A3B-MTP-GGUF
     model: Qwen3.6-35B-A3B-Q8_0.gguf
-    mmproj: Qwen3.6-35B-A3B-mmproj-BF16.gguf
-    flags: [--jinja]
+    mmproj: mmproj-BF16.gguf
+    flags: [--jinja, --cache-type-k, q8_0, --cache-type-v, q8_0,
+            --spec-type, draft-mtp, --spec-draft-n-max, "2"]
+  gemma4-12b-vision:
+    type: dense
+    repo: unsloth/gemma-4-12b-it-GGUF
+    model: gemma-4-12b-it-Q8_0.gguf
+    mmproj: mmproj-BF16.gguf
+    mtp_drafter: mtp-gemma-4-12b-it.gguf
+    flags: [--spec-type, draft-mtp, --spec-draft-n-max, "2"]
 
 benchmark:
   results_dir: ~/Projects/auriga-lab/results
@@ -156,9 +177,40 @@ auriga fix --model gemma4
 
 Flow: select result → start model (Ollama or llama-server) → generate `.pi/SYSTEM.md` → launch Pi → work → cleanup.
 
+## Speculative Decoding (MTP)
+
+Auriga profiles support Multi-Token Prediction for ~2x inference speedup on Strix Halo:
+
+```yaml
+# Built-in MTP (model includes draft heads)
+flags: [--spec-type, draft-mtp, --spec-draft-n-max, "2"]
+
+# External MTP drafter (separate GGUF)
+mtp_drafter: mtp-gemma-4-12b-it.gguf
+mtp_drafter_repo: unsloth/gemma-4-12b-it-GGUF  # for sync
+flags: [--spec-type, draft-mtp, --spec-draft-n-max, "2"]
+
+# DFlash drafter (Muse Glimmer)
+dflash: dflash-kquant.gguf
+```
+
+MTP + vision (mmproj) works on llama-server b9601+: text turns get MTP acceleration, vision turns auto-fallback.
+
+## Profile Cleanup
+
+```bash
+# Preview orphaned files (not referenced by any profile)
+auriga profile prune --dry-run
+
+# Delete orphaned files
+auriga profile prune
+```
+
+Scans `gguf_dir` and `mmproj_dir` for `.gguf` files not referenced by any profile's `model`, `mmproj`, `mtp_drafter`, or `dflash` fields.
+
 ## Hardware
 
-Designed for AMD Ryzen AI Max+ 395 with 128GB LPDDR5x unified memory (108GB GTT for GPU). Runs MoE models at 50-90 tok/s and dense models at 15-22 tok/s.
+Designed for AMD Ryzen AI Max+ 395 with 128GB LPDDR5x unified memory (108GB GTT for GPU). With MTP enabled: dense Q8 models at ~30-44 tok/s, MoE models at ~50-90 tok/s.
 
 ## License
 
