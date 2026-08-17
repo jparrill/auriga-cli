@@ -594,3 +594,92 @@ func TestPrintHermesTip_NoOutputWhenUnconfigured(t *testing.T) {
 		t.Error("When hermes profiles not configured, should not print tip")
 	}
 }
+
+func TestInjectDrafterFlags_MTPDrafter(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	ggufDir := t.TempDir()
+	drafterPath := filepath.Join(ggufDir, "drafter.gguf")
+	os.WriteFile(drafterPath, []byte("drafter"), 0644)
+
+	viper.Set("profiles.test.mtp_drafter", "drafter.gguf")
+
+	flags := []string{"--spec-type", "draft-mtp"}
+	result := injectDrafterFlags("test", ggufDir, flags)
+
+	if !containsFlag(result, "--model-draft") {
+		t.Errorf("When mtp_drafter on disk, should inject --model-draft, got %v", result)
+	}
+	if result[len(result)-1] != drafterPath {
+		t.Errorf("--model-draft should point to full path, got %v", result)
+	}
+}
+
+func TestInjectDrafterFlags_DFlash(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	ggufDir := t.TempDir()
+	dflashPath := filepath.Join(ggufDir, "dflash.gguf")
+	os.WriteFile(dflashPath, []byte("dflash"), 0644)
+
+	viper.Set("profiles.test.dflash", "dflash.gguf")
+
+	flags := []string{"--jinja"}
+	result := injectDrafterFlags("test", ggufDir, flags)
+
+	if !containsFlag(result, "--model-draft") {
+		t.Errorf("When dflash on disk, should inject --model-draft, got %v", result)
+	}
+}
+
+func TestInjectDrafterFlags_AlreadyPresent(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	ggufDir := t.TempDir()
+	os.WriteFile(filepath.Join(ggufDir, "drafter.gguf"), []byte("drafter"), 0644)
+
+	viper.Set("profiles.test.mtp_drafter", "drafter.gguf")
+
+	flags := []string{"--model-draft", "/custom/path.gguf"}
+	result := injectDrafterFlags("test", ggufDir, flags)
+
+	count := 0
+	for _, f := range result {
+		if f == "--model-draft" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("When --model-draft already in flags, should not duplicate, got %d occurrences", count)
+	}
+}
+
+func TestInjectDrafterFlags_DrafterMissing(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	ggufDir := t.TempDir()
+	viper.Set("profiles.test.mtp_drafter", "missing.gguf")
+
+	flags := []string{"--spec-type", "draft-mtp"}
+	result := injectDrafterFlags("test", ggufDir, flags)
+
+	if containsFlag(result, "--model-draft") {
+		t.Errorf("When drafter not on disk, should not inject --model-draft, got %v", result)
+	}
+}
+
+func TestInjectDrafterFlags_NoDrafter(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	flags := []string{"--jinja"}
+	result := injectDrafterFlags("test", t.TempDir(), flags)
+
+	if len(result) != 1 || result[0] != "--jinja" {
+		t.Errorf("When no drafter configured, flags should be unchanged, got %v", result)
+	}
+}

@@ -182,6 +182,7 @@ func runProfileServe(name string, daemon bool, ctxSize int) error {
 	if mmprojFile != "" && !containsFlag(extraFlags, "--jinja") {
 		extraFlags = append(extraFlags, "--jinja")
 	}
+	extraFlags = injectDrafterFlags(name, ggufDir, extraFlags)
 
 	ctx := context.Background()
 	proc, err := llamaserver.StartWithCtx(ctx, modelPath, mmprojPath, extraFlags, ctxSize, port)
@@ -209,6 +210,27 @@ func runProfileServe(name string, daemon bool, ctxSize int) error {
 	llamaserver.Stop(proc)
 
 	return nil
+}
+
+func injectDrafterFlags(name, ggufDir string, flags []string) []string {
+	if containsFlag(flags, "--model-draft") {
+		return flags
+	}
+	profileKey := fmt.Sprintf("profiles.%s", name)
+	for _, field := range []string{".mtp_drafter", ".dflash"} {
+		drafter := viper.GetString(profileKey + field)
+		if drafter == "" {
+			continue
+		}
+		drafterPath := filepath.Join(ggufDir, drafter)
+		if _, err := os.Stat(drafterPath); err != nil {
+			ui.Warn(fmt.Sprintf("%s not found: %s — skipping --model-draft", field[1:], drafter))
+			continue
+		}
+		flags = append(flags, "--model-draft", drafterPath)
+		return flags
+	}
+	return flags
 }
 
 func containsFlag(flags []string, target string) bool {

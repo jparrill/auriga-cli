@@ -355,9 +355,21 @@ func validateProfile(name, ggufDir string) profileValidation {
 
 	if dflash != "" {
 		v.SpecType = "dflash"
+		dflashRepo := viper.GetString(profileKey + ".dflash_repo")
+		repo := viper.GetString(profileKey + ".repo")
+		if dflashRepo == "" && repo == "" {
+			v.Warnings = append(v.Warnings, "dflash set but no dflash_repo or repo for sync")
+		}
 	}
 	if meta.HasMTP || mtpDrafter != "" || containsFlag(flags, "draft-mtp") {
 		v.SpecType = "mtp"
+	}
+	if mtpDrafter != "" {
+		mtpDrafterRepo := viper.GetString(profileKey + ".mtp_drafter_repo")
+		repo := viper.GetString(profileKey + ".repo")
+		if mtpDrafterRepo == "" && repo == "" {
+			v.Warnings = append(v.Warnings, "mtp_drafter set but no mtp_drafter_repo or repo for sync")
+		}
 	}
 
 	if containsFlag(flags, "draft-mtp") && !meta.HasMTP && mtpDrafter == "" {

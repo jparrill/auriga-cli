@@ -100,6 +100,7 @@ Profile fields:
 - `mtp_drafter` — external MTP drafter GGUF filename (optional, stored in gguf_dir)
 - `mtp_drafter_repo` — HuggingFace repo for the drafter (optional, for sync)
 - `dflash` — DFlash drafter GGUF filename (optional, stored in gguf_dir)
+- `dflash_repo` — HuggingFace repo for the DFlash drafter (optional, for sync; falls back to `repo`)
 
 ### Profile Lifecycle
 

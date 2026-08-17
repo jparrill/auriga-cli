@@ -96,18 +96,54 @@ func SyncProfile(name string) SyncResult {
 		}
 	}
 
-	if modelExists && mmprojExists {
+	mtpDrafter := viper.GetString(fmt.Sprintf("profiles.%s.mtp_drafter", name))
+	mtpDrafterRepo := viper.GetString(fmt.Sprintf("profiles.%s.mtp_drafter_repo", name))
+	dflash := viper.GetString(fmt.Sprintf("profiles.%s.dflash", name))
+	dflashRepo := viper.GetString(fmt.Sprintf("profiles.%s.dflash_repo", name))
+
+	mtpDrafterExists := true
+	if mtpDrafter != "" {
+		drafterPath := filepath.Join(ggufDir, mtpDrafter)
+		mtpDrafterExists = fileExists(drafterPath)
+		if mtpDrafterExists && mtpDrafterRepo != "" {
+			mtpDrafterExists = verifyFile(name, mtpDrafter, drafterPath, mtpDrafterRepo, mtpDrafter)
+		}
+	}
+
+	dflashExists := true
+	if dflash != "" {
+		dflashPath := filepath.Join(ggufDir, dflash)
+		dflashExists = fileExists(dflashPath)
+		if dflashExists {
+			drafterRepo := dflashRepo
+			if drafterRepo == "" {
+				drafterRepo = repo
+			}
+			if drafterRepo != "" {
+				dflashExists = verifyFile(name, dflash, dflashPath, drafterRepo, dflash)
+			}
+		}
+	}
+
+	allPresent := modelExists && mmprojExists && mtpDrafterExists && dflashExists
+	if allPresent {
 		ui.Ok(fmt.Sprintf("[%s] All files present", name))
 		return SyncResult{Name: name, Status: "skip", Detail: "all files present"}
 	}
 
-	if repo == "" {
+	if repo == "" && mtpDrafterRepo == "" && dflashRepo == "" {
 		var missing []string
 		if !modelExists {
 			missing = append(missing, model)
 		}
 		if !mmprojExists {
 			missing = append(missing, mmproj)
+		}
+		if !mtpDrafterExists {
+			missing = append(missing, mtpDrafter)
+		}
+		if !dflashExists {
+			missing = append(missing, dflash)
 		}
 		detail := fmt.Sprintf("no repo — manual download needed: %s", strings.Join(missing, ", "))
 		ui.Warn(fmt.Sprintf("[%s] %s", name, detail))
@@ -149,6 +185,40 @@ func SyncProfile(name string) SyncResult {
 			}
 		}
 		ui.Ok(fmt.Sprintf("[%s] Downloaded: %s", name, mmproj))
+	}
+
+	for _, drafter := range []struct{ file, drafterRepo, field string }{
+		{mtpDrafter, mtpDrafterRepo, "mtp_drafter"},
+		{dflash, dflashRepo, "dflash"},
+	} {
+		if drafter.file == "" {
+			continue
+		}
+		drafterPath := filepath.Join(ggufDir, drafter.file)
+		if fileExists(drafterPath) {
+			continue
+		}
+		sourceRepo := drafter.drafterRepo
+		if sourceRepo == "" {
+			sourceRepo = repo
+		}
+		if sourceRepo == "" {
+			ui.Warn(fmt.Sprintf("[%s] %s missing, no repo to download from", name, drafter.field))
+			continue
+		}
+		url := huggingface.DownloadURL(sourceRepo, drafter.file)
+		label := fmt.Sprintf("[%s] %s", name, drafter.file)
+		err := exec.DownloadFile(ctx, url, drafterPath, label, exec.DownloadOpts{Resume: true})
+		if err != nil {
+			detail := fmt.Sprintf("%s download failed: %v", drafter.field, err)
+			ui.Fail(fmt.Sprintf("[%s] %s", name, detail))
+			return SyncResult{Name: name, Status: "fail", Detail: detail}
+		}
+		info, _ := os.Stat(drafterPath)
+		if info != nil {
+			sizeGB := float64(info.Size()) / (1024 * 1024 * 1024)
+			ui.Ok(fmt.Sprintf("[%s] Downloaded: %s (%.1f GB)", name, drafter.file, sizeGB))
+		}
 	}
 
 	return SyncResult{Name: name, Status: "ok", Detail: "downloaded"}

@@ -436,6 +436,124 @@ func TestValidateProfile_MTPFlagNoHeads(t *testing.T) {
 	}
 }
 
+func TestValidateProfile_SpecTypeMTP(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	ggufDir := t.TempDir()
+	modelPath := writeTestGGUFWithTensors(t, map[string]any{
+		"general.architecture":  "test",
+		"test.context_length":   uint32(131072),
+		"test.block_count":      uint32(32),
+		"test.head_count_kv":    uint32(8),
+		"test.head_count":       uint32(32),
+		"test.embedding_length": uint32(4096),
+	}, []string{"blk.0.weight", "nextn0.blk.0.ffn_gate.weight"})
+	modelFile := filepath.Base(modelPath)
+	os.Rename(modelPath, filepath.Join(ggufDir, modelFile))
+
+	viper.Set("profiles.mtp-model.model", modelFile)
+	viper.Set("profiles.mtp-model.flags", []string{"--spec-type", "draft-mtp"})
+
+	v := validateProfile("mtp-model", ggufDir)
+
+	if v.SpecType != "mtp" {
+		t.Errorf("When model has MTP tensors, SpecType should be mtp, got %q", v.SpecType)
+	}
+}
+
+func TestValidateProfile_SpecTypeDFlash(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	ggufDir := t.TempDir()
+	modelPath := writeTestGGUF(t, map[string]any{
+		"general.architecture":  "test",
+		"test.context_length":   uint32(131072),
+		"test.block_count":      uint32(32),
+		"test.head_count_kv":    uint32(8),
+		"test.head_count":       uint32(32),
+		"test.embedding_length": uint32(4096),
+	})
+	modelFile := filepath.Base(modelPath)
+	os.Rename(modelPath, filepath.Join(ggufDir, modelFile))
+
+	viper.Set("profiles.dflash-model.model", modelFile)
+	viper.Set("profiles.dflash-model.dflash", "drafter.gguf")
+	viper.Set("profiles.dflash-model.repo", "org/repo")
+
+	v := validateProfile("dflash-model", ggufDir)
+
+	if v.SpecType != "dflash" {
+		t.Errorf("When dflash set, SpecType should be dflash, got %q", v.SpecType)
+	}
+}
+
+func TestValidateProfile_DFlashNoRepo(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	ggufDir := t.TempDir()
+	modelPath := writeTestGGUF(t, map[string]any{
+		"general.architecture":  "test",
+		"test.context_length":   uint32(131072),
+		"test.block_count":      uint32(32),
+		"test.head_count_kv":    uint32(8),
+		"test.head_count":       uint32(32),
+		"test.embedding_length": uint32(4096),
+	})
+	modelFile := filepath.Base(modelPath)
+	os.Rename(modelPath, filepath.Join(ggufDir, modelFile))
+
+	viper.Set("profiles.norepo.model", modelFile)
+	viper.Set("profiles.norepo.dflash", "drafter.gguf")
+
+	v := validateProfile("norepo", ggufDir)
+
+	found := false
+	for _, w := range v.Warnings {
+		if w == "dflash set but no dflash_repo or repo for sync" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected dflash repo warning, got warnings: %v", v.Warnings)
+	}
+}
+
+func TestValidateProfile_MTPDrafterNoRepo(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	ggufDir := t.TempDir()
+	modelPath := writeTestGGUF(t, map[string]any{
+		"general.architecture":  "test",
+		"test.context_length":   uint32(131072),
+		"test.block_count":      uint32(32),
+		"test.head_count_kv":    uint32(8),
+		"test.head_count":       uint32(32),
+		"test.embedding_length": uint32(4096),
+	})
+	modelFile := filepath.Base(modelPath)
+	os.Rename(modelPath, filepath.Join(ggufDir, modelFile))
+
+	viper.Set("profiles.norepo.model", modelFile)
+	viper.Set("profiles.norepo.mtp_drafter", "drafter.gguf")
+	viper.Set("profiles.norepo.flags", []string{"--model-draft", "/path/drafter.gguf"})
+
+	v := validateProfile("norepo", ggufDir)
+
+	found := false
+	for _, w := range v.Warnings {
+		if w == "mtp_drafter set but no mtp_drafter_repo or repo for sync" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected mtp_drafter repo warning, got warnings: %v", v.Warnings)
+	}
+}
+
 func TestNewProfileValidateCmd_Registration(t *testing.T) {
 	cmd := NewProfileCmd()
 	found := false

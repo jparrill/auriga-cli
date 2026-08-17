@@ -121,6 +121,7 @@ func runProfileSwitch(name string, persistent bool, ctxSize int) error {
 	if mmprojFile != "" && !containsFlag(extraFlags, "--jinja") {
 		extraFlags = append(extraFlags, "--jinja")
 	}
+	extraFlags = injectDrafterFlags(name, ggufDir, extraFlags)
 
 	if persistent {
 		return switchPersistent(name, modelPath, mmprojPath, extraFlags, ctxSize, port)

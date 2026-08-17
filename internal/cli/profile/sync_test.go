@@ -321,6 +321,66 @@ func TestFileExists(t *testing.T) {
 	}
 }
 
+func TestSyncProfile_AllFilesWithDrafters(t *testing.T) {
+	ggufDir := t.TempDir()
+	mmprojDir := t.TempDir()
+
+	os.WriteFile(filepath.Join(ggufDir, "model.gguf"), []byte("model"), 0644)
+	os.WriteFile(filepath.Join(mmprojDir, "mmproj.gguf"), []byte("mmproj"), 0644)
+	os.WriteFile(filepath.Join(ggufDir, "drafter.gguf"), []byte("drafter"), 0644)
+
+	viper.Reset()
+	defer viper.Reset()
+	viper.Set("profiles.full.repo", "org/repo")
+	viper.Set("profiles.full.model", "model.gguf")
+	viper.Set("profiles.full.mmproj", "mmproj.gguf")
+	viper.Set("profiles.full.dflash", "drafter.gguf")
+	viper.Set("llama_server.gguf_dir", ggufDir)
+	viper.Set("llama_server.mmproj_dir", mmprojDir)
+
+	result := SyncProfile("full")
+
+	if result.Status != "skip" {
+		t.Errorf("When all files including drafter present, status should be 'skip', got %q", result.Status)
+	}
+}
+
+func TestSyncProfile_DFlashMissing_NoRepo(t *testing.T) {
+	ggufDir := t.TempDir()
+	os.WriteFile(filepath.Join(ggufDir, "model.gguf"), []byte("model"), 0644)
+
+	viper.Reset()
+	defer viper.Reset()
+	viper.Set("profiles.nodrafter.model", "model.gguf")
+	viper.Set("profiles.nodrafter.dflash", "missing-drafter.gguf")
+	viper.Set("llama_server.gguf_dir", ggufDir)
+	viper.Set("llama_server.mmproj_dir", t.TempDir())
+
+	result := SyncProfile("nodrafter")
+
+	if result.Status != "warn" {
+		t.Errorf("When dflash missing and no repo, status should be 'warn', got %q", result.Status)
+	}
+}
+
+func TestSyncProfile_MTPDrafterMissing_NoRepo(t *testing.T) {
+	ggufDir := t.TempDir()
+	os.WriteFile(filepath.Join(ggufDir, "model.gguf"), []byte("model"), 0644)
+
+	viper.Reset()
+	defer viper.Reset()
+	viper.Set("profiles.nodrafter.model", "model.gguf")
+	viper.Set("profiles.nodrafter.mtp_drafter", "missing-mtp.gguf")
+	viper.Set("llama_server.gguf_dir", ggufDir)
+	viper.Set("llama_server.mmproj_dir", t.TempDir())
+
+	result := SyncProfile("nodrafter")
+
+	if result.Status != "warn" {
+		t.Errorf("When mtp_drafter missing and no repo, status should be 'warn', got %q", result.Status)
+	}
+}
+
 func TestSyncResult_Fields(t *testing.T) {
 	r := SyncResult{Name: "test", Status: "ok", Detail: "downloaded"}
 	if r.Name != "test" {
