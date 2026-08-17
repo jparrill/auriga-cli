@@ -159,26 +159,6 @@ func runProfileValidate() error {
 	}
 	profileTbl.Print()
 
-	var hasIssues bool
-	for _, v := range validations {
-		if len(v.Errors) > 0 || len(v.Warnings) > 0 {
-			hasIssues = true
-			break
-		}
-	}
-	if hasIssues {
-		fmt.Printf("  %s\n", ui.BoldStyle.Render("Issues"))
-		for _, v := range validations {
-			for _, e := range v.Errors {
-				fmt.Printf("  %s %s: %s\n", ui.ErrorStyle.Render("✗"), v.Name, e)
-			}
-			for _, w := range v.Warnings {
-				fmt.Printf("  %s %s: %s\n", ui.WarningStyle.Render("⚠"), v.Name, w)
-			}
-		}
-		fmt.Println()
-	}
-
 	// --- Dual-instance ---
 	if gtt > 0 && len(denseProfiles) > 0 && len(moeProfiles) > 0 {
 		gttLabel := fmt.Sprintf("Dual-Instance Fit (GTT: %.1f GB)", float64(gtt)/1e9)
@@ -209,6 +189,27 @@ func runProfileValidate() error {
 		dualTbl.Print()
 	} else if gtt == 0 {
 		ui.Warn("GTT not available — skipping dual-instance checks")
+		fmt.Println()
+	}
+
+	// --- Issues summary ---
+	var hasIssues bool
+	for _, v := range validations {
+		if len(v.Errors) > 0 || len(v.Warnings) > 0 {
+			hasIssues = true
+			break
+		}
+	}
+	if hasIssues {
+		fmt.Printf("  %s\n", ui.BoldStyle.Render("Issues"))
+		for _, v := range validations {
+			for _, e := range v.Errors {
+				fmt.Printf("  %s %s: %s\n", ui.ErrorStyle.Render("✗"), v.Name, e)
+			}
+			for _, w := range v.Warnings {
+				fmt.Printf("  %s %s: %s\n", ui.WarningStyle.Render("⚠"), v.Name, w)
+			}
+		}
 		fmt.Println()
 	}
 
