@@ -6,7 +6,7 @@ Go CLI for managing LLM models, profiles, benchmarks on a local AMD AI server.
 
 ```bash
 make build          # Build for current platform
-make deploy         # Cross-compile to Linux and deploy to auriga
+make deploy-remote  # Cross-compile to Linux and deploy to auriga
 go test ./... -short  # Run tests
 go vet ./...        # Lint
 ```
@@ -56,6 +56,26 @@ Port resolution chain:
 profile.port (explicit override) > type-derived port (dense/moe) > dense_port > 8090
 ```
 
+### Context Size Convention
+
+Context size defaults maximize usable context while ensuring dual-instance (dense + MoE) fits in 108GB GTT.
+
+Resolution chain:
+```
+--ctx-size flag > profiles.X.ctx_size > llama_server.ctx_size > 131072
+```
+
+Guidelines:
+- **Dense models**: 65536 (65K). Dense models are larger per-param, conserve memory for MoE on the other port.
+- **MoE models**: 131072 (131K) minimum. Use 262144 (262K) when the model supports it AND dual-instance fits.
+- Qwen3.6 MoE (35B-A3B): supports 262K, fits in dual with any dense model.
+- Qwen3-Coder-Next (46GB Q4): 131K only — 262K too tight for dual with large dense models.
+- gemma4/ornith MoE: 131K (architecture max).
+
+Memory estimation for dual-instance:
+- Model size + KV cache (Q8: ~64KB/token for MoE with GQA, ~128KB for dense)
+- Both must fit within 108GB GTT total
+
 ### Naming Conventions
 
 - PID files: `/tmp/auriga-llama-server-{port}.pid`
@@ -75,6 +95,7 @@ Profile fields:
 - `mmproj` — multimodal projector (optional)
 - `type` — `dense` or `moe` (auto-detected from model name if omitted)
 - `port` — explicit port override (optional)
+- `ctx_size` — context window size override (optional, see Context Size below)
 - `flags` — extra llama-server flags
 - `mtp_drafter` — external MTP drafter GGUF filename (optional, stored in gguf_dir)
 - `mtp_drafter_repo` — HuggingFace repo for the drafter (optional, for sync)
@@ -84,3 +105,4 @@ Profile fields:
 
 - `auriga profile sync` — downloads missing model/mmproj files from HuggingFace
 - `auriga profile prune` — detects and deletes orphaned .gguf files not referenced by any profile (checks model, mmproj, mtp_drafter, dflash fields)
+- `auriga profile validate` — checks ctx_size vs model max (from GGUF metadata), estimates memory (model + KV cache + drafters), validates dual-instance fit against GTT, detects missing files (model, mmproj, drafters) and mtp_drafter/dflash without --model-draft

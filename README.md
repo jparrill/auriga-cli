@@ -51,6 +51,7 @@ auriga profile prune [--dry-run]                  # Delete orphaned model files
 auriga profile serve <name> [--daemon]            # Start llama-server with a profile
 auriga profile switch <name> [--persistent]       # Switch to a different profile
 auriga profile stop [name]                        # Stop running llama-server instance(s)
+auriga profile validate                           # Validate configs vs model caps + GTT memory
 auriga benchmark list [--failed]                  # List meta-benchmark results
 auriga fix [--list] [--failed] [--model X]        # Interactive fix workflow with Pi
 ```
@@ -71,12 +72,14 @@ llama_server:
   quant: Q4_K_M
   dense_port: 8090
   moe_port: 8091
+  ctx_size: 131072          # global default, overridden per-profile
 
   reasoning_budget: 4096
 
 profiles:
   qwen3.6-27b:
     type: dense
+    ctx_size: 65536           # dense: conserve memory for MoE on other port
     repo: unsloth/Qwen3.6-27B-MTP-GGUF
     model: Qwen3.6-27B-Q8_0.gguf
     mmproj: mmproj-BF16.gguf
@@ -84,6 +87,7 @@ profiles:
             --spec-type, draft-mtp, --spec-draft-n-max, "2"]
   qwen3.6-vision:
     type: moe
+    ctx_size: 262144          # Qwen3.6 MoE supports 262K, fits in dual
     repo: unsloth/Qwen3.6-35B-A3B-MTP-GGUF
     model: Qwen3.6-35B-A3B-Q8_0.gguf
     mmproj: mmproj-BF16.gguf
@@ -91,6 +95,7 @@ profiles:
             --spec-type, draft-mtp, --spec-draft-n-max, "2"]
   gemma4-12b-vision:
     type: dense
+    ctx_size: 65536
     repo: unsloth/gemma-4-12b-it-GGUF
     model: gemma-4-12b-it-Q8_0.gguf
     mmproj: mmproj-BF16.gguf
