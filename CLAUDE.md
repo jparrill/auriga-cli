@@ -102,8 +102,26 @@ Profile fields:
 - `dflash` — DFlash drafter GGUF filename (optional, stored in gguf_dir)
 - `dflash_repo` — HuggingFace repo for the DFlash drafter (optional, for sync; falls back to `repo`)
 
+### Drafter Auto-Injection
+
+`profile serve` and `profile switch` auto-inject `--model-draft <path>` when:
+- `mtp_drafter` or `dflash` is set in the profile config
+- The drafter file exists on disk in `gguf_dir`
+- `--model-draft` is not already in the profile's flags
+
+Both commands verify drafter file existence before starting and show DFlash/MTP Drafter in the confirmation panel.
+
+### Drafter Auto-Discovery
+
+`profile create --dflash` and `profile setup --dflash` auto-discover dflash drafter GGUFs:
+- Calls `huggingface.ResolveDFlash(repo)` to find files with "dflash" in name + `.gguf` extension
+- Downloads the drafter to `gguf_dir` (setup) or suggests `profile sync` (create)
+- Writes the `dflash` field to the profile config
+
 ### Profile Lifecycle
 
-- `auriga profile sync` — downloads missing model/mmproj files from HuggingFace
+- `auriga profile sync` — downloads missing model/mmproj/drafter files from HuggingFace (uses `dflash_repo` > `repo` fallback for dflash, `mtp_drafter_repo` > `repo` for mtp_drafter)
 - `auriga profile prune` — detects and deletes orphaned .gguf files not referenced by any profile (checks model, mmproj, mtp_drafter, dflash fields)
-- `auriga profile validate` — checks ctx_size vs model max (from GGUF metadata), estimates memory (model + KV cache + drafters), validates dual-instance fit against GTT, detects missing files (model, mmproj, drafters) and mtp_drafter/dflash without --model-draft
+- `auriga profile validate` — checks ctx_size vs model max (from GGUF metadata), estimates memory (model + KV cache + drafters), validates dual-instance fit against GTT, detects missing files (model, mmproj, drafters), warns on mtp_drafter/dflash without repo for sync
+- `auriga profile list` — shows SPEC column (mtp/dflash/- based on config flags and drafter fields)
+- `auriga ps` — shows SPEC column for running llama-server instances (detected from process args)

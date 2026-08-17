@@ -45,8 +45,10 @@ auriga model list [--backend ollama|llama-server]  # List installed models + GGU
 auriga model ensure [--backend ...]               # Download missing models
 auriga model create --name X [--gguf|--modelfile]  # Create Ollama model from GGUF/Modelfile
 auriga model prune                                # Interactive model cleanup (all backends)
-auriga profile list                               # List configured profiles with type/port
-auriga profile sync [--name X]                    # Download missing GGUF/mmproj from HuggingFace
+auriga profile list                               # List configured profiles with type/port/spec
+auriga profile create <name> --repo X [--dflash]  # Create profile from HuggingFace repo
+auriga profile setup <name> --repo X [--dflash]   # Resolve + download + create profile
+auriga profile sync [--name X]                    # Download missing GGUF/mmproj/drafters
 auriga profile prune [--dry-run]                  # Delete orphaned model files
 auriga profile serve <name> [--daemon]            # Start llama-server with a profile
 auriga profile switch <name> [--persistent]       # Switch to a different profile
@@ -101,6 +103,15 @@ profiles:
     mmproj: mmproj-BF16.gguf
     mtp_drafter: mtp-gemma-4-12b-it.gguf
     flags: [--spec-type, draft-mtp, --spec-draft-n-max, "2"]
+  muse-glimmer-30b:
+    type: dense
+    ctx_size: 65536
+    repo: meta-models/Muse-Glimmer-30B-GGUF
+    model: muse-glimmer-30B-kquant-17gb.gguf
+    mmproj: mmproj-kquant.gguf
+    dflash: dflash-kquant.gguf
+    flags: [--jinja, --cache-type-k, q8_0, --cache-type-v, q8_0,
+            --batch-size, "2048", --ubatch-size, "512", --threads, "16"]
 
 benchmark:
   results_dir: ~/Projects/auriga-lab/results
@@ -182,12 +193,12 @@ auriga fix --model gemma4
 
 Flow: select result → start model (Ollama or llama-server) → generate `.pi/SYSTEM.md` → launch Pi → work → cleanup.
 
-## Speculative Decoding (MTP)
+## Speculative Decoding
 
-Auriga profiles support Multi-Token Prediction for ~2x inference speedup on Strix Halo:
+Auriga profiles support three types of speculative decoding for faster inference on Strix Halo:
 
 ```yaml
-# Built-in MTP (model includes draft heads)
+# Built-in MTP (model includes draft heads) — ~2x speedup
 flags: [--spec-type, draft-mtp, --spec-draft-n-max, "2"]
 
 # External MTP drafter (separate GGUF)
@@ -197,7 +208,29 @@ flags: [--spec-type, draft-mtp, --spec-draft-n-max, "2"]
 
 # DFlash drafter (Muse Glimmer)
 dflash: dflash-kquant.gguf
+dflash_repo: meta-models/Muse-Glimmer-30B-GGUF  # optional, falls back to repo
 ```
+
+The `--model-draft` flag is auto-injected at serve/switch time when `mtp_drafter` or `dflash` is configured and the file exists on disk.
+
+### Auto-Discovery
+
+DFlash drafters can be auto-discovered from HuggingFace repos:
+
+```bash
+# Create profile with dflash auto-discovery
+auriga profile create muse-glimmer --repo meta-models/Muse-Glimmer-30B-GGUF --vision --dflash
+
+# Full setup (resolve + download + configure) with dflash
+auriga profile setup muse-glimmer --repo meta-models/Muse-Glimmer-30B-GGUF --vision --dflash
+```
+
+### SPEC Column
+
+`profile list`, `profile validate`, and `ps` show a SPEC column indicating speculative decoding type:
+- `mtp` — built-in MTP heads, external MTP drafter, or `--spec-type draft-mtp` in flags
+- `dflash` — DFlash drafter configured
+- `-` — no speculative decoding
 
 MTP + vision (mmproj) works on llama-server b9601+: text turns get MTP acceleration, vision turns auto-fallback.
 
