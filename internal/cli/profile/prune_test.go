@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/jparrill/auriga-cli/internal/config"
 	"github.com/spf13/viper"
 )
 
@@ -299,5 +300,131 @@ func TestNewProfilePruneCmd(t *testing.T) {
 	}
 	if !found {
 		t.Error("When building profile command, it should register prune subcommand")
+	}
+}
+
+func TestRunProfilePrune_Integration(t *testing.T) {
+	tests := []struct {
+		name          string
+		dryRun        bool
+		profiles      map[string]any
+		ggufFiles     []string
+		mmprojFiles   []string
+		wantSurvive   []string // files that MUST still exist after prune
+		wantDeleted   []string // files that should be deleted
+	}{
+		{
+			name:   "When referenced and orphaned files exist, it should only delete orphans",
+			dryRun: false,
+			profiles: map[string]any{
+				"active-dense": map[string]any{
+					"model":  "Qwen3.6-27B-Q8_0.gguf",
+					"mmproj": "mmproj-BF16.gguf",
+				},
+				"active-mtp": map[string]any{
+					"model":       "gemma-4-12b-Q8_0.gguf",
+					"mtp_drafter": "mtp-gemma-4-12b.gguf",
+				},
+			},
+			ggufFiles:   []string{"Qwen3.6-27B-Q8_0.gguf", "gemma-4-12b-Q8_0.gguf", "mtp-gemma-4-12b.gguf", "old-model-Q4.gguf", "stale-draft.gguf"},
+			mmprojFiles: []string{"mmproj-BF16.gguf", "old-mmproj.gguf"},
+			wantSurvive: []string{"Qwen3.6-27B-Q8_0.gguf", "gemma-4-12b-Q8_0.gguf", "mtp-gemma-4-12b.gguf", "mmproj-BF16.gguf"},
+			wantDeleted: []string{"old-model-Q4.gguf", "stale-draft.gguf", "old-mmproj.gguf"},
+		},
+		{
+			name:   "When dry-run is true, it should not delete anything",
+			dryRun: true,
+			profiles: map[string]any{
+				"active": map[string]any{
+					"model": "keep.gguf",
+				},
+			},
+			ggufFiles:   []string{"keep.gguf", "orphan.gguf"},
+			wantSurvive: []string{"keep.gguf", "orphan.gguf"},
+			wantDeleted: []string{},
+		},
+		{
+			name:   "When all files are referenced, it should delete nothing",
+			dryRun: false,
+			profiles: map[string]any{
+				"a": map[string]any{"model": "model-a.gguf"},
+				"b": map[string]any{"model": "model-b.gguf"},
+			},
+			ggufFiles:   []string{"model-a.gguf", "model-b.gguf"},
+			wantSurvive: []string{"model-a.gguf", "model-b.gguf"},
+			wantDeleted: []string{},
+		},
+		{
+			name:   "When dflash file is referenced, it should not be deleted",
+			dryRun: false,
+			profiles: map[string]any{
+				"muse": map[string]any{
+					"model":  "muse-glimmer.gguf",
+					"mmproj": "mmproj-kquant.gguf",
+					"dflash": "dflash-kquant.gguf",
+				},
+			},
+			ggufFiles:   []string{"muse-glimmer.gguf", "dflash-kquant.gguf", "orphan.gguf"},
+			mmprojFiles: []string{"mmproj-kquant.gguf"},
+			wantSurvive: []string{"muse-glimmer.gguf", "dflash-kquant.gguf", "mmproj-kquant.gguf"},
+			wantDeleted: []string{"orphan.gguf"},
+		},
+		{
+			name:   "When multiple profiles share same mmproj, it should survive",
+			dryRun: false,
+			profiles: map[string]any{
+				"p1": map[string]any{"model": "m1.gguf", "mmproj": "shared.gguf"},
+				"p2": map[string]any{"model": "m2.gguf", "mmproj": "shared.gguf"},
+			},
+			ggufFiles:   []string{"m1.gguf", "m2.gguf"},
+			mmprojFiles: []string{"shared.gguf", "old-proj.gguf"},
+			wantSurvive: []string{"m1.gguf", "m2.gguf", "shared.gguf"},
+			wantDeleted: []string{"old-proj.gguf"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ggufDir := t.TempDir()
+			mmprojDir := t.TempDir()
+
+			for _, f := range tt.ggufFiles {
+				os.WriteFile(filepath.Join(ggufDir, f), make([]byte, 1024), 0644)
+			}
+			for _, f := range tt.mmprojFiles {
+				os.WriteFile(filepath.Join(mmprojDir, f), make([]byte, 512), 0644)
+			}
+
+			viper.Reset()
+			viper.Set("llama_server.gguf_dir", ggufDir)
+			viper.Set("llama_server.mmproj_dir", mmprojDir)
+			viper.Set("profiles", tt.profiles)
+
+			oldYes := config.Yes
+			config.Yes = true
+			defer func() { config.Yes = oldYes }()
+
+			_ = runProfilePrune(tt.dryRun)
+
+			for _, f := range tt.wantSurvive {
+				path := filepath.Join(ggufDir, f)
+				if _, err := os.Stat(path); err != nil {
+					path = filepath.Join(mmprojDir, f)
+					if _, err := os.Stat(path); err != nil {
+						t.Errorf("referenced file was deleted: %s", f)
+					}
+				}
+			}
+
+			for _, f := range tt.wantDeleted {
+				path := filepath.Join(ggufDir, f)
+				if _, err := os.Stat(path); err == nil {
+					path = filepath.Join(mmprojDir, f)
+					if _, err := os.Stat(path); err == nil {
+						t.Errorf("orphaned file was NOT deleted: %s", f)
+					}
+				}
+			}
+		})
 	}
 }
