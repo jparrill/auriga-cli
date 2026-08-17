@@ -289,6 +289,76 @@ func TestIsGGUFIntType(t *testing.T) {
 	}
 }
 
+func TestValidateConfigSchema_RequiredMissing(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	viper.Set("profiles.test.model", "model.gguf")
+
+	checks := validateConfigSchema(viper.GetStringMap("profiles"))
+
+	missingKeys := map[string]bool{}
+	for _, c := range checks {
+		if c.Status == "missing" {
+			missingKeys[c.Key] = true
+		}
+	}
+	if !missingKeys["llama_server.bin"] {
+		t.Error("When bin not set, should report missing")
+	}
+	if !missingKeys["llama_server.gguf_dir"] {
+		t.Error("When gguf_dir not set, should report missing")
+	}
+}
+
+func TestValidateConfigSchema_AllSet(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	viper.Set("llama_server.bin", "/usr/bin/llama-server")
+	viper.Set("llama_server.gguf_dir", "/models")
+	viper.Set("llama_server.mmproj_dir", "/mmproj")
+	viper.Set("llama_server.dense_port", 8090)
+	viper.Set("llama_server.moe_port", 8091)
+	viper.Set("llama_server.ctx_size", 131072)
+	viper.Set("llama_server.gtt_bytes", 112742891520)
+	viper.Set("profiles.p1.model", "m.gguf")
+	viper.Set("profiles.p1.repo", "org/repo")
+	viper.Set("profiles.p1.type", "dense")
+	viper.Set("profiles.p1.ctx_size", 65536)
+
+	checks := validateConfigSchema(viper.GetStringMap("profiles"))
+
+	for _, c := range checks {
+		if c.Status != "ok" {
+			t.Errorf("When all set, %s should be ok, got %s", c.Key, c.Status)
+		}
+	}
+}
+
+func TestValidateConfigSchema_ProfileRecommended(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	viper.Set("profiles.noextra.model", "m.gguf")
+	viper.Set("profiles.noextra.repo", "org/repo")
+
+	checks := validateConfigSchema(viper.GetStringMap("profiles"))
+
+	recommended := map[string]bool{}
+	for _, c := range checks {
+		if c.Status == "recommended" {
+			recommended[c.Key] = true
+		}
+	}
+	if !recommended["profiles.noextra.type"] {
+		t.Error("When type not set, should recommend it")
+	}
+	if !recommended["profiles.noextra.ctx_size"] {
+		t.Error("When ctx_size not set, should recommend it")
+	}
+}
+
 func TestNewProfileValidateCmd_Registration(t *testing.T) {
 	cmd := NewProfileCmd()
 	found := false

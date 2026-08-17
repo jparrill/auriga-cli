@@ -57,21 +57,62 @@ Examples:
 	}
 }
 
+type configCheck struct {
+	Key      string
+	Status   string // "ok", "missing", "recommended"
+	Detail   string
+}
+
+var requiredGlobalKeys = []struct {
+	key     string
+	reason  string
+}{
+	{"llama_server.bin", "llama-server binary path"},
+	{"llama_server.gguf_dir", "GGUF model directory"},
+}
+
+var recommendedGlobalKeys = []struct {
+	key     string
+	reason  string
+}{
+	{"llama_server.mmproj_dir", "multimodal projector directory"},
+	{"llama_server.dense_port", "dense model port"},
+	{"llama_server.moe_port", "MoE model port"},
+	{"llama_server.ctx_size", "global default context size"},
+	{"llama_server.gtt_bytes", "GPU memory for validation (auto-detected on Linux)"},
+}
+
+var requiredProfileKeys = []string{"model", "repo"}
+var recommendedProfileKeys = []string{"type", "ctx_size"}
+
 func runProfileValidate() error {
 	ggufDir := config.ExpandHome(viper.GetString("llama_server.gguf_dir"))
 	profiles := viper.GetStringMap("profiles")
+	hasErrors := false
+
+	// --- Config schema ---
+	schemaChecks := validateConfigSchema(profiles)
+	schemaTbl := ui.NewTable("Config Schema", "STATUS", "KEY", "DETAIL")
+	for _, c := range schemaChecks {
+		status := ui.SuccessStyle.Render("✓")
+		if c.Status == "missing" {
+			status = ui.ErrorStyle.Render("✗")
+			hasErrors = true
+		} else if c.Status == "recommended" {
+			status = ui.WarningStyle.Render("⚠")
+		}
+		schemaTbl.AddRow(status, c.Key, c.Detail)
+	}
+	schemaTbl.Print()
 
 	if len(profiles) == 0 {
 		ui.Warn("No profiles configured")
+		printLegend()
 		return nil
 	}
 
+	// --- Profiles ---
 	gtt := readGTTTotal()
-	if gtt > 0 {
-		ui.Info(fmt.Sprintf("GTT: %.1f GB", float64(gtt)/1e9))
-	} else {
-		ui.Warn("GTT not available — skipping dual-instance memory checks")
-	}
 
 	var names []string
 	for name := range profiles {
@@ -81,7 +122,6 @@ func runProfileValidate() error {
 
 	var validations []profileValidation
 	var denseProfiles, moeProfiles []profileValidation
-	hasErrors := false
 
 	for _, name := range names {
 		v := validateProfile(name, ggufDir)
@@ -96,35 +136,45 @@ func runProfileValidate() error {
 		}
 	}
 
-	fmt.Println()
+	profileTbl := ui.NewTable("Profiles", "STATUS", "PROFILE", "TYPE", "CTX", "MEMORY", "ISSUES")
 	for _, v := range validations {
-		prefix := "✓"
+		status := ui.SuccessStyle.Render("✓")
 		if len(v.Errors) > 0 {
-			prefix = "✗"
+			status = ui.ErrorStyle.Render("✗")
 		} else if len(v.Warnings) > 0 {
-			prefix = "⚠"
+			status = ui.WarningStyle.Render("⚠")
 		}
 
-		parts := []string{fmt.Sprintf("%s %s [%s]", prefix, v.Name, v.Type)}
+		ctxCol := "-"
 		if v.CtxMax > 0 {
-			parts = append(parts, fmt.Sprintf("ctx=%dk/%dk", v.CtxSize/1024, v.CtxMax/1024))
+			ctxCol = fmt.Sprintf("%dk/%dk", v.CtxSize/1024, v.CtxMax/1024)
 		}
+
+		memCol := "-"
 		if v.TotalEst > 0 {
-			parts = append(parts, fmt.Sprintf("~%.1f GB", float64(v.TotalEst)/1e9))
+			memCol = fmt.Sprintf("%.1f GB", float64(v.TotalEst)/1e9)
 		}
-		fmt.Printf("  %s\n", strings.Join(parts, ", "))
 
-		for _, w := range v.Warnings {
-			fmt.Printf("    ⚠ %s\n", w)
-		}
+		issues := make([]string, 0, len(v.Errors)+len(v.Warnings))
 		for _, e := range v.Errors {
-			fmt.Printf("    ✗ %s\n", e)
+			issues = append(issues, e)
 		}
-	}
+		for _, w := range v.Warnings {
+			issues = append(issues, w)
+		}
+		issueCol := "-"
+		if len(issues) > 0 {
+			issueCol = strings.Join(issues, "; ")
+		}
 
+		profileTbl.AddRow(status, v.Name, v.Type, ctxCol, memCol, issueCol)
+	}
+	profileTbl.Print()
+
+	// --- Dual-instance ---
 	if gtt > 0 && len(denseProfiles) > 0 && len(moeProfiles) > 0 {
-		fmt.Println()
-		ui.Info("Dual-instance fit (dense + MoE):")
+		gttLabel := fmt.Sprintf("Dual-Instance Fit (GTT: %.1f GB)", float64(gtt)/1e9)
+		dualTbl := ui.NewTable(gttLabel, "STATUS", "DENSE", "MOE", "COMBINED", "USAGE")
 		for _, d := range denseProfiles {
 			for _, m := range moeProfiles {
 				if d.TotalEst == 0 || m.TotalEst == 0 {
@@ -132,25 +182,81 @@ func runProfileValidate() error {
 				}
 				combined := d.TotalEst + m.TotalEst
 				pct := float64(combined) / float64(gtt) * 100
-				prefix := "✓"
+				status := ui.SuccessStyle.Render("✓")
 				if combined > gtt {
-					prefix = "✗"
+					status = ui.ErrorStyle.Render("✗")
 					hasErrors = true
 				} else if pct > 85 {
-					prefix = "⚠"
+					status = ui.WarningStyle.Render("⚠")
 				}
-				fmt.Printf("  %s %s + %s = %.1f / %.1f GB (%.0f%%)\n",
-					prefix, d.Name, m.Name,
-					float64(combined)/1e9, float64(gtt)/1e9, pct)
+				dualTbl.AddRow(
+					status,
+					d.Name,
+					m.Name,
+					fmt.Sprintf("%.1f GB", float64(combined)/1e9),
+					fmt.Sprintf("%.0f%%", pct),
+				)
 			}
 		}
+		dualTbl.Print()
+	} else if gtt == 0 {
+		ui.Warn("GTT not available — skipping dual-instance checks")
+		fmt.Println()
 	}
 
+	printLegend()
+
 	if hasErrors {
-		fmt.Println()
 		return fmt.Errorf("validation found errors")
 	}
 	return nil
+}
+
+func validateConfigSchema(profiles map[string]any) []configCheck {
+	var checks []configCheck
+
+	for _, req := range requiredGlobalKeys {
+		if viper.GetString(req.key) != "" {
+			checks = append(checks, configCheck{Key: req.key, Status: "ok", Detail: req.reason})
+		} else {
+			checks = append(checks, configCheck{Key: req.key, Status: "missing", Detail: req.reason + " (required)"})
+		}
+	}
+
+	for _, rec := range recommendedGlobalKeys {
+		if viper.Get(rec.key) != nil {
+			checks = append(checks, configCheck{Key: rec.key, Status: "ok", Detail: rec.reason})
+		} else {
+			checks = append(checks, configCheck{Key: rec.key, Status: "recommended", Detail: rec.reason + " (recommended)"})
+		}
+	}
+
+	for name := range profiles {
+		prefix := fmt.Sprintf("profiles.%s", name)
+		for _, key := range requiredProfileKeys {
+			full := prefix + "." + key
+			if viper.GetString(full) != "" {
+				continue
+			}
+			checks = append(checks, configCheck{Key: full, Status: "missing", Detail: "required"})
+		}
+		for _, key := range recommendedProfileKeys {
+			full := prefix + "." + key
+			if viper.Get(full) != nil {
+				continue
+			}
+			checks = append(checks, configCheck{Key: full, Status: "recommended", Detail: "recommended for explicit control"})
+		}
+	}
+
+	return checks
+}
+
+func printLegend() {
+	fmt.Printf("  %s = ok   %s = warning   %s = error\n\n",
+		ui.SuccessStyle.Render("✓"),
+		ui.WarningStyle.Render("⚠"),
+		ui.ErrorStyle.Render("✗"))
 }
 
 func validateProfile(name, ggufDir string) profileValidation {
