@@ -672,6 +672,98 @@ func TestInjectDrafterFlags_DrafterMissing(t *testing.T) {
 	}
 }
 
+func TestRunProfileSwitch_DFlashFileMissing(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	tmpDir := t.TempDir()
+	modelFile := filepath.Join(tmpDir, "model.gguf")
+	os.WriteFile(modelFile, []byte("fake model"), 0644)
+
+	viper.Set("profiles.test-profile.model", "model.gguf")
+	viper.Set("profiles.test-profile.dflash", "dflash-missing.gguf")
+	viper.Set("llama_server.gguf_dir", tmpDir)
+
+	err := runProfileSwitch("test-profile", false, 131072)
+
+	if err == nil {
+		t.Error("When dflash file missing, it should return error")
+	}
+	if !strings.Contains(err.Error(), "dflash drafter not found") {
+		t.Errorf("When dflash missing, error should mention dflash, got: %v", err)
+	}
+}
+
+func TestRunProfileSwitch_MTPDrafterFileMissing(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	tmpDir := t.TempDir()
+	modelFile := filepath.Join(tmpDir, "model.gguf")
+	os.WriteFile(modelFile, []byte("fake model"), 0644)
+
+	viper.Set("profiles.test-profile.model", "model.gguf")
+	viper.Set("profiles.test-profile.mtp_drafter", "mtp-missing.gguf")
+	viper.Set("llama_server.gguf_dir", tmpDir)
+
+	err := runProfileSwitch("test-profile", false, 131072)
+
+	if err == nil {
+		t.Error("When mtp_drafter file missing, it should return error")
+	}
+	if !strings.Contains(err.Error(), "mtp_drafter not found") {
+		t.Errorf("When mtp_drafter missing, error should mention mtp_drafter, got: %v", err)
+	}
+}
+
+func TestRunProfileServe_DFlashFileMissing(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	tmpDir := t.TempDir()
+	modelFile := filepath.Join(tmpDir, "model.gguf")
+	os.WriteFile(modelFile, []byte("fake model"), 0644)
+
+	viper.Set("profiles.test-profile.model", "model.gguf")
+	viper.Set("profiles.test-profile.dflash", "dflash-missing.gguf")
+	viper.Set("llama_server.gguf_dir", tmpDir)
+	viper.Set("llama_server.host", "http://localhost:8090")
+	viper.Set("llama_server.dense_port", 8090)
+
+	err := runProfileServe("test-profile", false, 131072)
+
+	if err == nil {
+		t.Error("When dflash file missing, serve should return error")
+	}
+	if !strings.Contains(err.Error(), "dflash drafter not found") {
+		t.Errorf("When dflash missing, error should mention dflash, got: %v", err)
+	}
+}
+
+func TestRunProfileServe_MTPDrafterFileMissing(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	tmpDir := t.TempDir()
+	modelFile := filepath.Join(tmpDir, "model.gguf")
+	os.WriteFile(modelFile, []byte("fake model"), 0644)
+
+	viper.Set("profiles.test-profile.model", "model.gguf")
+	viper.Set("profiles.test-profile.mtp_drafter", "mtp-missing.gguf")
+	viper.Set("llama_server.gguf_dir", tmpDir)
+	viper.Set("llama_server.host", "http://localhost:8090")
+	viper.Set("llama_server.dense_port", 8090)
+
+	err := runProfileServe("test-profile", false, 131072)
+
+	if err == nil {
+		t.Error("When mtp_drafter file missing, serve should return error")
+	}
+	if !strings.Contains(err.Error(), "mtp_drafter not found") {
+		t.Errorf("When mtp_drafter missing, error should mention mtp_drafter, got: %v", err)
+	}
+}
+
 func TestInjectDrafterFlags_NoDrafter(t *testing.T) {
 	viper.Reset()
 	defer viper.Reset()

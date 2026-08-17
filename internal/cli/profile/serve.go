@@ -140,6 +140,8 @@ func runProfileServe(name string, daemon bool, ctxSize int) error {
 	}
 
 	mmprojFile := viper.GetString(profileKey + ".mmproj")
+	dflashFile := viper.GetString(profileKey + ".dflash")
+	mtpDrafterFile := viper.GetString(profileKey + ".mtp_drafter")
 	ggufDir := config.ExpandHome(viper.GetString("llama_server.gguf_dir"))
 	mmprojDir := config.ExpandHome(viper.GetString("llama_server.mmproj_dir"))
 
@@ -153,6 +155,20 @@ func runProfileServe(name string, daemon bool, ctxSize int) error {
 		mmprojPath = filepath.Join(mmprojDir, mmprojFile)
 		if _, err := os.Stat(mmprojPath); err != nil {
 			return fmt.Errorf("mmproj not found: %s\nRun: auriga model ensure --profile %s", mmprojPath, name)
+		}
+	}
+
+	if dflashFile != "" {
+		dflashPath := filepath.Join(ggufDir, dflashFile)
+		if _, err := os.Stat(dflashPath); err != nil {
+			return fmt.Errorf("dflash drafter not found: %s\nRun: auriga profile sync --name %s", dflashPath, name)
+		}
+	}
+
+	if mtpDrafterFile != "" {
+		mtpPath := filepath.Join(ggufDir, mtpDrafterFile)
+		if _, err := os.Stat(mtpPath); err != nil {
+			return fmt.Errorf("mtp_drafter not found: %s\nRun: auriga profile sync --name %s", mtpPath, name)
 		}
 	}
 
@@ -170,6 +186,12 @@ func runProfileServe(name string, daemon bool, ctxSize int) error {
 	}
 	if mmprojFile != "" {
 		params = append(params, ui.OrderedParam{Key: "Vision", Value: mmprojFile})
+	}
+	if dflashFile != "" {
+		params = append(params, ui.OrderedParam{Key: "DFlash", Value: dflashFile})
+	}
+	if mtpDrafterFile != "" {
+		params = append(params, ui.OrderedParam{Key: "MTP Drafter", Value: mtpDrafterFile})
 	}
 	params = append(params, ui.OrderedParam{Key: "Port", Value: fmt.Sprintf("%d", port)})
 

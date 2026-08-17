@@ -76,6 +76,23 @@ func runProfileSwitch(name string, persistent bool, ctxSize int) error {
 		}
 	}
 
+	dflashFile := viper.GetString(profileKey + ".dflash")
+	mtpDrafterFile := viper.GetString(profileKey + ".mtp_drafter")
+
+	if dflashFile != "" {
+		dflashPath := filepath.Join(ggufDir, dflashFile)
+		if _, err := os.Stat(dflashPath); err != nil {
+			return fmt.Errorf("dflash drafter not found: %s\nRun: auriga profile sync --name %s", dflashPath, name)
+		}
+	}
+
+	if mtpDrafterFile != "" {
+		mtpPath := filepath.Join(ggufDir, mtpDrafterFile)
+		if _, err := os.Stat(mtpPath); err != nil {
+			return fmt.Errorf("mtp_drafter not found: %s\nRun: auriga profile sync --name %s", mtpPath, name)
+		}
+	}
+
 	repo := viper.GetString(profileKey + ".repo")
 	if repo != "" {
 		if !verifyFile(name, modelFile, modelPath, repo, modelFile) {
@@ -85,6 +102,26 @@ func runProfileSwitch(name string, persistent bool, ctxSize int) error {
 			originalName := repoFilename(mmprojFile, repo)
 			if !verifyFile(name, mmprojFile, mmprojPath, repo, originalName) {
 				return fmt.Errorf("mmproj verification failed — run: auriga profile sync --name %s", name)
+			}
+		}
+		if dflashFile != "" {
+			dflashPath := filepath.Join(ggufDir, dflashFile)
+			dflashRepo := viper.GetString(profileKey + ".dflash_repo")
+			if dflashRepo == "" {
+				dflashRepo = repo
+			}
+			if !verifyFile(name, dflashFile, dflashPath, dflashRepo, dflashFile) {
+				return fmt.Errorf("dflash drafter verification failed — run: auriga profile sync --name %s", name)
+			}
+		}
+		if mtpDrafterFile != "" {
+			mtpPath := filepath.Join(ggufDir, mtpDrafterFile)
+			mtpRepo := viper.GetString(profileKey + ".mtp_drafter_repo")
+			if mtpRepo == "" {
+				mtpRepo = repo
+			}
+			if !verifyFile(name, mtpDrafterFile, mtpPath, mtpRepo, mtpDrafterFile) {
+				return fmt.Errorf("mtp_drafter verification failed — run: auriga profile sync --name %s", name)
 			}
 		}
 	}
@@ -107,6 +144,12 @@ func runProfileSwitch(name string, persistent bool, ctxSize int) error {
 	}
 	if mmprojFile != "" {
 		params = append(params, ui.OrderedParam{Key: "Vision", Value: mmprojFile})
+	}
+	if dflashFile != "" {
+		params = append(params, ui.OrderedParam{Key: "DFlash", Value: dflashFile})
+	}
+	if mtpDrafterFile != "" {
+		params = append(params, ui.OrderedParam{Key: "MTP Drafter", Value: mtpDrafterFile})
 	}
 	params = append(params, ui.OrderedParam{Key: "Port", Value: fmt.Sprintf("%d", port)})
 
