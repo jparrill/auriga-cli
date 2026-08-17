@@ -17,6 +17,7 @@ type createOpts struct {
 	Repo   string
 	Model  string
 	Vision bool
+	DFlash bool
 	Type   string
 	Port   int
 }
@@ -43,6 +44,7 @@ Examples:
 	cmd.Flags().StringVar(&opts.Repo, "repo", "", "HuggingFace repo (e.g., unsloth/gemma-4-12b-it-GGUF)")
 	cmd.Flags().StringVar(&opts.Model, "model", "", "GGUF filename (auto-resolved from repo if omitted)")
 	cmd.Flags().BoolVar(&opts.Vision, "vision", false, "Enable vision (auto-discover mmproj from repo)")
+	cmd.Flags().BoolVar(&opts.DFlash, "dflash", false, "Enable DFlash drafter (auto-discover from repo)")
 	cmd.Flags().StringVar(&opts.Type, "type", "", "Model type: dense or moe (auto-detected from model name if omitted)")
 	cmd.Flags().IntVar(&opts.Port, "port", 0, "Port override (default: derived from type)")
 	cmd.MarkFlagRequired("repo")
@@ -99,6 +101,19 @@ func runProfileCreate(name string, opts *createOpts) error {
 		ui.Ok(fmt.Sprintf("MMProj: %s (%.0f MB)", mmprojFile, sizeMB))
 	}
 
+	var dflashFile string
+	if opts.DFlash {
+		ui.Info("Resolving dflash drafter...")
+		var err error
+		var size int64
+		dflashFile, size, err = huggingface.ResolveDFlash(opts.Repo)
+		if err != nil {
+			return fmt.Errorf("cannot resolve dflash: %w (this model may not have a dflash drafter)", err)
+		}
+		sizeMB := float64(size) / (1024 * 1024)
+		ui.Ok(fmt.Sprintf("DFlash: %s (%.0f MB)", dflashFile, sizeMB))
+	}
+
 	modelType := opts.Type
 	if modelType == "" {
 		modelType = detectModelType(modelFile)
@@ -115,6 +130,9 @@ func runProfileCreate(name string, opts *createOpts) error {
 	} else {
 		params = append(params, ui.OrderedParam{Key: "Vision", Value: "no"})
 	}
+	if dflashFile != "" {
+		params = append(params, ui.OrderedParam{Key: "DFlash", Value: dflashFile})
+	}
 	if opts.Port > 0 {
 		params = append(params, ui.OrderedParam{Key: "Port", Value: fmt.Sprintf("%d (override)", opts.Port)})
 	}
@@ -128,6 +146,7 @@ func runProfileCreate(name string, opts *createOpts) error {
 		Repo:   opts.Repo,
 		Model:  modelFile,
 		MMProj: mmprojFile,
+		DFlash: dflashFile,
 		Type:   modelType,
 		Port:   opts.Port,
 	}
@@ -151,7 +170,13 @@ func runProfileCreate(name string, opts *createOpts) error {
 	if mmprojFile != "" {
 		if _, err := os.Stat(filepath.Join(mmprojDir, mmprojFile)); err != nil {
 			ui.Warn(fmt.Sprintf("MMProj not downloaded yet: %s", mmprojFile))
-			ui.Info(fmt.Sprintf("Run: auriga model ensure --profile %s", name))
+			ui.Info("Run: auriga profile sync --name " + name)
+		}
+	}
+	if dflashFile != "" {
+		if _, err := os.Stat(filepath.Join(ggufDir, dflashFile)); err != nil {
+			ui.Warn(fmt.Sprintf("DFlash not downloaded yet: %s", dflashFile))
+			ui.Info("Run: auriga profile sync --name " + name)
 		}
 	}
 

@@ -54,6 +54,34 @@ func TestResolveMMProj_NotFound(t *testing.T) {
 	}
 }
 
+func TestResolveDFlash(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping network test")
+	}
+
+	filename, size, err := ResolveDFlash("meta-models/Muse-Glimmer-30B-GGUF")
+	if err != nil {
+		t.Fatalf("ResolveDFlash failed: %v", err)
+	}
+	if !strings.Contains(strings.ToLower(filename), "dflash") {
+		t.Errorf("expected dflash file, got %s", filename)
+	}
+	if size == 0 {
+		t.Error("expected non-zero size")
+	}
+}
+
+func TestResolveDFlash_NotFound(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping network test")
+	}
+
+	_, _, err := ResolveDFlash("unsloth/gemma-4-12b-it-GGUF")
+	if err == nil {
+		t.Error("expected error for model without dflash")
+	}
+}
+
 func TestDownloadURL(t *testing.T) {
 	url := DownloadURL("unsloth/gemma-4-12b-it-GGUF", "model.gguf")
 	expected := "https://huggingface.co/unsloth/gemma-4-12b-it-GGUF/resolve/main/model.gguf"

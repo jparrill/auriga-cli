@@ -13,6 +13,7 @@ type ProfileConfig struct {
 	Repo   string   `yaml:"repo,omitempty"`
 	Model  string   `yaml:"model"`
 	MMProj string   `yaml:"mmproj,omitempty"`
+	DFlash string   `yaml:"dflash,omitempty"`
 	Type   string   `yaml:"type,omitempty"`
 	Port   int      `yaml:"port,omitempty"`
 	Flags  []string `yaml:"flags,omitempty"`
@@ -77,6 +78,9 @@ func buildProfileBlock(name string, pc ProfileConfig) []string {
 	if pc.MMProj != "" {
 		lines = append(lines, fmt.Sprintf("    mmproj: %s", pc.MMProj))
 	}
+	if pc.DFlash != "" {
+		lines = append(lines, fmt.Sprintf("    dflash: %s", pc.DFlash))
+	}
 	if pc.Type != "" {
 		lines = append(lines, fmt.Sprintf("    type: %s", pc.Type))
 	}
@@ -115,6 +119,13 @@ func buildProfileNode(pc ProfileConfig) *yaml.Node {
 		node.Content = append(node.Content,
 			&yaml.Node{Kind: yaml.ScalarNode, Value: "mmproj"},
 			&yaml.Node{Kind: yaml.ScalarNode, Value: pc.MMProj},
+		)
+	}
+
+	if pc.DFlash != "" {
+		node.Content = append(node.Content,
+			&yaml.Node{Kind: yaml.ScalarNode, Value: "dflash"},
+			&yaml.Node{Kind: yaml.ScalarNode, Value: pc.DFlash},
 		)
 	}
 

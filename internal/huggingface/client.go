@@ -143,6 +143,22 @@ func ResolveMMProj(repo string) (string, int64, error) {
 	return "", 0, fmt.Errorf("no mmproj found in %s", repo)
 }
 
+func ResolveDFlash(repo string) (string, int64, error) {
+	files, err := ListFiles(repo)
+	if err != nil {
+		return "", 0, err
+	}
+
+	for _, f := range files {
+		lower := strings.ToLower(f.Path)
+		if strings.Contains(lower, "dflash") && strings.HasSuffix(lower, ".gguf") {
+			return f.Path, f.Size, nil
+		}
+	}
+
+	return "", 0, fmt.Errorf("no dflash drafter found in %s", repo)
+}
+
 func DownloadURL(repo, filename string) string {
 	return fmt.Sprintf("https://huggingface.co/%s/resolve/main/%s", repo, filename)
 }

@@ -167,6 +167,57 @@ func TestBuildProfileBlock(t *testing.T) {
 	}
 }
 
+func TestBuildProfileBlock_WithDFlash(t *testing.T) {
+	pc := ProfileConfig{
+		Repo:   "meta-models/Muse-Glimmer-30B-GGUF",
+		Model:  "muse-glimmer-30B-kquant-17gb.gguf",
+		DFlash: "dflash-kquant.gguf",
+	}
+
+	lines := buildProfileBlock("glimmer", pc)
+	found := false
+	for _, line := range lines {
+		if strings.Contains(line, "dflash: dflash-kquant.gguf") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("When profile has dflash, it should appear in block: %v", lines)
+	}
+}
+
+func TestAddProfileToConfig_WithDFlash(t *testing.T) {
+	tmpFile, err := os.CreateTemp("", "auriga-config-*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	initial := "profiles:\n    existing:\n        model: some.gguf\n"
+	os.WriteFile(tmpFile.Name(), []byte(initial), 0644)
+	viper.SetConfigFile(tmpFile.Name())
+
+	pc := ProfileConfig{
+		Repo:   "meta-models/Muse-Glimmer-30B-GGUF",
+		Model:  "glimmer.gguf",
+		DFlash: "dflash-kquant.gguf",
+	}
+
+	if err := addProfileToConfig("glimmer", pc); err != nil {
+		t.Fatal(err)
+	}
+
+	content, _ := os.ReadFile(tmpFile.Name())
+	result := string(content)
+
+	if !strings.Contains(result, "dflash") {
+		t.Errorf("When profile has dflash, it should be in config. Got:\n%s", result)
+	}
+	if !strings.Contains(result, "dflash-kquant.gguf") {
+		t.Errorf("When profile has dflash, filename should appear. Got:\n%s", result)
+	}
+}
+
 func TestBuildProfileBlock_NoVision(t *testing.T) {
 	pc := ProfileConfig{
 		Repo:  "unsloth/test-GGUF",

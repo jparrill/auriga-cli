@@ -72,6 +72,19 @@ func TestNewProfileSetupCmd(t *testing.T) {
 				}
 			},
 		},
+		{
+			name: "When creating setup command, it should have dflash flag defaulting to false",
+			check: func(t *testing.T) {
+				cmd := newProfileSetupCmd()
+				f := cmd.Flags().Lookup("dflash")
+				if f == nil {
+					t.Fatal("--dflash flag not found")
+				}
+				if f.DefValue != "false" {
+					t.Errorf("got default %q, want %q", f.DefValue, "false")
+				}
+			},
+		},
 	}
 
 	for _, tt := range tests {

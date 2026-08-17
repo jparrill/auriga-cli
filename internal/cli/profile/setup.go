@@ -18,6 +18,7 @@ import (
 type setupOpts struct {
 	Repo   string
 	Vision bool
+	DFlash bool
 	Quant  string
 	Type   string
 	Port   int
@@ -45,6 +46,7 @@ Examples:
 
 	cmd.Flags().StringVar(&opts.Repo, "repo", "", "HuggingFace repo (e.g., unsloth/Qwen3.6-35B-A3B-GGUF)")
 	cmd.Flags().BoolVar(&opts.Vision, "vision", false, "Also download mmproj for vision support")
+	cmd.Flags().BoolVar(&opts.DFlash, "dflash", false, "Download DFlash drafter (auto-discover from repo)")
 	cmd.Flags().StringVar(&opts.Quant, "quant", "", "Quantization level (default from config)")
 	cmd.Flags().StringVar(&opts.Type, "type", "", "Model type: dense or moe (auto-detected from model name if omitted)")
 	cmd.Flags().IntVar(&opts.Port, "port", 0, "Port override (default: derived from type)")
@@ -98,6 +100,19 @@ func runProfileSetup(name string, opts *setupOpts) error {
 		ui.Ok(fmt.Sprintf("MMProj: %s (%.0f MB)", mmprojFile, sizeMB))
 	}
 
+	var dflashFile string
+	var dflashExpectedSize int64
+	if opts.DFlash {
+		ui.Info("Resolving dflash drafter...")
+		var err error
+		dflashFile, dflashExpectedSize, err = huggingface.ResolveDFlash(opts.Repo)
+		if err != nil {
+			return fmt.Errorf("cannot resolve dflash: %w (this model may not have a dflash drafter)", err)
+		}
+		sizeMB := float64(dflashExpectedSize) / (1024 * 1024)
+		ui.Ok(fmt.Sprintf("DFlash: %s (%.0f MB)", dflashFile, sizeMB))
+	}
+
 	modelType := opts.Type
 	if modelType == "" {
 		modelType = detectModelType(modelFile)
@@ -112,6 +127,9 @@ func runProfileSetup(name string, opts *setupOpts) error {
 	}
 	if mmprojFile != "" {
 		params = append(params, ui.OrderedParam{Key: "Vision", Value: mmprojFile})
+	}
+	if dflashFile != "" {
+		params = append(params, ui.OrderedParam{Key: "DFlash", Value: dflashFile})
 	}
 	if opts.Port > 0 {
 		params = append(params, ui.OrderedParam{Key: "Port", Value: fmt.Sprintf("%d (override)", opts.Port)})
@@ -179,10 +197,31 @@ skipModelDownload:
 		}
 	}
 
+	if dflashFile != "" {
+		dflashDest := filepath.Join(ggufDir, dflashFile)
+		if _, err := os.Stat(dflashDest); err == nil {
+			ui.Ok(fmt.Sprintf("Already downloaded: %s", dflashFile))
+		} else {
+			url := huggingface.DownloadURL(opts.Repo, dflashFile)
+			err = exec.DownloadFile(ctx, url, dflashDest, dflashFile, exec.DownloadOpts{Resume: true})
+			if err != nil {
+				return fmt.Errorf("dflash download failed: %w", err)
+			}
+			if dflashExpectedSize > 0 {
+				info, _ := os.Stat(dflashDest)
+				if info != nil && info.Size() != dflashExpectedSize {
+					ui.Warn(fmt.Sprintf("dflash size mismatch: got %d, expected %d", info.Size(), dflashExpectedSize))
+				}
+			}
+			ui.Ok(fmt.Sprintf("Downloaded: %s", dflashFile))
+		}
+	}
+
 	pc := ProfileConfig{
 		Repo:   opts.Repo,
 		Model:  modelFile,
 		MMProj: mmprojFile,
+		DFlash: dflashFile,
 		Type:   modelType,
 		Port:   opts.Port,
 	}
