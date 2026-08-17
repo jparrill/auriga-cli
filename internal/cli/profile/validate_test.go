@@ -359,6 +359,83 @@ func TestValidateConfigSchema_ProfileRecommended(t *testing.T) {
 	}
 }
 
+func TestReadGGUFMeta_MTPDetection(t *testing.T) {
+	tests := []struct {
+		name     string
+		tensors  []string
+		wantMTP  bool
+	}{
+		{
+			name:    "When model has nextn tensors, it should detect MTP",
+			tensors: []string{"blk.0.attn_k.weight", "nextn0.blk.0.ffn_gate.weight", "nextn0.blk.0.ffn_up.weight"},
+			wantMTP: true,
+		},
+		{
+			name:    "When model has no nextn tensors, it should not detect MTP",
+			tensors: []string{"blk.0.attn_k.weight", "blk.0.ffn_gate.weight"},
+			wantMTP: false,
+		},
+		{
+			name:    "When model has no tensors, it should not detect MTP",
+			tensors: nil,
+			wantMTP: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := writeTestGGUFWithTensors(t, map[string]any{
+				"general.architecture":    "test",
+				"test.context_length":     uint32(131072),
+				"test.block_count":        uint32(32),
+				"test.head_count_kv":      uint32(8),
+				"test.head_count":         uint32(32),
+				"test.embedding_length":   uint32(4096),
+			}, tt.tensors)
+
+			meta, err := readGGUFMeta(path)
+			if err != nil {
+				t.Fatalf("readGGUFMeta failed: %v", err)
+			}
+			if meta.HasMTP != tt.wantMTP {
+				t.Errorf("HasMTP = %v, want %v", meta.HasMTP, tt.wantMTP)
+			}
+		})
+	}
+}
+
+func TestValidateProfile_MTPFlagNoHeads(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	ggufDir := t.TempDir()
+	modelPath := writeTestGGUF(t, map[string]any{
+		"general.architecture":  "test",
+		"test.context_length":   uint32(131072),
+		"test.block_count":      uint32(32),
+		"test.head_count_kv":    uint32(8),
+		"test.head_count":       uint32(32),
+		"test.embedding_length": uint32(4096),
+	})
+	modelFile := filepath.Base(modelPath)
+	os.Rename(modelPath, filepath.Join(ggufDir, modelFile))
+
+	viper.Set("profiles.nomtp.model", modelFile)
+	viper.Set("profiles.nomtp.flags", []string{"--spec-type", "draft-mtp"})
+
+	v := validateProfile("nomtp", ggufDir)
+
+	found := false
+	for _, w := range v.Warnings {
+		if w == "--spec-type draft-mtp but model has no MTP heads and no external drafter" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected MTP warning, got warnings: %v", v.Warnings)
+	}
+}
+
 func TestNewProfileValidateCmd_Registration(t *testing.T) {
 	cmd := NewProfileCmd()
 	found := false
@@ -376,6 +453,10 @@ func TestNewProfileValidateCmd_Registration(t *testing.T) {
 // writeTestGGUF creates a minimal GGUF v3 file with given KV metadata.
 // Supports string (for architecture) and uint32 values.
 func writeTestGGUF(t *testing.T, kvPairs map[string]any) string {
+	return writeTestGGUFWithTensors(t, kvPairs, nil)
+}
+
+func writeTestGGUFWithTensors(t *testing.T, kvPairs map[string]any, tensorNames []string) string {
 	t.Helper()
 	f, err := os.CreateTemp(t.TempDir(), "test-*.gguf")
 	if err != nil {
@@ -383,28 +464,35 @@ func writeTestGGUF(t *testing.T, kvPairs map[string]any) string {
 	}
 	defer f.Close()
 
-	// Header
 	f.Write([]byte("GGUF"))
-	binary.Write(f, binary.LittleEndian, uint32(3))        // version
-	binary.Write(f, binary.LittleEndian, uint64(0))        // n_tensors
-	binary.Write(f, binary.LittleEndian, uint64(len(kvPairs))) // n_kv
+	binary.Write(f, binary.LittleEndian, uint32(3))
+	binary.Write(f, binary.LittleEndian, uint64(len(tensorNames)))
+	binary.Write(f, binary.LittleEndian, uint64(len(kvPairs)))
 
 	for key, val := range kvPairs {
-		// Key string
 		binary.Write(f, binary.LittleEndian, uint64(len(key)))
 		f.Write([]byte(key))
 
 		switch v := val.(type) {
 		case string:
-			binary.Write(f, binary.LittleEndian, uint32(8)) // string type
+			binary.Write(f, binary.LittleEndian, uint32(8))
 			binary.Write(f, binary.LittleEndian, uint64(len(v)))
 			f.Write([]byte(v))
 		case uint32:
-			binary.Write(f, binary.LittleEndian, uint32(4)) // uint32 type
+			binary.Write(f, binary.LittleEndian, uint32(4))
 			binary.Write(f, binary.LittleEndian, v)
 		default:
 			t.Fatalf("unsupported test GGUF value type: %T", val)
 		}
+	}
+
+	for _, name := range tensorNames {
+		binary.Write(f, binary.LittleEndian, uint64(len(name)))
+		f.Write([]byte(name))
+		binary.Write(f, binary.LittleEndian, uint32(1)) // n_dims = 1
+		binary.Write(f, binary.LittleEndian, uint64(64)) // dim[0]
+		binary.Write(f, binary.LittleEndian, uint32(0)) // type F32
+		binary.Write(f, binary.LittleEndian, uint64(0)) // offset
 	}
 
 	return f.Name()

@@ -24,6 +24,7 @@ type ggufMeta struct {
 	KVHeads      int
 	HeadCount    int
 	EmbdSize     int
+	HasMTP       bool
 }
 
 type profileValidation struct {
@@ -31,6 +32,7 @@ type profileValidation struct {
 	Type      string
 	CtxSize   int
 	CtxMax    int
+	HasMTP    bool
 	ModelSize int64
 	KVEst     int64
 	TotalEst  int64
@@ -136,7 +138,7 @@ func runProfileValidate() error {
 		}
 	}
 
-	profileTbl := ui.NewTable("Profiles", "STATUS", "PROFILE", "TYPE", "CTX", "MEMORY")
+	profileTbl := ui.NewTable("Profiles", "STATUS", "PROFILE", "TYPE", "CTX", "MTP", "MEMORY")
 	for _, v := range validations {
 		status := ui.SuccessStyle.Render("✓")
 		if len(v.Errors) > 0 {
@@ -155,7 +157,12 @@ func runProfileValidate() error {
 			memCol = fmt.Sprintf("%.1f GB", float64(v.TotalEst)/1e9)
 		}
 
-		profileTbl.AddRow(status, v.Name, v.Type, ctxCol, memCol)
+		mtpCol := "no"
+		if v.HasMTP {
+			mtpCol = ui.SuccessStyle.Render("yes")
+		}
+
+		profileTbl.AddRow(status, v.Name, v.Type, ctxCol, mtpCol, memCol)
 	}
 	profileTbl.Print()
 
@@ -305,6 +312,7 @@ func validateProfile(name, ggufDir string) profileValidation {
 	}
 
 	v.CtxMax = meta.CtxTrain
+	v.HasMTP = meta.HasMTP
 
 	if meta.CtxTrain > 0 && v.CtxSize > meta.CtxTrain {
 		v.Errors = append(v.Errors, fmt.Sprintf("ctx_size %d > model max %d", v.CtxSize, meta.CtxTrain))
@@ -344,6 +352,10 @@ func validateProfile(name, ggufDir string) profileValidation {
 		if !containsFlag(flags, "--model-draft") {
 			v.Warnings = append(v.Warnings, fmt.Sprintf("%s set but --model-draft not in flags", drafter.field))
 		}
+	}
+
+	if containsFlag(flags, "draft-mtp") && !meta.HasMTP && mtpDrafter == "" {
+		v.Warnings = append(v.Warnings, "--spec-type draft-mtp but model has no MTP heads and no external drafter")
 	}
 
 	return v
@@ -457,6 +469,30 @@ func readGGUFMeta(path string) (ggufMeta, error) {
 				break
 			}
 		}
+	}
+
+	for i := uint64(0); i < nTensors; i++ {
+		name, err := readGGUFString(f)
+		if err != nil {
+			break
+		}
+		if strings.Contains(name, "nextn") {
+			meta.HasMTP = true
+		}
+		var nDims uint32
+		if err := binary.Read(f, binary.LittleEndian, &nDims); err != nil {
+			break
+		}
+		for d := uint32(0); d < nDims; d++ {
+			var dim uint64
+			if err := binary.Read(f, binary.LittleEndian, &dim); err != nil {
+				break
+			}
+		}
+		var tensorType uint32
+		binary.Read(f, binary.LittleEndian, &tensorType)
+		var offset uint64
+		binary.Read(f, binary.LittleEndian, &offset)
 	}
 
 	return meta, nil

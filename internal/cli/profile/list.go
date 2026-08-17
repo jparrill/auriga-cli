@@ -25,19 +25,24 @@ func runProfileList() error {
 		return nil
 	}
 
-	tbl := ui.NewTable("Profiles", "PROFILE", "TYPE", "PORT", "REPO", "MODEL", "VISION")
+	tbl := ui.NewTable("Profiles", "PROFILE", "TYPE", "PORT", "MTP", "REPO", "MODEL", "VISION")
 
 	for name := range profiles {
 		repo := viper.GetString(fmt.Sprintf("profiles.%s.repo", name))
 		model := viper.GetString(fmt.Sprintf("profiles.%s.model", name))
 		mmproj := viper.GetString(fmt.Sprintf("profiles.%s.mmproj", name))
+		flags := viper.GetStringSlice(fmt.Sprintf("profiles.%s.flags", name))
 		vision := "no"
 		if mmproj != "" {
 			vision = ui.SuccessStyle.Render("yes")
 		}
+		mtp := "no"
+		if containsFlag(flags, "draft-mtp") || viper.GetString(fmt.Sprintf("profiles.%s.mtp_drafter", name)) != "" {
+			mtp = ui.SuccessStyle.Render("yes")
+		}
 		pType := profileType(name)
 		port := profilePort(name)
-		tbl.AddRow(name, pType, fmt.Sprintf("%d", port), repo, model, vision)
+		tbl.AddRow(name, pType, fmt.Sprintf("%d", port), mtp, repo, model, vision)
 	}
 
 	tbl.Print()
