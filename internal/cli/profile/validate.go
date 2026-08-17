@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -79,7 +80,6 @@ var recommendedGlobalKeys = []struct {
 	{"llama_server.dense_port", "dense model port"},
 	{"llama_server.moe_port", "MoE model port"},
 	{"llama_server.ctx_size", "global default context size"},
-	{"llama_server.gtt_bytes", "GPU memory for validation (auto-detected on Linux)"},
 }
 
 var requiredProfileKeys = []string{"model", "repo"}
@@ -237,6 +237,12 @@ func validateConfigSchema(profiles map[string]any) []configCheck {
 		} else {
 			checks = append(checks, configCheck{Key: rec.key, Status: "recommended", Detail: rec.reason + " (recommended)"})
 		}
+	}
+
+	if viper.GetInt64("llama_server.gtt_bytes") > 0 {
+		checks = append(checks, configCheck{Key: "llama_server.gtt_bytes", Status: "ok", Detail: "GPU memory override"})
+	} else if runtime.GOOS != "linux" {
+		checks = append(checks, configCheck{Key: "llama_server.gtt_bytes", Status: "recommended", Detail: "no sysfs on " + runtime.GOOS + ", set manually for memory validation (recommended)"})
 	}
 
 	for name := range profiles {
