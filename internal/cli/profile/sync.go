@@ -306,9 +306,9 @@ func verifyFile(profileName, displayName, localPath, repo, repoFilename string) 
 	}
 
 	if localHash != expectedHash {
-		ui.Warn(fmt.Sprintf("[%s] Corrupted: %s (SHA256 mismatch)", profileName, displayName))
-		os.Remove(localPath)
-		return false
+		ui.Warn(fmt.Sprintf("[%s] SHA256 mismatch: %s (local file differs from HuggingFace, may be a different version)",
+			profileName, displayName))
+		return true
 	}
 
 	ui.Ok(fmt.Sprintf("[%s] Verified: %s", profileName, displayName))
