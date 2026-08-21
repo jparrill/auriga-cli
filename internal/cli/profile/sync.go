@@ -288,7 +288,7 @@ func verifyFile(profileName, displayName, localPath, repo, repoFilename string) 
 		return false
 	}
 
-	if expectedSize > 0 && info.Size() != expectedSize {
+	if expectedSize > 0 && info.Size() < expectedSize {
 		ui.Warn(fmt.Sprintf("[%s] Incomplete: %s (%s, expected %s)",
 			profileName, displayName, exec.FormatSize(info.Size()), exec.FormatSize(expectedSize)))
 		return false
