@@ -186,9 +186,15 @@ func checkLlamaServers() []processInfo {
 
 	var procs []processInfo
 	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		procBin := filepath.Base(fields[1])
+
 		var matchedBin string
 		for _, bin := range knownBins {
-			if strings.Contains(line, bin) {
+			if filepath.Base(bin) == procBin {
 				matchedBin = bin
 				break
 			}
