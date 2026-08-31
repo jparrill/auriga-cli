@@ -15,14 +15,15 @@ type Combination struct {
 }
 
 type SweepResult struct {
-	Index      int               `json:"index"`
-	Overrides  map[string]string `json:"overrides"`
-	TTFT       int64             `json:"ttft_ms"`
-	Prompt     float64           `json:"prompt_tok_s"`
-	NoThink    BenchData         `json:"no_think"`
-	Think      BenchData         `json:"think"`
-	DurationMs int64             `json:"duration_ms"`
-	Error      string            `json:"error,omitempty"`
+	Index         int               `json:"index"`
+	Overrides     map[string]string `json:"overrides"`
+	ResolvedFlags []string          `json:"resolved_flags"`
+	TTFT          int64             `json:"ttft_ms"`
+	Prompt        float64           `json:"prompt_tok_s"`
+	NoThink       BenchData         `json:"no_think"`
+	Think         BenchData         `json:"think"`
+	DurationMs    int64             `json:"duration_ms"`
+	Error         string            `json:"error,omitempty"`
 }
 
 type BenchData struct {

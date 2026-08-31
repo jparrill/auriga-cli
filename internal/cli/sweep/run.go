@@ -120,7 +120,6 @@ func runSweep(configPath, format string) error {
 		select {
 		case <-sigCh:
 			interrupted.Store(true)
-			ui.Warn("\nInterrupted — restoring config...")
 		case <-doneCh:
 		}
 	}()
@@ -134,116 +133,137 @@ func runSweep(configPath, format string) error {
 		}
 
 		label := comboLabel(combo)
-		ui.Info(fmt.Sprintf("[%d/%d] %s", i+1, len(combos), label))
 		comboStart := time.Now()
 
-		if err := applyOverrides(cfg.Profile, combo, backupPath); err != nil {
-			ui.Warn(fmt.Sprintf("  failed to apply overrides: %v", err))
-			results = append(results, SweepResult{
-				Index:      i,
-				Overrides:  flattenCombo(combo),
-				DurationMs: time.Since(comboStart).Milliseconds(),
-				Error:      err.Error(),
-			})
-			continue
-		}
+		var result SweepResult
+		spinErr := ui.WithSpinner(fmt.Sprintf("[%d/%d] %s", i+1, len(combos), label), func() error {
+			if err := applyOverrides(cfg.Profile, combo, backupPath); err != nil {
+				result = SweepResult{
+					Index:      i,
+					Overrides:  flattenCombo(combo),
+					DurationMs: time.Since(comboStart).Milliseconds(),
+					Error:      err.Error(),
+				}
+				return err
+			}
 
-		ctxSize := viper.GetInt(fmt.Sprintf("profiles.%s.ctx_size", cfg.Profile))
-		if ctxSize <= 0 {
-			ctxSize = viper.GetInt("llama_server.ctx_size")
-		}
-		if ctxSize <= 0 {
-			ctxSize = 131072
-		}
+			resolvedFlags := viper.GetStringSlice(fmt.Sprintf("profiles.%s.flags", cfg.Profile))
 
-		if err := profile.RunProfileSwitch(cfg.Profile, true, ctxSize, true); err != nil {
-			ui.Warn(fmt.Sprintf("  profile switch failed: %v", err))
-			results = append(results, SweepResult{
-				Index:      i,
-				Overrides:  flattenCombo(combo),
-				DurationMs: time.Since(comboStart).Milliseconds(),
-				Error:      err.Error(),
-			})
-			continue
-		}
+			ctxSize := viper.GetInt(fmt.Sprintf("profiles.%s.ctx_size", cfg.Profile))
+			if ctxSize <= 0 {
+				ctxSize = viper.GetInt("llama_server.ctx_size")
+			}
+			if ctxSize <= 0 {
+				ctxSize = 131072
+			}
 
-		ui.Info("  waiting for healthy server...")
-		if !waitForHealthy(port, 120*time.Second) {
-			ui.Warn("  server not healthy after 120s")
-			results = append(results, SweepResult{
-				Index:      i,
-				Overrides:  flattenCombo(combo),
-				DurationMs: time.Since(comboStart).Milliseconds(),
-				Error:      "server not healthy after timeout",
-			})
-			continue
-		}
+			if err := profile.RunProfileSwitch(cfg.Profile, profile.SwitchOpts{
+				Persistent: true,
+				CtxSize:    ctxSize,
+				Quiet:      true,
+			}); err != nil {
+				result = SweepResult{
+					Index:         i,
+					Overrides:     flattenCombo(combo),
+					ResolvedFlags: resolvedFlags,
+					DurationMs:    time.Since(comboStart).Milliseconds(),
+					Error:         err.Error(),
+				}
+				return err
+			}
 
-		ui.Info("  warmup...")
-		warmup := perf.RunSingleBench(port, false)
-		if warmup.Error != "" {
-			ui.Warn(fmt.Sprintf("  warmup failed: %s", warmup.Error))
-		}
+			if !waitForHealthy(port, 120*time.Second) {
+				result = SweepResult{
+					Index:         i,
+					Overrides:     flattenCombo(combo),
+					ResolvedFlags: resolvedFlags,
+					DurationMs:    time.Since(comboStart).Milliseconds(),
+					Error:         "server not healthy after timeout",
+				}
+				return fmt.Errorf("server not healthy")
+			}
 
-		ttft, _ := perf.MeasureTTFT(port)
-		if ttft == 0 {
-			ui.Warn("  TTFT measurement failed — recording 0ms")
-		}
+			warmup := perf.RunSingleBench(port, false)
+			if warmup.Error != "" {
+				// warmup failed but continue
+			}
 
-		iterations := cfg.Iterations
-		if iterations <= 0 {
-			iterations = perf.Iterations
-		}
+			ttft, _ := perf.MeasureTTFT(port)
 
-		ui.Info(fmt.Sprintf("  no-think (%d runs)...", iterations))
-		noThink := perf.RunBenchN(port, false, iterations)
+			iterations := cfg.Iterations
+			if iterations <= 0 {
+				iterations = perf.Iterations
+			}
 
-		ui.Info(fmt.Sprintf("  think (%d runs)...", iterations))
-		think := perf.RunBenchN(port, true, iterations)
+			noThink := perf.RunBenchN(port, false, iterations)
+			think := perf.RunBenchN(port, true, iterations)
 
-		result := SweepResult{
-			Index:      i,
-			Overrides:  flattenCombo(combo),
-			TTFT:       ttft.Milliseconds(),
-			Prompt:     noThink.PromptTokPerSec,
-			DurationMs: time.Since(comboStart).Milliseconds(),
-			NoThink: BenchData{
-				Median: noThink.GenerationTokPerSec,
-				Min:    noThink.GenMin,
-				Max:    noThink.GenMax,
-			},
-			Think: BenchData{
-				Median: think.GenerationTokPerSec,
-				Min:    think.GenMin,
-				Max:    think.GenMax,
-			},
-		}
-		if noThink.Error != "" {
-			result.Error = noThink.Error
-		}
-		if think.Error != "" && result.Error == "" {
-			result.Error = think.Error
+			result = SweepResult{
+				Index:         i,
+				Overrides:     flattenCombo(combo),
+				ResolvedFlags: resolvedFlags,
+				TTFT:          ttft.Milliseconds(),
+				Prompt:        noThink.PromptTokPerSec,
+				DurationMs:    time.Since(comboStart).Milliseconds(),
+				NoThink: BenchData{
+					Median: noThink.GenerationTokPerSec,
+					Min:    noThink.GenMin,
+					Max:    noThink.GenMax,
+				},
+				Think: BenchData{
+					Median: think.GenerationTokPerSec,
+					Min:    think.GenMin,
+					Max:    think.GenMax,
+				},
+			}
+			if noThink.Error != "" {
+				result.Error = noThink.Error
+			}
+			if think.Error != "" && result.Error == "" {
+				result.Error = think.Error
+			}
+
+			return nil
+		})
+
+		elapsed := time.Since(comboStart).Seconds()
+		if spinErr != nil {
+			ui.Warn(fmt.Sprintf("[%d/%d] %s — %s (%.0fs)", i+1, len(combos), label, result.Error, elapsed))
+		} else {
+			ui.Ok(fmt.Sprintf("[%d/%d] %s (%.0fs)", i+1, len(combos), label, elapsed))
 		}
 
 		results = append(results, result)
-		ui.Ok(fmt.Sprintf("  TTFT=%dms no-think=%.1f think=%.1f (%.0fs)", result.TTFT, result.NoThink.Median, result.Think.Median, time.Since(comboStart).Seconds()))
 	}
 
 	signal.Stop(sigCh)
 	close(doneCh)
 
-	ui.Info("Restoring original config...")
-	if err := restoreConfig(backupPath); err != nil {
-		ui.Warn(fmt.Sprintf("Failed to restore config: %v — backup at %s", err, backupPath))
-	} else {
+	if interrupted.Load() {
+		ui.Warn("Interrupted — restoring config and saving partial results...")
+	}
+
+	err = ui.WithSpinner("Restoring original config...", func() error {
+		if err := restoreConfig(backupPath); err != nil {
+			return err
+		}
 		ctxSize := viper.GetInt(fmt.Sprintf("profiles.%s.ctx_size", cfg.Profile))
 		if ctxSize <= 0 {
 			ctxSize = 131072
 		}
-		if err := profile.RunProfileSwitch(cfg.Profile, true, ctxSize, true); err != nil {
-			ui.Warn(fmt.Sprintf("Failed to restore profile: %v", err))
+		if err := profile.RunProfileSwitch(cfg.Profile, profile.SwitchOpts{
+			Persistent: true,
+			CtxSize:    ctxSize,
+			Quiet:      true,
+		}); err != nil {
+			return err
 		}
 		os.Remove(backupPath)
+		return nil
+	})
+	if err != nil {
+		ui.Warn(fmt.Sprintf("Failed to restore: %v — backup at %s", err, backupPath))
+	} else {
 		ui.Ok("Original config restored")
 	}
 
@@ -621,4 +641,3 @@ func sortedKeys(m map[string][]string) []string {
 	sort.Strings(keys)
 	return keys
 }
-

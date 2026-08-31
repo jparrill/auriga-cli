@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/jparrill/auriga-cli/internal/config"
@@ -49,7 +50,7 @@ func (w *CSVReportWriter) Write(report *SweepReport, path string) error {
 		"index", "ttft_ms", "prompt_tok_s",
 		"nothink_median", "nothink_min", "nothink_max",
 		"think_median", "think_min", "think_max",
-		"duration_ms", "error",
+		"duration_ms", "error", "resolved_flags",
 	}
 	header = append(header, overrideKeys...)
 	if err := writer.Write(header); err != nil {
@@ -69,6 +70,7 @@ func (w *CSVReportWriter) Write(report *SweepReport, path string) error {
 			fmt.Sprintf("%.2f", r.Think.Max),
 			fmt.Sprintf("%d", r.DurationMs),
 			r.Error,
+			strings.Join(r.ResolvedFlags, " "),
 		}
 		for _, k := range overrideKeys {
 			if v, ok := r.Overrides[k]; ok {

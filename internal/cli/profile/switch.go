@@ -18,6 +18,13 @@ import (
 	"github.com/spf13/viper"
 )
 
+type SwitchOpts struct {
+	Persistent  bool
+	CtxSize     int
+	AutoConfirm bool
+	Quiet       bool
+}
+
 func newProfileSwitchCmd() *cobra.Command {
 	var (
 		persistent bool
@@ -42,7 +49,11 @@ Examples:
 			if !cmd.Flags().Changed("ctx-size") {
 				ctxSize = profileCtxSize(args[0])
 			}
-			return RunProfileSwitch(args[0], persistent, ctxSize, config.Yes)
+			return RunProfileSwitch(args[0], SwitchOpts{
+				Persistent:  persistent,
+				CtxSize:     ctxSize,
+				AutoConfirm: config.Yes,
+			})
 		},
 	}
 
@@ -52,7 +63,7 @@ Examples:
 	return cmd
 }
 
-func RunProfileSwitch(name string, persistent bool, ctxSize int, autoConfirm bool) error {
+func RunProfileSwitch(name string, opts SwitchOpts) error {
 	profileKey := fmt.Sprintf("profiles.%s", name)
 	modelFile := viper.GetString(profileKey + ".model")
 	if modelFile == "" {
@@ -93,35 +104,37 @@ func RunProfileSwitch(name string, persistent bool, ctxSize int, autoConfirm boo
 		}
 	}
 
-	repo := viper.GetString(profileKey + ".repo")
-	if repo != "" {
-		if !verifyFile(name, modelFile, modelPath, repo, modelFile) {
-			return fmt.Errorf("model verification failed — run: auriga profile sync --name %s", name)
-		}
-		if mmprojFile != "" {
-			originalName := repoFilename(mmprojFile, repo)
-			if !verifyFile(name, mmprojFile, mmprojPath, repo, originalName) {
-				return fmt.Errorf("mmproj verification failed — run: auriga profile sync --name %s", name)
+	if !opts.Quiet {
+		repo := viper.GetString(profileKey + ".repo")
+		if repo != "" {
+			if !verifyFile(name, modelFile, modelPath, repo, modelFile) {
+				return fmt.Errorf("model verification failed — run: auriga profile sync --name %s", name)
 			}
-		}
-		if dflashFile != "" {
-			dflashPath := filepath.Join(ggufDir, dflashFile)
-			dflashRepo := viper.GetString(profileKey + ".dflash_repo")
-			if dflashRepo == "" {
-				dflashRepo = repo
+			if mmprojFile != "" {
+				originalName := repoFilename(mmprojFile, repo)
+				if !verifyFile(name, mmprojFile, mmprojPath, repo, originalName) {
+					return fmt.Errorf("mmproj verification failed — run: auriga profile sync --name %s", name)
+				}
 			}
-			if !verifyFile(name, dflashFile, dflashPath, dflashRepo, dflashFile) {
-				return fmt.Errorf("dflash drafter verification failed — run: auriga profile sync --name %s", name)
+			if dflashFile != "" {
+				dflashPath := filepath.Join(ggufDir, dflashFile)
+				dflashRepo := viper.GetString(profileKey + ".dflash_repo")
+				if dflashRepo == "" {
+					dflashRepo = repo
+				}
+				if !verifyFile(name, dflashFile, dflashPath, dflashRepo, dflashFile) {
+					return fmt.Errorf("dflash drafter verification failed — run: auriga profile sync --name %s", name)
+				}
 			}
-		}
-		if mtpDrafterFile != "" {
-			mtpPath := filepath.Join(ggufDir, mtpDrafterFile)
-			mtpRepo := viper.GetString(profileKey + ".mtp_drafter_repo")
-			if mtpRepo == "" {
-				mtpRepo = repo
-			}
-			if !verifyFile(name, mtpDrafterFile, mtpPath, mtpRepo, mtpDrafterFile) {
-				return fmt.Errorf("mtp_drafter verification failed — run: auriga profile sync --name %s", name)
+			if mtpDrafterFile != "" {
+				mtpPath := filepath.Join(ggufDir, mtpDrafterFile)
+				mtpRepo := viper.GetString(profileKey + ".mtp_drafter_repo")
+				if mtpRepo == "" {
+					mtpRepo = repo
+				}
+				if !verifyFile(name, mtpDrafterFile, mtpPath, mtpRepo, mtpDrafterFile) {
+					return fmt.Errorf("mtp_drafter verification failed — run: auriga profile sync --name %s", name)
+				}
 			}
 		}
 	}
@@ -134,43 +147,47 @@ func RunProfileSwitch(name string, persistent bool, ctxSize int, autoConfirm boo
 	}
 
 	configuredType := viper.GetString(profileKey + ".type")
-	warnTypeMismatch(name, configuredType, modelFile)
-
-	mode := "daemon"
-	if persistent {
-		mode = "persistent (systemd)"
-	}
-	pType := profileType(name)
-	params := []ui.OrderedParam{
-		{Key: "Profile", Value: name},
-		{Key: "Model", Value: modelFile},
-		{Key: "Type", Value: pType},
-		{Key: "Mode", Value: mode},
-	}
-	if viper.GetString(fmt.Sprintf("profiles.%s.bin", name)) != "" {
-		params = append(params, ui.OrderedParam{Key: "Binary", Value: bin})
-	}
-	if mmprojFile != "" {
-		params = append(params, ui.OrderedParam{Key: "Vision", Value: mmprojFile})
-	}
-	if dflashFile != "" {
-		params = append(params, ui.OrderedParam{Key: "DFlash", Value: dflashFile})
-	}
-	if mtpDrafterFile != "" {
-		params = append(params, ui.OrderedParam{Key: "MTP Drafter", Value: mtpDrafterFile})
-	}
-	params = append(params, ui.OrderedParam{Key: "Port", Value: fmt.Sprintf("%d", port)})
-	params = append(params, ui.OrderedParam{Key: "Context", Value: fmt.Sprintf("%d", ctxSize)})
-	if profileFlags := viper.GetStringSlice(profileKey + ".flags"); len(profileFlags) > 0 {
-		params = append(params, ui.OrderedParam{Key: "Flags", Value: strings.Join(profileFlags, " ")})
+	if !opts.Quiet {
+		warnTypeMismatch(name, configuredType, modelFile)
 	}
 
-	confirmed, err := ui.ConfirmOperationOrdered("Switch llama-server profile", params, "", autoConfirm)
-	if err != nil || !confirmed {
-		return err
+	if !opts.Quiet {
+		mode := "daemon"
+		if opts.Persistent {
+			mode = "persistent (systemd)"
+		}
+		pType := profileType(name)
+		params := []ui.OrderedParam{
+			{Key: "Profile", Value: name},
+			{Key: "Model", Value: modelFile},
+			{Key: "Type", Value: pType},
+			{Key: "Mode", Value: mode},
+		}
+		if viper.GetString(fmt.Sprintf("profiles.%s.bin", name)) != "" {
+			params = append(params, ui.OrderedParam{Key: "Binary", Value: bin})
+		}
+		if mmprojFile != "" {
+			params = append(params, ui.OrderedParam{Key: "Vision", Value: mmprojFile})
+		}
+		if dflashFile != "" {
+			params = append(params, ui.OrderedParam{Key: "DFlash", Value: dflashFile})
+		}
+		if mtpDrafterFile != "" {
+			params = append(params, ui.OrderedParam{Key: "MTP Drafter", Value: mtpDrafterFile})
+		}
+		params = append(params, ui.OrderedParam{Key: "Port", Value: fmt.Sprintf("%d", port)})
+		params = append(params, ui.OrderedParam{Key: "Context", Value: fmt.Sprintf("%d", opts.CtxSize)})
+		if profileFlags := viper.GetStringSlice(profileKey + ".flags"); len(profileFlags) > 0 {
+			params = append(params, ui.OrderedParam{Key: "Flags", Value: strings.Join(profileFlags, " ")})
+		}
+
+		confirmed, err := ui.ConfirmOperationOrdered("Switch llama-server profile", params, "", opts.AutoConfirm)
+		if err != nil || !confirmed {
+			return err
+		}
 	}
 
-	stopRunningServer(port)
+	stopRunningServer(port, opts.Quiet)
 
 	extraFlags := viper.GetStringSlice(profileKey + ".flags")
 	if mmprojFile != "" && !containsFlag(extraFlags, "--jinja") {
@@ -178,13 +195,13 @@ func RunProfileSwitch(name string, persistent bool, ctxSize int, autoConfirm boo
 	}
 	extraFlags = injectDrafterFlags(name, ggufDir, extraFlags)
 
-	if persistent {
-		return switchPersistent(name, bin, modelPath, mmprojPath, extraFlags, ctxSize, port)
+	if opts.Persistent {
+		return switchPersistent(name, bin, modelPath, mmprojPath, extraFlags, opts.CtxSize, port, opts.Quiet)
 	}
-	return switchDaemon(name, bin, modelPath, mmprojPath, extraFlags, ctxSize, port)
+	return switchDaemon(name, bin, modelPath, mmprojPath, extraFlags, opts.CtxSize, port, opts.Quiet)
 }
 
-func switchDaemon(name, bin, modelPath, mmprojPath string, extraFlags []string, ctxSize, port int) error {
+func switchDaemon(name, bin, modelPath, mmprojPath string, extraFlags []string, ctxSize, port int, quiet bool) error {
 	ctx := context.Background()
 	proc, err := llamaserver.StartWithCtx(ctx, bin, modelPath, mmprojPath, extraFlags, ctxSize, port)
 	if err != nil {
@@ -194,14 +211,16 @@ func switchDaemon(name, bin, modelPath, mmprojPath string, extraFlags []string, 
 	os.WriteFile(pidFileForPort(port), fmt.Appendf(nil, "%d", proc.Pid), 0644)
 	proc.Release()
 
-	pType := profileType(name)
-	ui.Ok(fmt.Sprintf("Switched to %s (PID %d) on port %d", name, proc.Pid, port))
-	ui.Info("Stop with: auriga profile stop")
-	printHermesTip(viper.GetString(fmt.Sprintf("profiles.%s.model", name)), pType, port)
+	if !quiet {
+		pType := profileType(name)
+		ui.Ok(fmt.Sprintf("Switched to %s (PID %d) on port %d", name, proc.Pid, port))
+		ui.Info("Stop with: auriga profile stop")
+		printHermesTip(viper.GetString(fmt.Sprintf("profiles.%s.model", name)), pType, port)
+	}
 	return nil
 }
 
-func switchPersistent(name, bin, modelPath, mmprojPath string, extraFlags []string, ctxSize, port int) error {
+func switchPersistent(name, bin, modelPath, mmprojPath string, extraFlags []string, ctxSize, port int, quiet bool) error {
 	execStart := buildExecStart(bin, modelPath, mmprojPath, extraFlags, ctxSize, port)
 
 	cfg := systemd.ServiceConfig{
@@ -226,21 +245,25 @@ func switchPersistent(name, bin, modelPath, mmprojPath string, extraFlags []stri
 	}
 
 	if err := systemd.EnableLinger(); err != nil {
-		ui.Warn(fmt.Sprintf("Could not enable linger: %v", err))
-		ui.Info("Service may not survive logout — run: loginctl enable-linger")
+		if !quiet {
+			ui.Warn(fmt.Sprintf("Could not enable linger: %v", err))
+			ui.Info("Service may not survive logout — run: loginctl enable-linger")
+		}
 	}
 
 	if err := llamaserver.WaitForHealthOnPort(port, 90*time.Second); err != nil {
 		return fmt.Errorf("service started but health check failed: %w", err)
 	}
 
-	path, _ := systemd.UnitPathForPort(port)
-	pType := profileType(name)
-	ui.Ok(fmt.Sprintf("Switched to %s (systemd persistent) on port %d", name, port))
-	ui.Info(fmt.Sprintf("Service: %s", path))
-	ui.Info(fmt.Sprintf("Stop with: systemctl --user stop %s", unitName))
-	ui.Info(fmt.Sprintf("Logs with: journalctl --user -u %s -f", unitName))
-	printHermesTip(viper.GetString(fmt.Sprintf("profiles.%s.model", name)), pType, port)
+	if !quiet {
+		path, _ := systemd.UnitPathForPort(port)
+		pType := profileType(name)
+		ui.Ok(fmt.Sprintf("Switched to %s (systemd persistent) on port %d", name, port))
+		ui.Info(fmt.Sprintf("Service: %s", path))
+		ui.Info(fmt.Sprintf("Stop with: systemctl --user stop %s", unitName))
+		ui.Info(fmt.Sprintf("Logs with: journalctl --user -u %s -f", unitName))
+		printHermesTip(viper.GetString(fmt.Sprintf("profiles.%s.model", name)), pType, port)
+	}
 	return nil
 }
 
@@ -263,9 +286,11 @@ func buildExecStart(bin, modelPath, mmprojPath string, extraFlags []string, ctxS
 	return strings.Join(args, " ")
 }
 
-func stopRunningServer(port int) {
+func stopRunningServer(port int, quiet bool) {
 	if systemd.IsActiveOnPort(port) {
-		ui.Info(fmt.Sprintf("Stopping systemd-managed llama-server on port %d...", port))
+		if !quiet {
+			ui.Info(fmt.Sprintf("Stopping systemd-managed llama-server on port %d...", port))
+		}
 		systemd.Stop(port)
 		time.Sleep(2 * time.Second)
 		return
@@ -274,7 +299,9 @@ func stopRunningServer(port int) {
 	pf := pidFileForPort(port)
 	if pid := readPIDForPort(port); pid > 0 {
 		if processExists(pid) {
-			ui.Info(fmt.Sprintf("Stopping llama-server (PID %d) on port %d...", pid, port))
+			if !quiet {
+				ui.Info(fmt.Sprintf("Stopping llama-server (PID %d) on port %d...", pid, port))
+			}
 			proc, err := os.FindProcess(pid)
 			if err == nil {
 				proc.Signal(syscall.SIGTERM)
