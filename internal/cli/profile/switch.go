@@ -42,7 +42,7 @@ Examples:
 			if !cmd.Flags().Changed("ctx-size") {
 				ctxSize = profileCtxSize(args[0])
 			}
-			return runProfileSwitch(args[0], persistent, ctxSize)
+			return RunProfileSwitch(args[0], persistent, ctxSize)
 		},
 	}
 
@@ -52,7 +52,7 @@ Examples:
 	return cmd
 }
 
-func runProfileSwitch(name string, persistent bool, ctxSize int) error {
+func RunProfileSwitch(name string, persistent bool, ctxSize int) error {
 	profileKey := fmt.Sprintf("profiles.%s", name)
 	modelFile := viper.GetString(profileKey + ".model")
 	if modelFile == "" {

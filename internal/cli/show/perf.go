@@ -1,54 +1,20 @@
 package show
 
 import (
-	"bytes"
-	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"path/filepath"
-	"sort"
 	"time"
 
+	"encoding/json"
+	"io"
+
 	"github.com/jparrill/auriga-cli/internal/llamaserver"
+	"github.com/jparrill/auriga-cli/internal/perf"
 	"github.com/jparrill/auriga-cli/internal/ui"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
-
-const (
-	benchIterations = 5
-	benchMaxTokens  = 256
-)
-
-var benchPrompt = `Analyze this Go code for bugs, performance issues, and improvements. Be thorough:
-
-func processItems(items []Item) ([]Result, error) {
-    var results []Result
-    for i := 0; i < len(items); i++ {
-        item := items[i]
-        if item.Type == "" {
-            continue
-        }
-        data, err := fetchData(item.ID)
-        if err != nil {
-            log.Printf("failed to fetch %s: %v", item.ID, err)
-            continue
-        }
-        result, err := transform(data, item.Config)
-        if err != nil {
-            return nil, fmt.Errorf("transform failed for %s: %w", item.ID, err)
-        }
-        if result.Score > threshold {
-            results = append(results, result)
-        }
-    }
-    if len(results) == 0 {
-        return nil, fmt.Errorf("no results met threshold")
-    }
-    return results, nil
-}`
 
 func newShowPerfCmd() *cobra.Command {
 	return &cobra.Command{
@@ -83,37 +49,9 @@ type perfResult struct {
 	Model     string
 	Binary    string
 	TTFT      time.Duration
-	NoThink   benchResult
-	Think     benchResult
+	NoThink   perf.BenchResult
+	Think     perf.BenchResult
 	Error     string
-}
-
-type benchResult struct {
-	PromptTokPerSec     float64
-	GenerationTokPerSec float64
-	GenMin              float64
-	GenMax              float64
-	PromptTokens        int
-	GeneratedTokens     int
-	Error               string
-}
-
-type chatResponse struct {
-	Model   string `json:"model"`
-	Choices []struct {
-		Message struct {
-			Content          string `json:"content"`
-			ReasoningContent string `json:"reasoning_content"`
-		} `json:"message"`
-	} `json:"choices"`
-	Timings struct {
-		PromptN         int     `json:"prompt_n"`
-		PromptMs        float64 `json:"prompt_ms"`
-		PromptPerSecond float64 `json:"prompt_per_second"`
-		PredictedN      int     `json:"predicted_n"`
-		PredictedMs     float64 `json:"predicted_ms"`
-		PredictedPerSec float64 `json:"predicted_per_second"`
-	} `json:"timings"`
 }
 
 func runPerfAll() error {
@@ -258,9 +196,9 @@ func benchPort(port int, profile string) perfResult {
 	ui.Info(fmt.Sprintf("Testing %s (port %d)...", profile, port))
 
 	ui.Info("  warmup...")
-	runSingleBench(port, false)
+	perf.RunSingleBench(port, false)
 
-	ttft, model := measureTTFT(port)
+	ttft, model := perf.MeasureTTFT(port)
 	result.TTFT = ttft
 	result.Model = filepath.Base(model)
 
@@ -268,153 +206,13 @@ func benchPort(port int, profile string) perfResult {
 		result.ModelType = detectModelTypeShow(filepath.Base(model))
 	}
 
-	ui.Info(fmt.Sprintf("  no-think (%d runs)...", benchIterations))
-	result.NoThink = runBench(port, false)
+	ui.Info(fmt.Sprintf("  no-think (%d runs)...", perf.Iterations))
+	result.NoThink = perf.RunBench(port, false)
 
-	ui.Info(fmt.Sprintf("  think (%d runs)...", benchIterations))
-	result.Think = runBench(port, true)
+	ui.Info(fmt.Sprintf("  think (%d runs)...", perf.Iterations))
+	result.Think = perf.RunBench(port, true)
 
 	return result
-}
-
-func measureTTFT(port int) (time.Duration, string) {
-	host := fmt.Sprintf("http://localhost:%d", port)
-
-	payload := map[string]any{
-		"messages":             []map[string]string{{"role": "user", "content": "Hi"}},
-		"max_tokens":           5,
-		"stream":               true,
-		"chat_template_kwargs": map[string]bool{"enable_thinking": false},
-	}
-
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return 0, ""
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(ctx, "POST", host+"/v1/chat/completions", bytes.NewReader(body))
-	if err != nil {
-		return 0, ""
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{}
-	start := time.Now()
-	resp, err := client.Do(req)
-	if err != nil {
-		return 0, ""
-	}
-	ttft := time.Since(start)
-	resp.Body.Close()
-
-	// Get model name from non-streaming request
-	payload["stream"] = false
-	body, _ = json.Marshal(payload)
-	req2, _ := http.NewRequestWithContext(context.Background(), "POST", host+"/v1/chat/completions", bytes.NewReader(body))
-	req2.Header.Set("Content-Type", "application/json")
-	resp2, err := client.Do(req2)
-	model := ""
-	if err == nil {
-		defer resp2.Body.Close()
-		respBody, _ := io.ReadAll(resp2.Body)
-		var cr chatResponse
-		if json.Unmarshal(respBody, &cr) == nil {
-			model = cr.Model
-		}
-	}
-
-	return ttft, model
-}
-
-func runBench(port int, thinking bool) benchResult {
-	var genSamples, promptSamples []float64
-	var last benchResult
-
-	for i := 0; i < benchIterations; i++ {
-		r := runSingleBench(port, thinking)
-		if r.Error != "" {
-			return r
-		}
-		genSamples = append(genSamples, r.GenerationTokPerSec)
-		promptSamples = append(promptSamples, r.PromptTokPerSec)
-		last = r
-	}
-
-	sort.Float64s(genSamples)
-	sort.Float64s(promptSamples)
-
-	return benchResult{
-		PromptTokPerSec:     median(promptSamples),
-		GenerationTokPerSec: median(genSamples),
-		GenMin:              genSamples[0],
-		GenMax:              genSamples[len(genSamples)-1],
-		PromptTokens:        last.PromptTokens,
-		GeneratedTokens:     last.GeneratedTokens,
-	}
-}
-
-func runSingleBench(port int, thinking bool) benchResult {
-	host := fmt.Sprintf("http://localhost:%d", port)
-
-	payload := map[string]any{
-		"messages":   []map[string]string{{"role": "user", "content": benchPrompt}},
-		"max_tokens": benchMaxTokens,
-	}
-	if !thinking {
-		payload["chat_template_kwargs"] = map[string]bool{"enable_thinking": false}
-	}
-
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return benchResult{Error: err.Error()}
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(ctx, "POST", host+"/v1/chat/completions", bytes.NewReader(body))
-	if err != nil {
-		return benchResult{Error: err.Error()}
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return benchResult{Error: err.Error()}
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return benchResult{Error: err.Error()}
-	}
-
-	var cr chatResponse
-	if err := json.Unmarshal(respBody, &cr); err != nil {
-		return benchResult{Error: fmt.Sprintf("parse error: %s", err)}
-	}
-
-	return benchResult{
-		PromptTokPerSec:     cr.Timings.PromptPerSecond,
-		GenerationTokPerSec: cr.Timings.PredictedPerSec,
-		PromptTokens:        cr.Timings.PromptN,
-		GeneratedTokens:     cr.Timings.PredictedN,
-	}
-}
-
-func median(sorted []float64) float64 {
-	n := len(sorted)
-	if n == 0 {
-		return 0
-	}
-	if n%2 == 0 {
-		return (sorted[n/2-1] + sorted[n/2]) / 2
-	}
-	return sorted[n/2]
 }
 
 func printPerfResults(results []perfResult) {
@@ -480,7 +278,7 @@ func fmtTokS(tokPerSec float64, err string) string {
 	return fmt.Sprintf("%.1f tok/s", tokPerSec)
 }
 
-func fmtTokSRange(b benchResult) string {
+func fmtTokSRange(b perf.BenchResult) string {
 	if b.Error != "" {
 		return "error"
 	}

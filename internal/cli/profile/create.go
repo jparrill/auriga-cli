@@ -157,7 +157,7 @@ func runProfileCreate(name string, opts *createOpts) error {
 		return fmt.Errorf("cannot write config: %w", err)
 	}
 
-	ui.Ok(fmt.Sprintf("Profile %q created in %s", name, configPath()))
+	ui.Ok(fmt.Sprintf("Profile %q created in %s", name, ConfigPath()))
 
 	// Check if files are downloaded
 	ggufDir := config.ExpandHome(viper.GetString("llama_server.gguf_dir"))

@@ -20,14 +20,14 @@ type ProfileConfig struct {
 }
 
 func addProfileToConfig(name string, pc ProfileConfig) error {
-	doc, err := readConfigDoc()
+	doc, err := ReadConfigDoc()
 	if err != nil {
 		return err
 	}
 
 	root := doc.Content[0] // mapping node
 
-	profilesNode := findMappingKey(root, "profiles")
+	profilesNode := FindMappingKey(root, "profiles")
 	if profilesNode == nil {
 		root.Content = append(root.Content,
 			&yaml.Node{Kind: yaml.ScalarNode, Value: "profiles"},
@@ -42,17 +42,17 @@ func addProfileToConfig(name string, pc ProfileConfig) error {
 		profileValueNode,
 	)
 
-	return writeConfigDoc(doc)
+	return WriteConfigDoc(doc)
 }
 
 func removeProfileFromConfig(name string) error {
-	doc, err := readConfigDoc()
+	doc, err := ReadConfigDoc()
 	if err != nil {
 		return err
 	}
 
 	root := doc.Content[0]
-	profilesNode := findMappingKey(root, "profiles")
+	profilesNode := FindMappingKey(root, "profiles")
 	if profilesNode == nil {
 		return nil
 	}
@@ -65,7 +65,7 @@ func removeProfileFromConfig(name string) error {
 	}
 	profilesNode.Content = filtered
 
-	return writeConfigDoc(doc)
+	return WriteConfigDoc(doc)
 }
 
 func buildProfileBlock(name string, pc ProfileConfig) []string {
@@ -159,7 +159,7 @@ func buildProfileNode(pc ProfileConfig) *yaml.Node {
 	return node
 }
 
-func findMappingKey(mapping *yaml.Node, key string) *yaml.Node {
+func FindMappingKey(mapping *yaml.Node, key string) *yaml.Node {
 	for i := 0; i+1 < len(mapping.Content); i += 2 {
 		if mapping.Content[i].Value == key {
 			return mapping.Content[i+1]
@@ -168,8 +168,8 @@ func findMappingKey(mapping *yaml.Node, key string) *yaml.Node {
 	return nil
 }
 
-func readConfigDoc() (*yaml.Node, error) {
-	cfgPath := configPath()
+func ReadConfigDoc() (*yaml.Node, error) {
+	cfgPath := ConfigPath()
 	data, err := os.ReadFile(cfgPath)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read config: %w", err)
@@ -187,15 +187,15 @@ func readConfigDoc() (*yaml.Node, error) {
 	return &doc, nil
 }
 
-func writeConfigDoc(doc *yaml.Node) error {
+func WriteConfigDoc(doc *yaml.Node) error {
 	data, err := yaml.Marshal(doc)
 	if err != nil {
 		return fmt.Errorf("cannot marshal config: %w", err)
 	}
-	return os.WriteFile(configPath(), data, 0644)
+	return os.WriteFile(ConfigPath(), data, 0644)
 }
 
-func configPath() string {
+func ConfigPath() string {
 	p := viper.ConfigFileUsed()
 	if p == "" {
 		p = config.ExpandHome("~/.config/auriga/config.yaml")

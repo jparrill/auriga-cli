@@ -233,7 +233,7 @@ skipModelDownload:
 		return fmt.Errorf("cannot write config: %w", err)
 	}
 
-	ui.Ok(fmt.Sprintf("Profile %q created in %s", name, configPath()))
+	ui.Ok(fmt.Sprintf("Profile %q created in %s", name, ConfigPath()))
 	ui.Info("To start: auriga profile serve " + name)
 
 	return nil

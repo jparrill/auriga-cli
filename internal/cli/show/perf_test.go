@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jparrill/auriga-cli/internal/perf"
 	"github.com/spf13/viper"
 )
 
@@ -34,11 +35,11 @@ func newTestServer(model string) *httptest.Server {
 					{"message": map[string]string{"role": "assistant", "content": "Mountains rise high"}},
 				},
 				"timings": map[string]any{
-					"prompt_n":           15,
-					"prompt_ms":          500.0,
-					"prompt_per_second":  30.0,
-					"predicted_n":        20,
-					"predicted_ms":       2000.0,
+					"prompt_n":            15,
+					"prompt_ms":           500.0,
+					"prompt_per_second":   30.0,
+					"predicted_n":         20,
+					"predicted_ms":        2000.0,
 					"predicted_per_second": 10.0,
 				},
 			}
@@ -68,10 +69,10 @@ func TestRunBench_NoThinking(t *testing.T) {
 	defer srv.Close()
 	port := extractTestPort(t, srv)
 
-	result := runBench(port, false)
+	result := perf.RunBench(port, false)
 
 	if result.Error != "" {
-		t.Errorf("When server responds, runBench should not error, got: %s", result.Error)
+		t.Errorf("When server responds, RunBench should not error, got: %s", result.Error)
 	}
 	if result.GenerationTokPerSec != 10.0 {
 		t.Errorf("When server reports 10 tok/s, median should be 10.0, got %.1f", result.GenerationTokPerSec)
@@ -86,10 +87,10 @@ func TestRunSingleBench_NoThinking(t *testing.T) {
 	defer srv.Close()
 	port := extractTestPort(t, srv)
 
-	result := runSingleBench(port, false)
+	result := perf.RunSingleBench(port, false)
 
 	if result.Error != "" {
-		t.Errorf("When server responds, runSingleBench should not error, got: %s", result.Error)
+		t.Errorf("When server responds, RunSingleBench should not error, got: %s", result.Error)
 	}
 	if result.GenerationTokPerSec != 10.0 {
 		t.Errorf("When server reports 10 tok/s, got %.1f", result.GenerationTokPerSec)
@@ -100,29 +101,29 @@ func TestRunSingleBench_NoThinking(t *testing.T) {
 }
 
 func TestRunBench_ServerDown(t *testing.T) {
-	result := runBench(59877, false)
+	result := perf.RunBench(59877, false)
 
 	if result.Error == "" {
-		t.Error("When server down, runBench should return error")
+		t.Error("When server down, RunBench should return error")
 	}
 }
 
 func TestMedian_Odd(t *testing.T) {
-	got := median([]float64{1, 3, 5, 7, 9})
+	got := perf.Median([]float64{1, 3, 5, 7, 9})
 	if got != 5 {
 		t.Errorf("median of [1,3,5,7,9] should be 5, got %.1f", got)
 	}
 }
 
 func TestMedian_Even(t *testing.T) {
-	got := median([]float64{1, 3, 5, 7})
+	got := perf.Median([]float64{1, 3, 5, 7})
 	if got != 4 {
 		t.Errorf("median of [1,3,5,7] should be 4, got %.1f", got)
 	}
 }
 
 func TestMedian_Empty(t *testing.T) {
-	got := median([]float64{})
+	got := perf.Median([]float64{})
 	if got != 0 {
 		t.Errorf("median of empty should be 0, got %.1f", got)
 	}
@@ -133,7 +134,7 @@ func TestMeasureTTFT_ReturnsPositive(t *testing.T) {
 	defer srv.Close()
 	port := extractTestPort(t, srv)
 
-	ttft, model := measureTTFT(port)
+	ttft, model := perf.MeasureTTFT(port)
 
 	if ttft <= 0 {
 		t.Error("When server responds, TTFT should be positive")
@@ -392,15 +393,15 @@ func TestPrintPerfResults_NoError(t *testing.T) {
 			Binary:  "llama-server",
 			Model:   "model.gguf",
 			TTFT:    150 * time.Millisecond,
-			NoThink: benchResult{PromptTokPerSec: 30.0, GenerationTokPerSec: 10.0, GenMin: 9.5, GenMax: 10.5, PromptTokens: 15, GeneratedTokens: 20},
-			Think:   benchResult{PromptTokPerSec: 25.0, GenerationTokPerSec: 7.0, GenMin: 6.5, GenMax: 7.5, PromptTokens: 15, GeneratedTokens: 40},
+			NoThink: perf.BenchResult{PromptTokPerSec: 30.0, GenerationTokPerSec: 10.0, GenMin: 9.5, GenMax: 10.5, PromptTokens: 15, GeneratedTokens: 20},
+			Think:   perf.BenchResult{PromptTokPerSec: 25.0, GenerationTokPerSec: 7.0, GenMin: 6.5, GenMax: 7.5, PromptTokens: 15, GeneratedTokens: 40},
 		},
 	}
 	printPerfResults(results)
 }
 
 func TestFmtTokSRange_WithRange(t *testing.T) {
-	b := benchResult{GenerationTokPerSec: 19.5, GenMin: 18.9, GenMax: 20.1}
+	b := perf.BenchResult{GenerationTokPerSec: 19.5, GenMin: 18.9, GenMax: 20.1}
 	got := fmtTokSRange(b)
 	if got != "19.5 (18.9-20.1)" {
 		t.Errorf("fmtTokSRange with range = %q, want '19.5 (18.9-20.1)'", got)
@@ -408,7 +409,7 @@ func TestFmtTokSRange_WithRange(t *testing.T) {
 }
 
 func TestFmtTokSRange_NoRange(t *testing.T) {
-	b := benchResult{GenerationTokPerSec: 10.0, GenMin: 10.0, GenMax: 10.0}
+	b := perf.BenchResult{GenerationTokPerSec: 10.0, GenMin: 10.0, GenMax: 10.0}
 	got := fmtTokSRange(b)
 	if got != "10.0 tok/s" {
 		t.Errorf("fmtTokSRange without range = %q, want '10.0 tok/s'", got)
@@ -416,7 +417,7 @@ func TestFmtTokSRange_NoRange(t *testing.T) {
 }
 
 func TestFmtTokSRange_Error(t *testing.T) {
-	b := benchResult{Error: "connection refused"}
+	b := perf.BenchResult{Error: "connection refused"}
 	got := fmtTokSRange(b)
 	if got != "error" {
 		t.Errorf("fmtTokSRange with error = %q, want 'error'", got)

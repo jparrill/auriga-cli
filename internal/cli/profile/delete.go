@@ -29,6 +29,6 @@ func runProfileDelete(name string) error {
 		return fmt.Errorf("cannot update config: %w", err)
 	}
 
-	ui.Ok(fmt.Sprintf("Profile %q deleted from %s", name, configPath()))
+	ui.Ok(fmt.Sprintf("Profile %q deleted from %s", name, ConfigPath()))
 	return nil
 }
