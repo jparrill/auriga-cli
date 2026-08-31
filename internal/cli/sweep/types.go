@@ -1,12 +1,11 @@
 package sweep
 
 type SweepConfig struct {
-	Profile          string                         `yaml:"profile"`
-	Iterations       int                            `yaml:"iterations"`
-	ProfileFields    map[string][]string            `yaml:"profile_fields"`
-	Parameters       map[string][]string            `yaml:"parameters"`
-	LinkedParameters map[string]map[string][]string `yaml:"linked_parameters"`
-	Toggles          map[string][]string            `yaml:"toggles"`
+	Profile       string              `yaml:"profile"`
+	Iterations    int                 `yaml:"iterations"`
+	ProfileFields map[string][]string `yaml:"profile_fields"`
+	Parameters    map[string][]string `yaml:"parameters"`
+	Toggles       map[string][]string `yaml:"toggles"`
 }
 
 type Combination struct {
@@ -49,13 +48,25 @@ type ValidationIssue struct {
 }
 
 var knownParameters = map[string]bool{
-	"cache-type-k":      true,
-	"cache-type-v":      true,
-	"batch-size":        true,
-	"ubatch-size":       true,
-	"threads":           true,
-	"spec-draft-p-min":  true,
-	"spec-draft-n-max":  true,
+	"cache-type":       true,
+	"cache-type-k":     true,
+	"cache-type-v":     true,
+	"batch":            true,
+	"batch-size":       true,
+	"ubatch-size":      true,
+	"threads":          true,
+	"spec-draft-p-min": true,
+	"spec-draft-n-max": true,
+}
+
+type aliasTarget struct {
+	Flag   string
+	Divide int // 0 = use value as-is, >0 = integer divide
+}
+
+var paramAliases = map[string][]aliasTarget{
+	"cache-type": {{Flag: "cache-type-k"}, {Flag: "cache-type-v"}},
+	"batch":      {{Flag: "batch-size"}, {Flag: "ubatch-size", Divide: 4}},
 }
 
 var knownToggles = map[string]bool{

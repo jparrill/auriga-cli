@@ -122,10 +122,10 @@ func TestBuildParameters(t *testing.T) {
 	params := buildParameters(flagMap)
 
 	if _, ok := params["cache-type-k"]; ok {
-		t.Error("cache-type-k should NOT be in standalone params (it belongs in linked)")
+		t.Error("cache-type-k should NOT be in standalone params (alias target)")
 	}
 	if _, ok := params["batch-size"]; ok {
-		t.Error("batch-size should NOT be in standalone params (it belongs in linked)")
+		t.Error("batch-size should NOT be in standalone params (alias target)")
 	}
 	if _, ok := params["threads"]; !ok {
 		t.Error("expected threads in params")
@@ -135,64 +135,84 @@ func TestBuildParameters(t *testing.T) {
 	}
 }
 
-func TestBuildLinkedParameters(t *testing.T) {
-	t.Run("with current cache and batch values", func(t *testing.T) {
-		flagMap := map[string]string{
-			"cache-type-k": "q8_0",
-			"cache-type-v": "q8_0",
-			"batch-size":   "4096",
-			"ubatch-size":  "1024",
+func TestBuildParameters_BatchAlias(t *testing.T) {
+	t.Run("reads from batch-size flag", func(t *testing.T) {
+		flagMap := map[string]string{"batch-size": "4096"}
+		params := buildParameters(flagMap)
+		batch := params["batch"]
+		if len(batch) == 0 {
+			t.Fatal("expected batch in params")
 		}
-		linked := buildLinkedParameters(flagMap)
-
-		ct := linked["cache-type"]
-		if ct["cache-type-k"][0] != "q8_0" {
-			t.Errorf("cache-type-k first value should be current q8_0, got %q", ct["cache-type-k"][0])
-		}
-		if len(ct["cache-type-k"]) != len(ct["cache-type-v"]) {
-			t.Error("cache-type-k and cache-type-v must have same length")
-		}
-		for i := range ct["cache-type-k"] {
-			if ct["cache-type-k"][i] != ct["cache-type-v"][i] {
-				t.Errorf("index %d: k=%s v=%s — linked values must match", i, ct["cache-type-k"][i], ct["cache-type-v"][i])
-			}
-		}
-
-		batch := linked["batch"]
-		if batch["batch-size"][0] != "4096" || batch["ubatch-size"][0] != "1024" {
-			t.Errorf("first batch pair should be current (4096,1024), got (%s,%s)", batch["batch-size"][0], batch["ubatch-size"][0])
-		}
-		if len(batch["batch-size"]) != len(batch["ubatch-size"]) {
-			t.Error("batch-size and ubatch-size must have same length")
+		if batch[0] != "4096" {
+			t.Errorf("batch first value should be current 4096, got %q", batch[0])
 		}
 	})
 
-	t.Run("without current values uses defaults", func(t *testing.T) {
+	t.Run("no current value uses defaults", func(t *testing.T) {
 		flagMap := map[string]string{}
-		linked := buildLinkedParameters(flagMap)
+		params := buildParameters(flagMap)
+		batch := params["batch"]
+		if len(batch) < 2 {
+			t.Error("should have at least 2 batch alternatives")
+		}
+	})
 
-		ct := linked["cache-type"]
-		if len(ct["cache-type-k"]) < 2 {
+	t.Run("batch-size and ubatch-size not in standalone params", func(t *testing.T) {
+		flagMap := map[string]string{"batch-size": "4096", "ubatch-size": "1024"}
+		params := buildParameters(flagMap)
+		if _, ok := params["batch-size"]; ok {
+			t.Error("batch-size should not be a standalone param")
+		}
+		if _, ok := params["ubatch-size"]; ok {
+			t.Error("ubatch-size should not be a standalone param")
+		}
+	})
+}
+
+func TestBuildParameters_CacheTypeAlias(t *testing.T) {
+	t.Run("reads from cache-type-k flag", func(t *testing.T) {
+		flagMap := map[string]string{"cache-type-k": "q8_0"}
+		params := buildParameters(flagMap)
+		ct := params["cache-type"]
+		if len(ct) == 0 {
+			t.Fatal("expected cache-type in params")
+		}
+		if ct[0] != "q8_0" {
+			t.Errorf("cache-type first value should be current q8_0, got %q", ct[0])
+		}
+	})
+
+	t.Run("no current value uses defaults", func(t *testing.T) {
+		flagMap := map[string]string{}
+		params := buildParameters(flagMap)
+		ct := params["cache-type"]
+		if len(ct) < 2 {
 			t.Error("should have at least 2 cache type alternatives")
 		}
-
-		batch := linked["batch"]
-		if len(batch["batch-size"]) < 2 {
-			t.Error("should have at least 2 batch presets")
-		}
 	})
 
-	t.Run("cache type k and v always identical", func(t *testing.T) {
-		flagMap := map[string]string{"cache-type-k": "f16"}
-		linked := buildLinkedParameters(flagMap)
-
-		ct := linked["cache-type"]
-		for i := range ct["cache-type-k"] {
-			if ct["cache-type-k"][i] != ct["cache-type-v"][i] {
-				t.Errorf("index %d: k=%s v=%s — must always match", i, ct["cache-type-k"][i], ct["cache-type-v"][i])
-			}
+	t.Run("cache-type-k and cache-type-v not in standalone params", func(t *testing.T) {
+		flagMap := map[string]string{"cache-type-k": "q4_0", "cache-type-v": "q4_0"}
+		params := buildParameters(flagMap)
+		if _, ok := params["cache-type-k"]; ok {
+			t.Error("cache-type-k should not be a standalone param")
+		}
+		if _, ok := params["cache-type-v"]; ok {
+			t.Error("cache-type-v should not be a standalone param")
 		}
 	})
+}
+
+func TestIsAliasTarget(t *testing.T) {
+	alias, ok := isAliasTarget("cache-type-k")
+	if !ok || alias != "cache-type" {
+		t.Errorf("cache-type-k should be alias target of cache-type, got %q %v", alias, ok)
+	}
+
+	_, ok = isAliasTarget("threads")
+	if ok {
+		t.Error("threads should not be an alias target")
+	}
 }
 
 func TestBuildToggles(t *testing.T) {

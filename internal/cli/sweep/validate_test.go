@@ -329,17 +329,15 @@ func TestLoadSweepConfig(t *testing.T) {
 		content := `profile: test
 iterations: 5
 parameters:
+  cache-type:
+    - q4_0
+    - q8_0
   threads:
     - "8"
     - "12"
-linked_parameters:
-  cache-type:
-    cache-type-k:
-      - q4_0
-      - q8_0
-    cache-type-v:
-      - q4_0
-      - q8_0
+  batch:
+    - "2048"
+    - "4096"
 toggles:
   np:
     - "on"
@@ -361,12 +359,13 @@ toggles:
 		if len(cfg.Parameters["threads"]) != 2 {
 			t.Errorf("threads values: got %d, want 2", len(cfg.Parameters["threads"]))
 		}
-		ct := cfg.LinkedParameters["cache-type"]
-		if ct == nil {
-			t.Fatal("expected linked_parameters.cache-type to be parsed")
+		ct := cfg.Parameters["cache-type"]
+		if len(ct) != 2 {
+			t.Fatalf("expected 2 cache-type values, got %d", len(ct))
 		}
-		if len(ct["cache-type-k"]) != 2 {
-			t.Errorf("linked cache-type-k values: got %d, want 2", len(ct["cache-type-k"]))
+		batch := cfg.Parameters["batch"]
+		if len(batch) != 2 {
+			t.Fatalf("expected 2 batch values, got %d", len(batch))
 		}
 	})
 
@@ -522,17 +521,10 @@ func TestValidateParameterValues_UbatchBatchCross(t *testing.T) {
 	})
 }
 
-func TestValidateLinkedParameters(t *testing.T) {
-	t.Run("valid linked group", func(t *testing.T) {
-		cfg := SweepConfig{
-			LinkedParameters: map[string]map[string][]string{
-				"cache-type": {
-					"cache-type-k": {"q4_0", "q8_0"},
-					"cache-type-v": {"q4_0", "q8_0"},
-				},
-			},
-		}
-		issues := validateLinkedParameters(cfg)
+func TestValidateParameterValues_BatchAlias(t *testing.T) {
+	t.Run("valid batch values", func(t *testing.T) {
+		params := map[string][]string{"batch": {"2048", "4096"}}
+		issues := validateParameterValues(params)
 		for _, i := range issues {
 			if i.Level == "error" {
 				t.Errorf("unexpected error: %s", i.Message)
@@ -540,84 +532,45 @@ func TestValidateLinkedParameters(t *testing.T) {
 		}
 	})
 
-	t.Run("mismatched array lengths", func(t *testing.T) {
-		cfg := SweepConfig{
-			LinkedParameters: map[string]map[string][]string{
-				"bad": {
-					"cache-type-k": {"q4_0", "q8_0"},
-					"cache-type-v": {"q4_0"},
-				},
-			},
-		}
-		issues := validateLinkedParameters(cfg)
+	t.Run("non-numeric batch", func(t *testing.T) {
+		params := map[string][]string{"batch": {"abc"}}
+		issues := validateParameterValues(params)
 		found := false
 		for _, i := range issues {
-			if i.Level == "error" && i.Check == "linked" && strings.Contains(i.Message, "same length") {
+			if i.Level == "error" && strings.Contains(i.Message, "not numeric") {
 				found = true
 			}
 		}
 		if !found {
-			t.Error("expected error for mismatched array lengths")
+			t.Error("expected error for non-numeric batch")
 		}
 	})
 
-	t.Run("empty group", func(t *testing.T) {
-		cfg := SweepConfig{
-			LinkedParameters: map[string]map[string][]string{
-				"empty": {},
-			},
-		}
-		issues := validateLinkedParameters(cfg)
+	t.Run("batch not divisible by 4 warns", func(t *testing.T) {
+		params := map[string][]string{"batch": {"2050"}}
+		issues := validateParameterValues(params)
 		found := false
 		for _, i := range issues {
-			if i.Level == "error" && strings.Contains(i.Message, "empty") {
+			if i.Level == "warning" && strings.Contains(i.Message, "divisible by 4") {
 				found = true
 			}
 		}
 		if !found {
-			t.Error("expected error for empty linked group")
+			t.Error("expected warning for batch not divisible by 4")
 		}
 	})
 
-	t.Run("overlap with standalone parameters", func(t *testing.T) {
-		cfg := SweepConfig{
-			Parameters: map[string][]string{"cache-type-k": {"q4_0"}},
-			LinkedParameters: map[string]map[string][]string{
-				"cache-type": {
-					"cache-type-k": {"q4_0", "q8_0"},
-					"cache-type-v": {"q4_0", "q8_0"},
-				},
-			},
-		}
-		issues := validateLinkedParameters(cfg)
+	t.Run("zero batch", func(t *testing.T) {
+		params := map[string][]string{"batch": {"0"}}
+		issues := validateParameterValues(params)
 		found := false
 		for _, i := range issues {
-			if i.Level == "error" && strings.Contains(i.Message, "both parameters and linked") {
+			if i.Level == "error" && strings.Contains(i.Message, "must be > 0") {
 				found = true
 			}
 		}
 		if !found {
-			t.Error("expected error for param in both standalone and linked")
-		}
-	})
-
-	t.Run("unknown param in linked group warns", func(t *testing.T) {
-		cfg := SweepConfig{
-			LinkedParameters: map[string]map[string][]string{
-				"test": {
-					"unknown-param": {"a", "b"},
-				},
-			},
-		}
-		issues := validateLinkedParameters(cfg)
-		found := false
-		for _, i := range issues {
-			if i.Level == "warning" && strings.Contains(i.Message, "unknown") {
-				found = true
-			}
-		}
-		if !found {
-			t.Error("expected warning for unknown param in linked group")
+			t.Error("expected error for batch=0")
 		}
 	})
 }

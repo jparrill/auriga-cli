@@ -664,92 +664,28 @@ func TestCartesianProduct_EmptyValues(t *testing.T) {
 	}
 }
 
-func TestCartesianProduct_LinkedParameters(t *testing.T) {
-	t.Run("linked group counts as single dimension", func(t *testing.T) {
-		cfg := SweepConfig{
-			LinkedParameters: map[string]map[string][]string{
-				"cache-type": {
-					"cache-type-k": {"q4_0", "q8_0"},
-					"cache-type-v": {"q4_0", "q8_0"},
-				},
-			},
-		}
-		combos := cartesianProduct(cfg)
-		if len(combos) != 2 {
-			t.Fatalf("expected 2 combos (linked, not 4), got %d", len(combos))
-		}
-		if combos[0].Parameters["cache-type-k"] != combos[0].Parameters["cache-type-v"] {
-			t.Errorf("linked values should match: k=%s v=%s", combos[0].Parameters["cache-type-k"], combos[0].Parameters["cache-type-v"])
-		}
-	})
-
-	t.Run("linked with standalone params", func(t *testing.T) {
+func TestCartesianProduct_BatchAlias(t *testing.T) {
+	t.Run("batch alias as single dimension", func(t *testing.T) {
 		cfg := SweepConfig{
 			Parameters: map[string][]string{
-				"threads": {"8", "12"},
-			},
-			LinkedParameters: map[string]map[string][]string{
-				"cache-type": {
-					"cache-type-k": {"q4_0", "q8_0"},
-					"cache-type-v": {"q4_0", "q8_0"},
-				},
-			},
-		}
-		combos := cartesianProduct(cfg)
-		if len(combos) != 4 {
-			t.Fatalf("expected 4 combos (2 threads × 2 linked), got %d", len(combos))
-		}
-	})
-
-	t.Run("two linked groups", func(t *testing.T) {
-		cfg := SweepConfig{
-			LinkedParameters: map[string]map[string][]string{
-				"cache-type": {
-					"cache-type-k": {"q4_0", "q8_0"},
-					"cache-type-v": {"q4_0", "q8_0"},
-				},
-				"batch": {
-					"batch-size":  {"2048", "4096"},
-					"ubatch-size": {"512", "1024"},
-				},
-			},
-		}
-		combos := cartesianProduct(cfg)
-		if len(combos) != 4 {
-			t.Fatalf("expected 4 combos (2 cache × 2 batch), got %d", len(combos))
-		}
-	})
-
-	t.Run("linked values stay paired", func(t *testing.T) {
-		cfg := SweepConfig{
-			LinkedParameters: map[string]map[string][]string{
-				"batch": {
-					"batch-size":  {"2048", "4096"},
-					"ubatch-size": {"512", "1024"},
-				},
+				"batch": {"2048", "4096"},
 			},
 		}
 		combos := cartesianProduct(cfg)
 		if len(combos) != 2 {
 			t.Fatalf("expected 2 combos, got %d", len(combos))
 		}
-		if combos[0].Parameters["batch-size"] != "2048" || combos[0].Parameters["ubatch-size"] != "512" {
-			t.Errorf("combo 0 should be (2048,512), got (%s,%s)", combos[0].Parameters["batch-size"], combos[0].Parameters["ubatch-size"])
-		}
-		if combos[1].Parameters["batch-size"] != "4096" || combos[1].Parameters["ubatch-size"] != "1024" {
-			t.Errorf("combo 1 should be (4096,1024), got (%s,%s)", combos[1].Parameters["batch-size"], combos[1].Parameters["ubatch-size"])
+		if combos[0].Parameters["batch"] != "2048" {
+			t.Errorf("combo 0 batch should be 2048, got %s", combos[0].Parameters["batch"])
 		}
 	})
 
-	t.Run("full config with all dimensions", func(t *testing.T) {
+	t.Run("batch with other params", func(t *testing.T) {
 		cfg := SweepConfig{
-			ProfileFields: map[string][]string{"bin": {"/a", "/b"}},
-			Parameters:    map[string][]string{"threads": {"8", "12"}},
-			LinkedParameters: map[string]map[string][]string{
-				"cache-type": {
-					"cache-type-k": {"q4_0", "q8_0"},
-					"cache-type-v": {"q4_0", "q8_0"},
-				},
+			Parameters: map[string][]string{
+				"batch":      {"2048", "4096"},
+				"cache-type": {"q4_0", "q8_0"},
+				"threads":    {"8", "12"},
 			},
 			Toggles: map[string][]string{"np": {"on", "off"}},
 		}
@@ -759,15 +695,4 @@ func TestCartesianProduct_LinkedParameters(t *testing.T) {
 			t.Fatalf("expected %d combos, got %d", expected, len(combos))
 		}
 	})
-}
-
-func TestSortedLinkedKeys(t *testing.T) {
-	m := map[string]map[string][]string{
-		"z-group": {"a": {"1"}},
-		"a-group": {"b": {"2"}},
-	}
-	keys := sortedLinkedKeys(m)
-	if len(keys) != 2 || keys[0] != "a-group" || keys[1] != "z-group" {
-		t.Errorf("expected sorted keys, got %v", keys)
-	}
 }

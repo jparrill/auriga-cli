@@ -27,26 +27,28 @@ Example:
 }
 
 var paramAlternatives = map[string][]string{
+	"cache-type":       {"q4_0", "q8_0"},
+	"batch":            {"2048", "4096"},
 	"threads":          {"8", "12", "16"},
 	"spec-draft-p-min": {"0.5", "0.75"},
 	"spec-draft-n-max": {"4", "8"},
 }
 
-var linkedParamSet = map[string]bool{
-	"cache-type-k": true, "cache-type-v": true,
-	"batch-size": true, "ubatch-size": true,
+var paramDescriptions = map[string]string{
+	"cache-type":       "KV cache quantization (applies to both K and V)",
+	"batch":            "Prompt batch size (ubatch = batch/4)",
+	"threads":          "CPU threads for prompt processing",
+	"spec-draft-p-min": "Speculative decoding min probability threshold",
+	"spec-draft-n-max": "Speculative decoding max draft tokens",
 }
 
-var defaultCacheTypes = []string{"q4_0", "q8_0"}
-
-type batchPreset struct {
-	batch  string
-	ubatch string
+var toggleDescriptions = map[string]string{
+	"np":        "Parallel sequences (on=-np 1, off=absent)",
+	"load-mode": "Memory loading strategy (mlock, mmap, or off)",
 }
 
-var defaultBatchPresets = []batchPreset{
-	{"2048", "512"},
-	{"4096", "1024"},
+var profileFieldDescriptions = map[string]string{
+	"bin": "llama-server binary path",
 }
 
 func runSweepInit(profileName string) error {
@@ -60,21 +62,88 @@ func runSweepInit(profileName string) error {
 	flagMap := parseFlagPairs(flags)
 
 	cfg := SweepConfig{
-		Profile:          profileName,
-		Iterations:       5,
-		ProfileFields:    buildProfileFields(profileName),
-		Parameters:       buildParameters(flagMap),
-		LinkedParameters: buildLinkedParameters(flagMap),
-		Toggles:          buildToggles(flagMap),
+		Profile:       profileName,
+		Iterations:    5,
+		ProfileFields: buildProfileFields(profileName),
+		Parameters:    buildParameters(flagMap),
+		Toggles:       buildToggles(flagMap),
 	}
 
-	data, err := yaml.Marshal(cfg)
-	if err != nil {
-		return fmt.Errorf("failed to marshal sweep config: %w", err)
+	doc := buildInitDocument(cfg)
+	enc := yaml.NewEncoder(os.Stdout)
+	enc.SetIndent(2)
+	if err := enc.Encode(doc); err != nil {
+		return fmt.Errorf("failed to write sweep config: %w", err)
+	}
+	return enc.Close()
+}
+
+func buildInitDocument(cfg SweepConfig) *yaml.Node {
+	doc := &yaml.Node{Kind: yaml.DocumentNode}
+	root := &yaml.Node{Kind: yaml.MappingNode}
+	doc.Content = append(doc.Content, root)
+
+	root.Content = append(root.Content,
+		&yaml.Node{Kind: yaml.ScalarNode, Value: "profile"},
+		&yaml.Node{Kind: yaml.ScalarNode, Value: cfg.Profile},
+		&yaml.Node{Kind: yaml.ScalarNode, Value: "iterations"},
+		&yaml.Node{Kind: yaml.ScalarNode, Value: fmt.Sprintf("%d", cfg.Iterations), Tag: "!!int"},
+	)
+
+	if len(cfg.ProfileFields) > 0 {
+		fieldsVal := &yaml.Node{Kind: yaml.MappingNode}
+		for _, key := range sortedKeys(cfg.ProfileFields) {
+			keyNode := &yaml.Node{Kind: yaml.ScalarNode, Value: key}
+			if desc, ok := profileFieldDescriptions[key]; ok {
+				keyNode.HeadComment = desc
+			}
+			fieldsVal.Content = append(fieldsVal.Content, keyNode, flowSequence(cfg.ProfileFields[key]))
+		}
+		root.Content = append(root.Content,
+			&yaml.Node{Kind: yaml.ScalarNode, Value: "profile_fields"},
+			fieldsVal,
+		)
 	}
 
-	_, err = os.Stdout.Write(data)
-	return err
+	if len(cfg.Parameters) > 0 {
+		paramsVal := &yaml.Node{Kind: yaml.MappingNode}
+		for _, key := range sortedKeys(cfg.Parameters) {
+			keyNode := &yaml.Node{Kind: yaml.ScalarNode, Value: key}
+			if desc, ok := paramDescriptions[key]; ok {
+				keyNode.HeadComment = desc
+			}
+			paramsVal.Content = append(paramsVal.Content, keyNode, flowSequence(cfg.Parameters[key]))
+		}
+		root.Content = append(root.Content,
+			&yaml.Node{Kind: yaml.ScalarNode, Value: "parameters"},
+			paramsVal,
+		)
+	}
+
+	if len(cfg.Toggles) > 0 {
+		togglesVal := &yaml.Node{Kind: yaml.MappingNode}
+		for _, key := range sortedKeys(cfg.Toggles) {
+			keyNode := &yaml.Node{Kind: yaml.ScalarNode, Value: key}
+			if desc, ok := toggleDescriptions[key]; ok {
+				keyNode.HeadComment = desc
+			}
+			togglesVal.Content = append(togglesVal.Content, keyNode, flowSequence(cfg.Toggles[key]))
+		}
+		root.Content = append(root.Content,
+			&yaml.Node{Kind: yaml.ScalarNode, Value: "toggles"},
+			togglesVal,
+		)
+	}
+
+	return doc
+}
+
+func flowSequence(values []string) *yaml.Node {
+	seq := &yaml.Node{Kind: yaml.SequenceNode, Style: yaml.FlowStyle}
+	for _, v := range values {
+		seq.Content = append(seq.Content, &yaml.Node{Kind: yaml.ScalarNode, Value: v})
+	}
+	return seq
 }
 
 func parseFlagPairs(flags []string) map[string]string {
@@ -120,7 +189,23 @@ func buildParameters(flagMap map[string]string) map[string][]string {
 	params := make(map[string][]string)
 
 	for key := range knownParameters {
-		if linkedParamSet[key] {
+		if aliases, isAlias := paramAliases[key]; isAlias {
+			current := flagMap[aliases[0].Flag]
+			alts := paramAlternatives[key]
+			if current != "" {
+				values := []string{current}
+				for _, alt := range alts {
+					if alt != current {
+						values = append(values, alt)
+					}
+				}
+				params[key] = values
+			} else if len(alts) > 0 {
+				params[key] = alts
+			}
+			continue
+		}
+		if _, isTarget := isAliasTarget(key); isTarget {
 			continue
 		}
 		current, exists := flagMap[key]
@@ -144,44 +229,15 @@ func buildParameters(flagMap map[string]string) map[string][]string {
 	return params
 }
 
-func buildLinkedParameters(flagMap map[string]string) map[string]map[string][]string {
-	linked := make(map[string]map[string][]string)
-
-	currentK := flagMap["cache-type-k"]
-	if currentK == "" {
-		currentK = "q4_0"
-	}
-	var cacheValues []string
-	cacheValues = append(cacheValues, currentK)
-	for _, alt := range defaultCacheTypes {
-		if alt != currentK {
-			cacheValues = append(cacheValues, alt)
+func isAliasTarget(param string) (string, bool) {
+	for alias, targets := range paramAliases {
+		for _, t := range targets {
+			if t.Flag == param {
+				return alias, true
+			}
 		}
 	}
-	linked["cache-type"] = map[string][]string{
-		"cache-type-k": cacheValues,
-		"cache-type-v": cacheValues,
-	}
-
-	currentBatch := flagMap["batch-size"]
-	currentUbatch := flagMap["ubatch-size"]
-	var batchVals, ubatchVals []string
-	if currentBatch != "" && currentUbatch != "" {
-		batchVals = append(batchVals, currentBatch)
-		ubatchVals = append(ubatchVals, currentUbatch)
-	}
-	for _, p := range defaultBatchPresets {
-		if p.batch != currentBatch || p.ubatch != currentUbatch {
-			batchVals = append(batchVals, p.batch)
-			ubatchVals = append(ubatchVals, p.ubatch)
-		}
-	}
-	linked["batch"] = map[string][]string{
-		"batch-size":  batchVals,
-		"ubatch-size": ubatchVals,
-	}
-
-	return linked
+	return "", false
 }
 
 func buildToggles(flagMap map[string]string) map[string][]string {
