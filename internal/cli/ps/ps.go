@@ -30,6 +30,7 @@ type processInfo struct {
 	Managed   string
 	Health    string
 	SpecType  string
+	Binary    string
 }
 
 func NewPsCmd() *cobra.Command {
@@ -69,13 +70,17 @@ func runWatch(interval int) error {
 func printStatus() {
 	procs := gatherStatus()
 
-	tbl := ui.NewTable("auriga ps", "COMPONENT", "STATUS", "PID", "PORT", "MODEL", "DETAILS")
+	tbl := ui.NewTable("auriga ps", "COMPONENT", "STATUS", "PID", "PORT", "BINARY", "MODEL", "DETAILS")
 	for _, p := range procs {
 		status := ui.ErrorStyle.Render("stopped")
 		if p.Status == "active" {
 			status = ui.SuccessStyle.Render("active")
 		}
-		tbl.AddRow(p.Component, status, p.PID, p.Port, p.Model, p.Extra)
+		bin := p.Binary
+		if bin == "" {
+			bin = "-"
+		}
+		tbl.AddRow(p.Component, status, p.PID, p.Port, bin, p.Model, p.Extra)
 	}
 	tbl.Print()
 
@@ -95,7 +100,7 @@ func printLlamaServerDetail(procs []processInfo) {
 		return
 	}
 
-	tbl := ui.NewTable("llama-server instances", "PROFILE", "TYPE", "PORT", "SPEC", "HEALTH", "MANAGED", "DETAILS")
+	tbl := ui.NewTable("llama-server instances", "PROFILE", "TYPE", "PORT", "BINARY", "SPEC", "HEALTH", "MANAGED", "DETAILS")
 	for _, s := range servers {
 		health := ui.ErrorStyle.Render(s.Health)
 		if s.Health == "healthy" {
@@ -105,7 +110,11 @@ func printLlamaServerDetail(procs []processInfo) {
 		if s.SpecType != "" {
 			spec = ui.SuccessStyle.Render(s.SpecType)
 		}
-		tbl.AddRow(s.Profile, s.ModelType, s.Port, spec, health, s.Managed, s.Extra)
+		bin := s.Binary
+		if bin == "" {
+			bin = "-"
+		}
+		tbl.AddRow(s.Profile, s.ModelType, s.Port, bin, spec, health, s.Managed, s.Extra)
 	}
 	tbl.Print()
 }
@@ -177,14 +186,14 @@ func checkLlamaServers() []processInfo {
 
 	var procs []processInfo
 	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
-		matched := false
+		var matchedBin string
 		for _, bin := range knownBins {
 			if strings.Contains(line, bin) {
-				matched = true
+				matchedBin = bin
 				break
 			}
 		}
-		if !matched {
+		if matchedBin == "" {
 			continue
 		}
 
@@ -199,6 +208,7 @@ func checkLlamaServers() []processInfo {
 			Managed:   "process",
 			Health:    "unknown",
 			Extra:     "-",
+			Binary:    filepath.Base(matchedBin),
 		}
 		parts := strings.SplitN(line, " ", 2)
 		p.PID = parts[0]
