@@ -121,11 +121,11 @@ func TestBuildParameters(t *testing.T) {
 
 	params := buildParameters(flagMap)
 
-	if _, ok := params["cache-type-k"]; !ok {
-		t.Error("expected cache-type-k in params")
+	if _, ok := params["cache-type-k"]; ok {
+		t.Error("cache-type-k should NOT be in standalone params (it belongs in linked)")
 	}
-	if params["cache-type-k"][0] != "q4_0" {
-		t.Errorf("cache-type-k first value should be current, got %q", params["cache-type-k"][0])
+	if _, ok := params["batch-size"]; ok {
+		t.Error("batch-size should NOT be in standalone params (it belongs in linked)")
 	}
 	if _, ok := params["threads"]; !ok {
 		t.Error("expected threads in params")
@@ -133,6 +133,66 @@ func TestBuildParameters(t *testing.T) {
 	if _, ok := params["unknown-flag"]; ok {
 		t.Error("unknown-flag should not be in params")
 	}
+}
+
+func TestBuildLinkedParameters(t *testing.T) {
+	t.Run("with current cache and batch values", func(t *testing.T) {
+		flagMap := map[string]string{
+			"cache-type-k": "q8_0",
+			"cache-type-v": "q8_0",
+			"batch-size":   "4096",
+			"ubatch-size":  "1024",
+		}
+		linked := buildLinkedParameters(flagMap)
+
+		ct := linked["cache-type"]
+		if ct["cache-type-k"][0] != "q8_0" {
+			t.Errorf("cache-type-k first value should be current q8_0, got %q", ct["cache-type-k"][0])
+		}
+		if len(ct["cache-type-k"]) != len(ct["cache-type-v"]) {
+			t.Error("cache-type-k and cache-type-v must have same length")
+		}
+		for i := range ct["cache-type-k"] {
+			if ct["cache-type-k"][i] != ct["cache-type-v"][i] {
+				t.Errorf("index %d: k=%s v=%s — linked values must match", i, ct["cache-type-k"][i], ct["cache-type-v"][i])
+			}
+		}
+
+		batch := linked["batch"]
+		if batch["batch-size"][0] != "4096" || batch["ubatch-size"][0] != "1024" {
+			t.Errorf("first batch pair should be current (4096,1024), got (%s,%s)", batch["batch-size"][0], batch["ubatch-size"][0])
+		}
+		if len(batch["batch-size"]) != len(batch["ubatch-size"]) {
+			t.Error("batch-size and ubatch-size must have same length")
+		}
+	})
+
+	t.Run("without current values uses defaults", func(t *testing.T) {
+		flagMap := map[string]string{}
+		linked := buildLinkedParameters(flagMap)
+
+		ct := linked["cache-type"]
+		if len(ct["cache-type-k"]) < 2 {
+			t.Error("should have at least 2 cache type alternatives")
+		}
+
+		batch := linked["batch"]
+		if len(batch["batch-size"]) < 2 {
+			t.Error("should have at least 2 batch presets")
+		}
+	})
+
+	t.Run("cache type k and v always identical", func(t *testing.T) {
+		flagMap := map[string]string{"cache-type-k": "f16"}
+		linked := buildLinkedParameters(flagMap)
+
+		ct := linked["cache-type"]
+		for i := range ct["cache-type-k"] {
+			if ct["cache-type-k"][i] != ct["cache-type-v"][i] {
+				t.Errorf("index %d: k=%s v=%s — must always match", i, ct["cache-type-k"][i], ct["cache-type-v"][i])
+			}
+		}
+	})
 }
 
 func TestBuildToggles(t *testing.T) {

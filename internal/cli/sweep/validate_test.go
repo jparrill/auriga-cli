@@ -329,9 +329,17 @@ func TestLoadSweepConfig(t *testing.T) {
 		content := `profile: test
 iterations: 5
 parameters:
-  cache-type-k:
-    - q4_0
-    - q8_0
+  threads:
+    - "8"
+    - "12"
+linked_parameters:
+  cache-type:
+    cache-type-k:
+      - q4_0
+      - q8_0
+    cache-type-v:
+      - q4_0
+      - q8_0
 toggles:
   np:
     - "on"
@@ -350,8 +358,15 @@ toggles:
 		if cfg.Iterations != 5 {
 			t.Errorf("iterations: got %d, want 5", cfg.Iterations)
 		}
-		if len(cfg.Parameters["cache-type-k"]) != 2 {
-			t.Errorf("cache-type-k values: got %d, want 2", len(cfg.Parameters["cache-type-k"]))
+		if len(cfg.Parameters["threads"]) != 2 {
+			t.Errorf("threads values: got %d, want 2", len(cfg.Parameters["threads"]))
+		}
+		ct := cfg.LinkedParameters["cache-type"]
+		if ct == nil {
+			t.Fatal("expected linked_parameters.cache-type to be parsed")
+		}
+		if len(ct["cache-type-k"]) != 2 {
+			t.Errorf("linked cache-type-k values: got %d, want 2", len(ct["cache-type-k"]))
 		}
 	})
 
@@ -503,6 +518,106 @@ func TestValidateParameterValues_UbatchBatchCross(t *testing.T) {
 			if strings.Contains(i.Message, "ubatch-size") && strings.Contains(i.Message, "batch-size") {
 				t.Errorf("unexpected ubatch/batch warning: %s", i.Message)
 			}
+		}
+	})
+}
+
+func TestValidateLinkedParameters(t *testing.T) {
+	t.Run("valid linked group", func(t *testing.T) {
+		cfg := SweepConfig{
+			LinkedParameters: map[string]map[string][]string{
+				"cache-type": {
+					"cache-type-k": {"q4_0", "q8_0"},
+					"cache-type-v": {"q4_0", "q8_0"},
+				},
+			},
+		}
+		issues := validateLinkedParameters(cfg)
+		for _, i := range issues {
+			if i.Level == "error" {
+				t.Errorf("unexpected error: %s", i.Message)
+			}
+		}
+	})
+
+	t.Run("mismatched array lengths", func(t *testing.T) {
+		cfg := SweepConfig{
+			LinkedParameters: map[string]map[string][]string{
+				"bad": {
+					"cache-type-k": {"q4_0", "q8_0"},
+					"cache-type-v": {"q4_0"},
+				},
+			},
+		}
+		issues := validateLinkedParameters(cfg)
+		found := false
+		for _, i := range issues {
+			if i.Level == "error" && i.Check == "linked" && strings.Contains(i.Message, "same length") {
+				found = true
+			}
+		}
+		if !found {
+			t.Error("expected error for mismatched array lengths")
+		}
+	})
+
+	t.Run("empty group", func(t *testing.T) {
+		cfg := SweepConfig{
+			LinkedParameters: map[string]map[string][]string{
+				"empty": {},
+			},
+		}
+		issues := validateLinkedParameters(cfg)
+		found := false
+		for _, i := range issues {
+			if i.Level == "error" && strings.Contains(i.Message, "empty") {
+				found = true
+			}
+		}
+		if !found {
+			t.Error("expected error for empty linked group")
+		}
+	})
+
+	t.Run("overlap with standalone parameters", func(t *testing.T) {
+		cfg := SweepConfig{
+			Parameters: map[string][]string{"cache-type-k": {"q4_0"}},
+			LinkedParameters: map[string]map[string][]string{
+				"cache-type": {
+					"cache-type-k": {"q4_0", "q8_0"},
+					"cache-type-v": {"q4_0", "q8_0"},
+				},
+			},
+		}
+		issues := validateLinkedParameters(cfg)
+		found := false
+		for _, i := range issues {
+			if i.Level == "error" && strings.Contains(i.Message, "both parameters and linked") {
+				found = true
+			}
+		}
+		if !found {
+			t.Error("expected error for param in both standalone and linked")
+		}
+	})
+
+	t.Run("unknown param in linked group warns", func(t *testing.T) {
+		cfg := SweepConfig{
+			LinkedParameters: map[string]map[string][]string{
+				"test": {
+					"unknown-param": {"a", "b"},
+				},
+			},
+		}
+		issues := validateLinkedParameters(cfg)
+		found := false
+		for _, i := range issues {
+			if i.Level == "warning" && strings.Contains(i.Message, "unknown") {
+				found = true
+			}
+		}
+		if !found {
+			t.Error("expected warning for unknown param in linked group")
 		}
 	})
 }

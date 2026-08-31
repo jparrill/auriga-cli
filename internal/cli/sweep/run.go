@@ -6,6 +6,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -286,6 +287,17 @@ func cartesianProduct(cfg SweepConfig) []Combination {
 		dims = append(dims, dimension{category: "param", key: k, values: cfg.Parameters[k]})
 	}
 
+	for _, groupName := range sortedLinkedKeys(cfg.LinkedParameters) {
+		group := cfg.LinkedParameters[groupName]
+		firstKey := sortedKeys(group)[0]
+		count := len(group[firstKey])
+		indices := make([]string, count)
+		for i := range indices {
+			indices[i] = strconv.Itoa(i)
+		}
+		dims = append(dims, dimension{category: "linked", key: groupName, values: indices})
+	}
+
 	keys = sortedKeys(cfg.Toggles)
 	for _, k := range keys {
 		dims = append(dims, dimension{category: "toggle", key: k, values: cfg.Toggles[k]})
@@ -320,6 +332,11 @@ func cartesianProduct(cfg SweepConfig) []Combination {
 				combo.ProfileFields[d.key] = val
 			case "param":
 				combo.Parameters[d.key] = val
+			case "linked":
+				idx, _ := strconv.Atoi(val)
+				for param, paramVals := range cfg.LinkedParameters[d.key] {
+					combo.Parameters[param] = paramVals[idx]
+				}
 			case "toggle":
 				combo.Toggles[d.key] = val
 			}
@@ -601,6 +618,15 @@ func collectOverrideKeys(results []SweepResult) []string {
 }
 
 func sortedKeys(m map[string][]string) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func sortedLinkedKeys(m map[string]map[string][]string) []string {
 	keys := make([]string, 0, len(m))
 	for k := range m {
 		keys = append(keys, k)

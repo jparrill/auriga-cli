@@ -27,13 +27,26 @@ Example:
 }
 
 var paramAlternatives = map[string][]string{
-	"cache-type-k":     {"q4_0", "q8_0"},
-	"cache-type-v":     {"q4_0", "q8_0"},
-	"batch-size":       {"1024", "2048", "4096"},
-	"ubatch-size":      {"512", "1024"},
 	"threads":          {"8", "12", "16"},
 	"spec-draft-p-min": {"0.5", "0.75"},
 	"spec-draft-n-max": {"4", "8"},
+}
+
+var linkedParamSet = map[string]bool{
+	"cache-type-k": true, "cache-type-v": true,
+	"batch-size": true, "ubatch-size": true,
+}
+
+var defaultCacheTypes = []string{"q4_0", "q8_0"}
+
+type batchPreset struct {
+	batch  string
+	ubatch string
+}
+
+var defaultBatchPresets = []batchPreset{
+	{"2048", "512"},
+	{"4096", "1024"},
 }
 
 func runSweepInit(profileName string) error {
@@ -47,11 +60,12 @@ func runSweepInit(profileName string) error {
 	flagMap := parseFlagPairs(flags)
 
 	cfg := SweepConfig{
-		Profile:       profileName,
-		Iterations:    5,
-		ProfileFields: buildProfileFields(profileName),
-		Parameters:    buildParameters(flagMap),
-		Toggles:       buildToggles(flagMap),
+		Profile:          profileName,
+		Iterations:       5,
+		ProfileFields:    buildProfileFields(profileName),
+		Parameters:       buildParameters(flagMap),
+		LinkedParameters: buildLinkedParameters(flagMap),
+		Toggles:          buildToggles(flagMap),
 	}
 
 	data, err := yaml.Marshal(cfg)
@@ -106,6 +120,9 @@ func buildParameters(flagMap map[string]string) map[string][]string {
 	params := make(map[string][]string)
 
 	for key := range knownParameters {
+		if linkedParamSet[key] {
+			continue
+		}
 		current, exists := flagMap[key]
 		alts, hasAlts := paramAlternatives[key]
 
@@ -125,6 +142,46 @@ func buildParameters(flagMap map[string]string) map[string][]string {
 	}
 
 	return params
+}
+
+func buildLinkedParameters(flagMap map[string]string) map[string]map[string][]string {
+	linked := make(map[string]map[string][]string)
+
+	currentK := flagMap["cache-type-k"]
+	if currentK == "" {
+		currentK = "q4_0"
+	}
+	var cacheValues []string
+	cacheValues = append(cacheValues, currentK)
+	for _, alt := range defaultCacheTypes {
+		if alt != currentK {
+			cacheValues = append(cacheValues, alt)
+		}
+	}
+	linked["cache-type"] = map[string][]string{
+		"cache-type-k": cacheValues,
+		"cache-type-v": cacheValues,
+	}
+
+	currentBatch := flagMap["batch-size"]
+	currentUbatch := flagMap["ubatch-size"]
+	var batchVals, ubatchVals []string
+	if currentBatch != "" && currentUbatch != "" {
+		batchVals = append(batchVals, currentBatch)
+		ubatchVals = append(ubatchVals, currentUbatch)
+	}
+	for _, p := range defaultBatchPresets {
+		if p.batch != currentBatch || p.ubatch != currentUbatch {
+			batchVals = append(batchVals, p.batch)
+			ubatchVals = append(ubatchVals, p.ubatch)
+		}
+	}
+	linked["batch"] = map[string][]string{
+		"batch-size":  batchVals,
+		"ubatch-size": ubatchVals,
+	}
+
+	return linked
 }
 
 func buildToggles(flagMap map[string]string) map[string][]string {

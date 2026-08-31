@@ -154,7 +154,18 @@ func validateSweepConfig(cfg SweepConfig) []ValidationIssue {
 		}
 	}
 
-	issues = append(issues, validateParameterValues(cfg.Parameters)...)
+	issues = append(issues, validateLinkedParameters(cfg)...)
+
+	allParams := make(map[string][]string)
+	for k, v := range cfg.Parameters {
+		allParams[k] = v
+	}
+	for _, group := range cfg.LinkedParameters {
+		for k, v := range group {
+			allParams[k] = v
+		}
+	}
+	issues = append(issues, validateParameterValues(allParams)...)
 
 	for toggle := range cfg.Toggles {
 		if !knownToggles[toggle] {
@@ -271,6 +282,45 @@ func validateParameterValues(params map[string][]string) []ValidationIssue {
 	return issues
 }
 
+func validateLinkedParameters(cfg SweepConfig) []ValidationIssue {
+	var issues []ValidationIssue
+
+	standaloneParams := make(map[string]bool)
+	for p := range cfg.Parameters {
+		standaloneParams[p] = true
+	}
+
+	for groupName, group := range cfg.LinkedParameters {
+		if len(group) == 0 {
+			issues = append(issues, ValidationIssue{Level: "error", Check: "linked", Message: fmt.Sprintf("linked group %q is empty", groupName)})
+			continue
+		}
+
+		var expectedLen int
+		first := true
+		for param, vals := range group {
+			if !knownParameters[param] {
+				issues = append(issues, ValidationIssue{Level: "warning", Check: "linked", Message: fmt.Sprintf("linked group %q: unknown parameter %q", groupName, param)})
+			}
+			if standaloneParams[param] {
+				issues = append(issues, ValidationIssue{Level: "error", Check: "linked", Message: fmt.Sprintf("parameter %q appears in both parameters and linked group %q", param, groupName)})
+			}
+			if len(vals) == 0 {
+				issues = append(issues, ValidationIssue{Level: "error", Check: "linked", Message: fmt.Sprintf("linked group %q: parameter %q has no values", groupName, param)})
+				continue
+			}
+			if first {
+				expectedLen = len(vals)
+				first = false
+			} else if len(vals) != expectedLen {
+				issues = append(issues, ValidationIssue{Level: "error", Check: "linked", Message: fmt.Sprintf("linked group %q: arrays must have same length (got %d and %d)", groupName, expectedLen, len(vals))})
+			}
+		}
+	}
+
+	return issues
+}
+
 func getPassedChecks(cfg SweepConfig, issues []ValidationIssue) []string {
 	var passed []string
 
@@ -296,6 +346,9 @@ func getPassedChecks(cfg SweepConfig, issues []ValidationIssue) []string {
 	}
 	if !hasErrorInCheck("value") {
 		passed = append(passed, "Parameter values valid")
+	}
+	if len(cfg.LinkedParameters) > 0 && !hasErrorInCheck("linked") {
+		passed = append(passed, "Linked parameters valid")
 	}
 	if !hasErrorInCheck("toggle") {
 		passed = append(passed, "Toggles valid")

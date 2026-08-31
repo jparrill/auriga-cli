@@ -1,11 +1,12 @@
 package sweep
 
 type SweepConfig struct {
-	Profile       string              `yaml:"profile"`
-	Iterations    int                 `yaml:"iterations"`
-	ProfileFields map[string][]string `yaml:"profile_fields"`
-	Parameters    map[string][]string `yaml:"parameters"`
-	Toggles       map[string][]string `yaml:"toggles"`
+	Profile          string                         `yaml:"profile"`
+	Iterations       int                            `yaml:"iterations"`
+	ProfileFields    map[string][]string            `yaml:"profile_fields"`
+	Parameters       map[string][]string            `yaml:"parameters"`
+	LinkedParameters map[string]map[string][]string `yaml:"linked_parameters"`
+	Toggles          map[string][]string            `yaml:"toggles"`
 }
 
 type Combination struct {
