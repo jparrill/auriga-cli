@@ -173,6 +173,11 @@ func runProfileServe(name string, daemon bool, ctxSize int) error {
 		}
 	}
 
+	bin := llamaserver.BinForProfile(name)
+	if _, err := os.Stat(bin); err != nil {
+		return fmt.Errorf("llama-server binary not found: %s", bin)
+	}
+
 	mode := "foreground"
 	if daemon {
 		mode = "daemon"
@@ -184,6 +189,9 @@ func runProfileServe(name string, daemon bool, ctxSize int) error {
 		{Key: "Model", Value: modelFile},
 		{Key: "Type", Value: pType},
 		{Key: "Mode", Value: mode},
+	}
+	if viper.GetString(profileKey+".bin") != "" {
+		params = append(params, ui.OrderedParam{Key: "Binary", Value: bin})
 	}
 	if mmprojFile != "" {
 		params = append(params, ui.OrderedParam{Key: "Vision", Value: mmprojFile})
@@ -212,7 +220,7 @@ func runProfileServe(name string, daemon bool, ctxSize int) error {
 	extraFlags = injectDrafterFlags(name, ggufDir, extraFlags)
 
 	ctx := context.Background()
-	proc, err := llamaserver.StartWithCtx(ctx, modelPath, mmprojPath, extraFlags, ctxSize, port)
+	proc, err := llamaserver.StartWithCtx(ctx, bin, modelPath, mmprojPath, extraFlags, ctxSize, port)
 	if err != nil {
 		return err
 	}

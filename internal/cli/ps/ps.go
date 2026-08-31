@@ -12,6 +12,7 @@ import (
 
 	"github.com/jparrill/auriga-cli/internal/config"
 	"github.com/jparrill/auriga-cli/internal/exec"
+	"github.com/jparrill/auriga-cli/internal/llamaserver"
 	"github.com/jparrill/auriga-cli/internal/ui"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -166,7 +167,7 @@ func getOllamaRunningModel() string {
 }
 
 func checkLlamaServers() []processInfo {
-	llamaBin := config.ExpandHome(viper.GetString("llama_server.bin"))
+	knownBins := llamaserver.AllBinPaths()
 
 	ctx := context.Background()
 	out, err := exec.RunCapture(ctx, "pgrep", []string{"-a", "llama-server"}, exec.RunOpts{})
@@ -176,7 +177,14 @@ func checkLlamaServers() []processInfo {
 
 	var procs []processInfo
 	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
-		if !strings.Contains(line, llamaBin) {
+		matched := false
+		for _, bin := range knownBins {
+			if strings.Contains(line, bin) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
 			continue
 		}
 

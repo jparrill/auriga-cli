@@ -58,6 +58,36 @@ func Bin() string {
 	return config.ExpandHome(viper.GetString("llama_server.bin"))
 }
 
+func BinForProfile(profileName string) string {
+	if profileName != "" {
+		if b := viper.GetString(fmt.Sprintf("profiles.%s.bin", profileName)); b != "" {
+			return config.ExpandHome(b)
+		}
+	}
+	return Bin()
+}
+
+func AllBinPaths() []string {
+	seen := map[string]bool{}
+	var paths []string
+
+	global := Bin()
+	seen[global] = true
+	paths = append(paths, global)
+
+	profiles := viper.GetStringMap("profiles")
+	for name := range profiles {
+		if b := viper.GetString(fmt.Sprintf("profiles.%s.bin", name)); b != "" {
+			expanded := config.ExpandHome(b)
+			if !seen[expanded] {
+				seen[expanded] = true
+				paths = append(paths, expanded)
+			}
+		}
+	}
+	return paths
+}
+
 func GGUFDir() string {
 	return config.ExpandHome(viper.GetString("llama_server.gguf_dir"))
 }
@@ -121,12 +151,10 @@ func IsOllamaRunning(ctx context.Context) bool {
 }
 
 func Start(ctx context.Context, modelPath string, mmprojPath string, extraFlags []string) (*os.Process, error) {
-	return StartWithCtx(ctx, modelPath, mmprojPath, extraFlags, 65536, Port())
+	return StartWithCtx(ctx, Bin(), modelPath, mmprojPath, extraFlags, 65536, Port())
 }
 
-func StartWithCtx(ctx context.Context, modelPath string, mmprojPath string, extraFlags []string, ctxSize int, port int) (*os.Process, error) {
-	bin := Bin()
-
+func StartWithCtx(ctx context.Context, bin string, modelPath string, mmprojPath string, extraFlags []string, ctxSize int, port int) (*os.Process, error) {
 	if _, err := os.Stat(bin); err != nil {
 		return nil, fmt.Errorf("llama-server binary not found: %s", bin)
 	}

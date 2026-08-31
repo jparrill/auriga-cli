@@ -13,6 +13,7 @@ import (
 
 	"github.com/jparrill/auriga-cli/internal/config"
 	"github.com/jparrill/auriga-cli/internal/exec"
+	"github.com/jparrill/auriga-cli/internal/llamaserver"
 	"github.com/jparrill/auriga-cli/internal/ui"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -77,7 +78,10 @@ func runServeStart(opts *serveStartOpts) error {
 
 	ggufDir := config.ExpandHome(viper.GetString("llama_server.gguf_dir"))
 	mmprojDir := config.ExpandHome(viper.GetString("llama_server.mmproj_dir"))
-	bin := config.ExpandHome(viper.GetString("llama_server.bin"))
+	bin := llamaserver.BinForProfile(opts.Profile)
+	if _, err := os.Stat(bin); err != nil {
+		return fmt.Errorf("llama-server binary not found: %s", bin)
+	}
 	port := viper.GetInt("llama_server.port")
 	if opts.Port > 0 {
 		port = opts.Port

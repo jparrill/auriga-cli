@@ -291,6 +291,13 @@ func validateProfile(name, ggufDir string) profileValidation {
 		CtxSize: profileCtxSize(name),
 	}
 
+	if binOverride := viper.GetString(profileKey + ".bin"); binOverride != "" {
+		binPath := config.ExpandHome(binOverride)
+		if _, err := os.Stat(binPath); err != nil {
+			v.Errors = append(v.Errors, fmt.Sprintf("custom bin not found: %s", binPath))
+		}
+	}
+
 	if modelFile == "" {
 		v.Errors = append(v.Errors, "no model configured")
 		return v

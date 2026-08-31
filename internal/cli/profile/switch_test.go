@@ -131,7 +131,7 @@ func TestBuildExecStart_BasicModel(t *testing.T) {
 
 	viper.Set("llama_server.bin", "/usr/bin/llama-server")
 
-	got := buildExecStart("/models/model.gguf", "", nil, 131072, 8090)
+	got := buildExecStart("/usr/bin/llama-server", "/models/model.gguf", "", nil, 131072, 8090)
 
 	checks := []struct {
 		name string
@@ -161,7 +161,7 @@ func TestBuildExecStart_WithMmproj(t *testing.T) {
 
 	viper.Set("llama_server.bin", "/usr/bin/llama-server")
 
-	got := buildExecStart("/models/model.gguf", "/models/mmproj.gguf", []string{"--jinja"}, 131072, 8090)
+	got := buildExecStart("/usr/bin/llama-server", "/models/model.gguf", "/models/mmproj.gguf", []string{"--jinja"}, 131072, 8090)
 
 	if !strings.Contains(got, "--mmproj /models/mmproj.gguf") {
 		t.Errorf("When mmproj set, ExecStart should contain --mmproj, got: %s", got)
@@ -180,7 +180,7 @@ func TestBuildExecStart_WithExtraFlags(t *testing.T) {
 
 	viper.Set("llama_server.bin", "/usr/bin/llama-server")
 
-	got := buildExecStart("/models/model.gguf", "", []string{"--threads", "16"}, 131072, 8090)
+	got := buildExecStart("/usr/bin/llama-server", "/models/model.gguf", "", []string{"--threads", "16"}, 131072, 8090)
 
 	if !strings.Contains(got, "--threads 16") {
 		t.Errorf("When extra flags set, ExecStart should contain them, got: %s", got)
@@ -193,7 +193,7 @@ func TestBuildExecStart_CustomCtxSize(t *testing.T) {
 
 	viper.Set("llama_server.bin", "/usr/bin/llama-server")
 
-	got := buildExecStart("/models/model.gguf", "", nil, 131072, 8090)
+	got := buildExecStart("/usr/bin/llama-server", "/models/model.gguf", "", nil, 131072, 8090)
 
 	if !strings.Contains(got, "--ctx-size 131072") {
 		t.Errorf("When custom ctx-size, ExecStart should use it, got: %s", got)
@@ -206,7 +206,7 @@ func TestBuildExecStart_NoMmprojNoJinja(t *testing.T) {
 
 	viper.Set("llama_server.bin", "/usr/bin/llama-server")
 
-	got := buildExecStart("/models/model.gguf", "", nil, 131072, 8090)
+	got := buildExecStart("/usr/bin/llama-server", "/models/model.gguf", "", nil, 131072, 8090)
 
 	if strings.Contains(got, "--mmproj") {
 		t.Errorf("When no mmproj, ExecStart should not have --mmproj, got: %s", got)
@@ -222,7 +222,7 @@ func TestBuildExecStart_MoePort(t *testing.T) {
 
 	viper.Set("llama_server.bin", "/usr/bin/llama-server")
 
-	got := buildExecStart("/models/moe-model.gguf", "", nil, 131072, 8091)
+	got := buildExecStart("/usr/bin/llama-server", "/models/moe-model.gguf", "", nil, 131072, 8091)
 
 	if !strings.Contains(got, "--port 8091") {
 		t.Errorf("When MoE port, ExecStart should use port 8091, got: %s", got)
@@ -235,10 +235,72 @@ func TestBuildExecStart_CustomPort(t *testing.T) {
 
 	viper.Set("llama_server.bin", "/usr/bin/llama-server")
 
-	got := buildExecStart("/models/model.gguf", "", nil, 131072, 9000)
+	got := buildExecStart("/usr/bin/llama-server", "/models/model.gguf", "", nil, 131072, 9000)
 
 	if !strings.Contains(got, "--port 9000") {
 		t.Errorf("When custom port override, ExecStart should use it, got: %s", got)
+	}
+}
+
+func TestBuildExecStart_CustomBin(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	got := buildExecStart("/custom/llama-server-strix-halo", "/models/model.gguf", "", nil, 131072, 8090)
+
+	if !strings.Contains(got, "/custom/llama-server-strix-halo") {
+		t.Errorf("When custom bin, ExecStart should use custom path, got: %s", got)
+	}
+	if strings.Contains(got, "llama-server ") && !strings.Contains(got, "strix-halo") {
+		t.Errorf("When custom bin, should not use default llama-server, got: %s", got)
+	}
+}
+
+func TestRunProfileSwitch_BinaryNotFound(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	tmpDir := t.TempDir()
+	modelFile := filepath.Join(tmpDir, "model.gguf")
+	os.WriteFile(modelFile, []byte("fake model"), 0644)
+
+	viper.Set("profiles.test-profile.model", "model.gguf")
+	viper.Set("profiles.test-profile.bin", "/nonexistent/llama-server-custom")
+	viper.Set("llama_server.gguf_dir", tmpDir)
+	viper.Set("llama_server.bin", "/also-nonexistent/llama-server")
+
+	err := runProfileSwitch("test-profile", false, 131072)
+
+	if err == nil {
+		t.Error("When profile binary not found, it should return error")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("When binary not found, error should mention 'not found', got: %v", err)
+	}
+}
+
+func TestRunProfileServe_BinaryNotFound(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	tmpDir := t.TempDir()
+	modelFile := filepath.Join(tmpDir, "model.gguf")
+	os.WriteFile(modelFile, []byte("fake model"), 0644)
+
+	viper.Set("profiles.test-profile.model", "model.gguf")
+	viper.Set("profiles.test-profile.bin", "/nonexistent/llama-server-custom")
+	viper.Set("llama_server.gguf_dir", tmpDir)
+	viper.Set("llama_server.bin", "/also-nonexistent/llama-server")
+	viper.Set("llama_server.host", "http://localhost:8090")
+	viper.Set("llama_server.dense_port", 8090)
+
+	err := runProfileServe("test-profile", false, 131072)
+
+	if err == nil {
+		t.Error("When profile binary not found, serve should return error")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("When binary not found, error should mention 'not found', got: %v", err)
 	}
 }
 

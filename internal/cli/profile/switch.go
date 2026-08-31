@@ -128,6 +128,11 @@ func runProfileSwitch(name string, persistent bool, ctxSize int) error {
 
 	port := profilePort(name)
 
+	bin := llamaserver.BinForProfile(name)
+	if _, err := os.Stat(bin); err != nil {
+		return fmt.Errorf("llama-server binary not found: %s", bin)
+	}
+
 	configuredType := viper.GetString(profileKey + ".type")
 	warnTypeMismatch(name, configuredType, modelFile)
 
@@ -141,6 +146,9 @@ func runProfileSwitch(name string, persistent bool, ctxSize int) error {
 		{Key: "Model", Value: modelFile},
 		{Key: "Type", Value: pType},
 		{Key: "Mode", Value: mode},
+	}
+	if viper.GetString(fmt.Sprintf("profiles.%s.bin", name)) != "" {
+		params = append(params, ui.OrderedParam{Key: "Binary", Value: bin})
 	}
 	if mmprojFile != "" {
 		params = append(params, ui.OrderedParam{Key: "Vision", Value: mmprojFile})
@@ -171,14 +179,14 @@ func runProfileSwitch(name string, persistent bool, ctxSize int) error {
 	extraFlags = injectDrafterFlags(name, ggufDir, extraFlags)
 
 	if persistent {
-		return switchPersistent(name, modelPath, mmprojPath, extraFlags, ctxSize, port)
+		return switchPersistent(name, bin, modelPath, mmprojPath, extraFlags, ctxSize, port)
 	}
-	return switchDaemon(name, modelPath, mmprojPath, extraFlags, ctxSize, port)
+	return switchDaemon(name, bin, modelPath, mmprojPath, extraFlags, ctxSize, port)
 }
 
-func switchDaemon(name, modelPath, mmprojPath string, extraFlags []string, ctxSize, port int) error {
+func switchDaemon(name, bin, modelPath, mmprojPath string, extraFlags []string, ctxSize, port int) error {
 	ctx := context.Background()
-	proc, err := llamaserver.StartWithCtx(ctx, modelPath, mmprojPath, extraFlags, ctxSize, port)
+	proc, err := llamaserver.StartWithCtx(ctx, bin, modelPath, mmprojPath, extraFlags, ctxSize, port)
 	if err != nil {
 		return err
 	}
@@ -193,8 +201,8 @@ func switchDaemon(name, modelPath, mmprojPath string, extraFlags []string, ctxSi
 	return nil
 }
 
-func switchPersistent(name, modelPath, mmprojPath string, extraFlags []string, ctxSize, port int) error {
-	execStart := buildExecStart(modelPath, mmprojPath, extraFlags, ctxSize, port)
+func switchPersistent(name, bin, modelPath, mmprojPath string, extraFlags []string, ctxSize, port int) error {
+	execStart := buildExecStart(bin, modelPath, mmprojPath, extraFlags, ctxSize, port)
 
 	cfg := systemd.ServiceConfig{
 		ProfileName: name,
@@ -236,9 +244,7 @@ func switchPersistent(name, modelPath, mmprojPath string, extraFlags []string, c
 	return nil
 }
 
-func buildExecStart(modelPath, mmprojPath string, extraFlags []string, ctxSize, port int) string {
-	bin := llamaserver.Bin()
-
+func buildExecStart(bin, modelPath, mmprojPath string, extraFlags []string, ctxSize, port int) string {
 	args := []string{
 		bin,
 		"-m", modelPath,

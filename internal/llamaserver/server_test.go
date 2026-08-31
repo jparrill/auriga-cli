@@ -3,6 +3,7 @@ package llamaserver
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/spf13/viper"
@@ -76,6 +77,123 @@ func TestBin(t *testing.T) {
 	b := Bin()
 	if b == "~/infra/bin/llama-server" {
 		t.Error("expected expanded path, got unexpanded")
+	}
+}
+
+func TestBinForProfile_WithProfileBin(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	viper.Set("llama_server.bin", "~/infra/bin/llama-server")
+	viper.Set("profiles.strix-test.bin", "/custom/path/llama-server-strix-halo")
+
+	got := BinForProfile("strix-test")
+	if got != "/custom/path/llama-server-strix-halo" {
+		t.Errorf("expected custom bin path, got %q", got)
+	}
+}
+
+func TestBinForProfile_WithoutProfileBin(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	viper.Set("llama_server.bin", "/global/llama-server")
+
+	got := BinForProfile("some-profile")
+	if got != "/global/llama-server" {
+		t.Errorf("expected global bin, got %q", got)
+	}
+}
+
+func TestBinForProfile_EmptyProfileName(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	viper.Set("llama_server.bin", "/global/llama-server")
+
+	got := BinForProfile("")
+	if got != "/global/llama-server" {
+		t.Errorf("expected global bin for empty profile, got %q", got)
+	}
+}
+
+func TestBinForProfile_ExpandsHome(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	viper.Set("llama_server.bin", "/global/llama-server")
+	viper.Set("profiles.home-test.bin", "~/Projects/strix-halo-llamacpp/vulkan/llama-server-strix-halo")
+
+	got := BinForProfile("home-test")
+	if got == "~/Projects/strix-halo-llamacpp/vulkan/llama-server-strix-halo" {
+		t.Error("expected expanded path, got unexpanded")
+	}
+	if !strings.Contains(got, "Projects/strix-halo-llamacpp/vulkan/llama-server-strix-halo") {
+		t.Errorf("expanded path should contain the relative part, got %q", got)
+	}
+}
+
+func TestAllBinPaths_GlobalOnly(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	viper.Set("llama_server.bin", "/global/llama-server")
+
+	paths := AllBinPaths()
+	if len(paths) != 1 {
+		t.Errorf("expected 1 path, got %d", len(paths))
+	}
+	if paths[0] != "/global/llama-server" {
+		t.Errorf("expected global bin, got %q", paths[0])
+	}
+}
+
+func TestAllBinPaths_WithProfileBins(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	viper.Set("llama_server.bin", "/global/llama-server")
+	viper.Set("profiles.p1.bin", "/custom/strix-halo")
+	viper.Set("profiles.p1.model", "test.gguf")
+	viper.Set("profiles.p2.model", "test2.gguf")
+	viper.Set("profiles.p3.bin", "/custom/strix-halo")
+	viper.Set("profiles.p3.model", "test3.gguf")
+
+	paths := AllBinPaths()
+	if len(paths) != 2 {
+		t.Errorf("expected 2 unique paths (global + 1 custom), got %d: %v", len(paths), paths)
+	}
+}
+
+func TestAllBinPaths_NoDuplicates(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	viper.Set("llama_server.bin", "/same/llama-server")
+	viper.Set("profiles.p1.bin", "/same/llama-server")
+	viper.Set("profiles.p1.model", "test.gguf")
+
+	paths := AllBinPaths()
+	if len(paths) != 1 {
+		t.Errorf("expected 1 unique path (same as global), got %d: %v", len(paths), paths)
+	}
+}
+
+func TestStartWithCtx_BinaryNotFound(t *testing.T) {
+	_, err := StartWithCtx(
+		t.Context(),
+		"/nonexistent/llama-server",
+		"/some/model.gguf",
+		"",
+		nil,
+		65536,
+		8090,
+	)
+	if err == nil {
+		t.Fatal("expected error for missing binary")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("error should mention 'not found', got: %s", err)
 	}
 }
 

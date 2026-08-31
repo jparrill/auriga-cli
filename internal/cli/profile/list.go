@@ -25,7 +25,19 @@ func runProfileList() error {
 		return nil
 	}
 
-	tbl := ui.NewTable("Profiles", "PROFILE", "TYPE", "PORT", "SPEC", "REPO", "MODEL", "VISION")
+	hasCustomBin := false
+	for name := range profiles {
+		if viper.GetString(fmt.Sprintf("profiles.%s.bin", name)) != "" {
+			hasCustomBin = true
+			break
+		}
+	}
+
+	headers := []string{"PROFILE", "TYPE", "PORT", "SPEC", "REPO", "MODEL", "VISION"}
+	if hasCustomBin {
+		headers = append(headers, "BIN")
+	}
+	tbl := ui.NewTable("Profiles", headers...)
 
 	for name := range profiles {
 		profileKey := fmt.Sprintf("profiles.%s", name)
@@ -46,7 +58,17 @@ func runProfileList() error {
 		}
 		pType := profileType(name)
 		port := profilePort(name)
-		tbl.AddRow(name, pType, fmt.Sprintf("%d", port), spec, repo, model, vision)
+
+		row := []string{name, pType, fmt.Sprintf("%d", port), spec, repo, model, vision}
+		if hasCustomBin {
+			binOverride := viper.GetString(profileKey + ".bin")
+			if binOverride != "" {
+				row = append(row, binOverride)
+			} else {
+				row = append(row, "-")
+			}
+		}
+		tbl.AddRow(row...)
 	}
 
 	tbl.Print()
