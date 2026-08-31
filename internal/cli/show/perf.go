@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"path/filepath"
+	"sort"
 	"time"
 
 	"github.com/jparrill/auriga-cli/internal/llamaserver"
@@ -16,15 +17,49 @@ import (
 	"github.com/spf13/viper"
 )
 
+const (
+	benchIterations = 5
+	benchMaxTokens  = 256
+)
+
+var benchPrompt = `Analyze this Go code for bugs, performance issues, and improvements. Be thorough:
+
+func processItems(items []Item) ([]Result, error) {
+    var results []Result
+    for i := 0; i < len(items); i++ {
+        item := items[i]
+        if item.Type == "" {
+            continue
+        }
+        data, err := fetchData(item.ID)
+        if err != nil {
+            log.Printf("failed to fetch %s: %v", item.ID, err)
+            continue
+        }
+        result, err := transform(data, item.Config)
+        if err != nil {
+            return nil, fmt.Errorf("transform failed for %s: %w", item.ID, err)
+        }
+        if result.Score > threshold {
+            results = append(results, result)
+        }
+    }
+    if len(results) == 0 {
+        return nil, fmt.Errorf("no results met threshold")
+    }
+    return results, nil
+}`
+
 func newShowPerfCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "perf [profile-name]",
 		Short: "Quick performance test for running llama-server instances",
 		Long: `Send test prompts to each running llama-server instance and report:
   - TTFT: Time to first token (prompt processing latency)
-  - No-think: Generation speed with thinking disabled
-  - Think: Generation speed with thinking enabled
+  - Prompt: Prompt processing speed (tok/s)
+  - Gen: Token generation speed (tok/s), median of 5 runs with min-max range
 
+A warmup request runs before measuring to avoid cold-cache penalties.
 If a profile name is given, only test that profile's port.
 
 Examples:
@@ -46,6 +81,7 @@ type perfResult struct {
 	ModelType string
 	SpecType  string
 	Model     string
+	Binary    string
 	TTFT      time.Duration
 	NoThink   benchResult
 	Think     benchResult
@@ -55,9 +91,10 @@ type perfResult struct {
 type benchResult struct {
 	PromptTokPerSec     float64
 	GenerationTokPerSec float64
+	GenMin              float64
+	GenMax              float64
 	PromptTokens        int
 	GeneratedTokens     int
-	TotalMs             float64
 	Error               string
 }
 
@@ -215,24 +252,26 @@ func benchPort(port int, profile string) perfResult {
 		pType = detectModelTypeShow(viper.GetString(profileKey + ".model"))
 	}
 	specType := resolveSpecType(profile)
-	result := perfResult{Port: port, Profile: profile, ModelType: pType, SpecType: specType}
+	bin := filepath.Base(llamaserver.BinForProfile(profile))
+	result := perfResult{Port: port, Profile: profile, ModelType: pType, SpecType: specType, Binary: bin}
 
 	ui.Info(fmt.Sprintf("Testing %s (port %d)...", profile, port))
 
+	ui.Info("  warmup...")
+	runSingleBench(port, false)
+
 	ttft, model := measureTTFT(port)
 	result.TTFT = ttft
-	result.Model = model
+	result.Model = filepath.Base(model)
 
 	if result.ModelType == "dense" && model != "" {
 		result.ModelType = detectModelTypeShow(filepath.Base(model))
 	}
 
-	// No-think test
-	ui.Info("  without thinking...")
+	ui.Info(fmt.Sprintf("  no-think (%d runs)...", benchIterations))
 	result.NoThink = runBench(port, false)
 
-	// Think test
-	ui.Info("  with thinking...")
+	ui.Info(fmt.Sprintf("  think (%d runs)...", benchIterations))
 	result.Think = runBench(port, true)
 
 	return result
@@ -291,11 +330,38 @@ func measureTTFT(port int) (time.Duration, string) {
 }
 
 func runBench(port int, thinking bool) benchResult {
+	var genSamples, promptSamples []float64
+	var last benchResult
+
+	for i := 0; i < benchIterations; i++ {
+		r := runSingleBench(port, thinking)
+		if r.Error != "" {
+			return r
+		}
+		genSamples = append(genSamples, r.GenerationTokPerSec)
+		promptSamples = append(promptSamples, r.PromptTokPerSec)
+		last = r
+	}
+
+	sort.Float64s(genSamples)
+	sort.Float64s(promptSamples)
+
+	return benchResult{
+		PromptTokPerSec:     median(promptSamples),
+		GenerationTokPerSec: median(genSamples),
+		GenMin:              genSamples[0],
+		GenMax:              genSamples[len(genSamples)-1],
+		PromptTokens:        last.PromptTokens,
+		GeneratedTokens:     last.GeneratedTokens,
+	}
+}
+
+func runSingleBench(port int, thinking bool) benchResult {
 	host := fmt.Sprintf("http://localhost:%d", port)
 
 	payload := map[string]any{
-		"messages":   []map[string]string{{"role": "user", "content": "Write a haiku about mountains."}},
-		"max_tokens": 80,
+		"messages":   []map[string]string{{"role": "user", "content": benchPrompt}},
+		"max_tokens": benchMaxTokens,
 	}
 	if !thinking {
 		payload["chat_template_kwargs"] = map[string]bool{"enable_thinking": false}
@@ -316,9 +382,7 @@ func runBench(port int, thinking bool) benchResult {
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{}
-	start := time.Now()
 	resp, err := client.Do(req)
-	wallTime := time.Since(start)
 	if err != nil {
 		return benchResult{Error: err.Error()}
 	}
@@ -339,17 +403,26 @@ func runBench(port int, thinking bool) benchResult {
 		GenerationTokPerSec: cr.Timings.PredictedPerSec,
 		PromptTokens:        cr.Timings.PromptN,
 		GeneratedTokens:     cr.Timings.PredictedN,
-		TotalMs:             float64(wallTime.Milliseconds()),
 	}
+}
+
+func median(sorted []float64) float64 {
+	n := len(sorted)
+	if n == 0 {
+		return 0
+	}
+	if n%2 == 0 {
+		return (sorted[n/2-1] + sorted[n/2]) / 2
+	}
+	return sorted[n/2]
 }
 
 func printPerfResults(results []perfResult) {
 	fmt.Println()
 	tbl := ui.NewTable("Performance",
-		"PROFILE", "TYPE", "PORT", "SPEC", "MODEL",
-		"TTFT",
-		"NO-THINK PROMPT", "NO-THINK GEN",
-		"THINK PROMPT", "THINK GEN",
+		"PROFILE", "TYPE", "PORT", "BINARY", "SPEC", "MODEL",
+		"TTFT", "PROMPT",
+		"NO-THINK GEN", "THINK GEN",
 	)
 
 	for _, r := range results {
@@ -358,26 +431,26 @@ func printPerfResults(results []perfResult) {
 			spec = ui.SuccessStyle.Render(spec)
 		}
 		if r.Error != "" {
-			tbl.AddRow(r.Profile, "-", fmt.Sprintf("%d", r.Port), spec, "-", "-", "-", "-", "-", "-")
+			tbl.AddRow(r.Profile, "-", fmt.Sprintf("%d", r.Port), r.Binary, spec, "-", "-", "-", "-", "-")
 			continue
 		}
 
 		ttft := fmt.Sprintf("%dms", r.TTFT.Milliseconds())
-
-		noThinkPrompt := fmtTokS(r.NoThink.PromptTokPerSec, r.NoThink.Error)
-		noThinkGen := fmtTokS(r.NoThink.GenerationTokPerSec, r.NoThink.Error)
-		thinkPrompt := fmtTokS(r.Think.PromptTokPerSec, r.Think.Error)
-		thinkGen := fmtTokS(r.Think.GenerationTokPerSec, r.Think.Error)
+		prompt := fmtTokS(r.NoThink.PromptTokPerSec, r.NoThink.Error)
+		noThinkGen := fmtTokSRange(r.NoThink)
+		thinkGen := fmtTokSRange(r.Think)
 
 		tbl.AddRow(
 			r.Profile,
 			r.ModelType,
 			fmt.Sprintf("%d", r.Port),
+			r.Binary,
 			spec,
 			r.Model,
 			ttft,
-			noThinkPrompt, noThinkGen,
-			thinkPrompt, thinkGen,
+			prompt,
+			noThinkGen,
+			thinkGen,
 		)
 	}
 	tbl.Print()
@@ -405,4 +478,14 @@ func fmtTokS(tokPerSec float64, err string) string {
 		return "error"
 	}
 	return fmt.Sprintf("%.1f tok/s", tokPerSec)
+}
+
+func fmtTokSRange(b benchResult) string {
+	if b.Error != "" {
+		return "error"
+	}
+	if b.GenMin == b.GenMax {
+		return fmt.Sprintf("%.1f tok/s", b.GenerationTokPerSec)
+	}
+	return fmt.Sprintf("%.1f (%.1f-%.1f)", b.GenerationTokPerSec, b.GenMin, b.GenMax)
 }

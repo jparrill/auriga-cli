@@ -74,6 +74,24 @@ func TestRunBench_NoThinking(t *testing.T) {
 		t.Errorf("When server responds, runBench should not error, got: %s", result.Error)
 	}
 	if result.GenerationTokPerSec != 10.0 {
+		t.Errorf("When server reports 10 tok/s, median should be 10.0, got %.1f", result.GenerationTokPerSec)
+	}
+	if result.GenMin != 10.0 || result.GenMax != 10.0 {
+		t.Errorf("When all samples identical, min/max should equal median, got min=%.1f max=%.1f", result.GenMin, result.GenMax)
+	}
+}
+
+func TestRunSingleBench_NoThinking(t *testing.T) {
+	srv := newTestServer("test-model")
+	defer srv.Close()
+	port := extractTestPort(t, srv)
+
+	result := runSingleBench(port, false)
+
+	if result.Error != "" {
+		t.Errorf("When server responds, runSingleBench should not error, got: %s", result.Error)
+	}
+	if result.GenerationTokPerSec != 10.0 {
 		t.Errorf("When server reports 10 tok/s, got %.1f", result.GenerationTokPerSec)
 	}
 	if result.PromptTokPerSec != 30.0 {
@@ -86,6 +104,27 @@ func TestRunBench_ServerDown(t *testing.T) {
 
 	if result.Error == "" {
 		t.Error("When server down, runBench should return error")
+	}
+}
+
+func TestMedian_Odd(t *testing.T) {
+	got := median([]float64{1, 3, 5, 7, 9})
+	if got != 5 {
+		t.Errorf("median of [1,3,5,7,9] should be 5, got %.1f", got)
+	}
+}
+
+func TestMedian_Even(t *testing.T) {
+	got := median([]float64{1, 3, 5, 7})
+	if got != 4 {
+		t.Errorf("median of [1,3,5,7] should be 4, got %.1f", got)
+	}
+}
+
+func TestMedian_Empty(t *testing.T) {
+	got := median([]float64{})
+	if got != 0 {
+		t.Errorf("median of empty should be 0, got %.1f", got)
 	}
 }
 
@@ -201,14 +240,17 @@ func TestBenchPort_FullCycle(t *testing.T) {
 	if result.Model != "bench-model" {
 		t.Errorf("When server returns model, got %q, want bench-model", result.Model)
 	}
+	if result.Binary == "" {
+		t.Error("When benchPort runs, Binary should be set")
+	}
 	if result.TTFT <= 0 {
 		t.Error("When server responds, TTFT should be positive")
 	}
 	if result.NoThink.GenerationTokPerSec != 10.0 {
-		t.Errorf("When server reports 10 tok/s no-think gen, got %.1f", result.NoThink.GenerationTokPerSec)
+		t.Errorf("When server reports 10 tok/s no-think gen, median got %.1f", result.NoThink.GenerationTokPerSec)
 	}
 	if result.Think.GenerationTokPerSec != 10.0 {
-		t.Errorf("When server reports 10 tok/s think gen, got %.1f", result.Think.GenerationTokPerSec)
+		t.Errorf("When server reports 10 tok/s think gen, median got %.1f", result.Think.GenerationTokPerSec)
 	}
 }
 
@@ -347,11 +389,36 @@ func TestPrintPerfResults_NoError(t *testing.T) {
 		{
 			Port:    8090,
 			Profile: "test",
+			Binary:  "llama-server",
 			Model:   "model.gguf",
 			TTFT:    150 * time.Millisecond,
-			NoThink: benchResult{PromptTokPerSec: 30.0, GenerationTokPerSec: 10.0, PromptTokens: 15, GeneratedTokens: 20},
-			Think:   benchResult{PromptTokPerSec: 25.0, GenerationTokPerSec: 7.0, PromptTokens: 15, GeneratedTokens: 40},
+			NoThink: benchResult{PromptTokPerSec: 30.0, GenerationTokPerSec: 10.0, GenMin: 9.5, GenMax: 10.5, PromptTokens: 15, GeneratedTokens: 20},
+			Think:   benchResult{PromptTokPerSec: 25.0, GenerationTokPerSec: 7.0, GenMin: 6.5, GenMax: 7.5, PromptTokens: 15, GeneratedTokens: 40},
 		},
 	}
 	printPerfResults(results)
+}
+
+func TestFmtTokSRange_WithRange(t *testing.T) {
+	b := benchResult{GenerationTokPerSec: 19.5, GenMin: 18.9, GenMax: 20.1}
+	got := fmtTokSRange(b)
+	if got != "19.5 (18.9-20.1)" {
+		t.Errorf("fmtTokSRange with range = %q, want '19.5 (18.9-20.1)'", got)
+	}
+}
+
+func TestFmtTokSRange_NoRange(t *testing.T) {
+	b := benchResult{GenerationTokPerSec: 10.0, GenMin: 10.0, GenMax: 10.0}
+	got := fmtTokSRange(b)
+	if got != "10.0 tok/s" {
+		t.Errorf("fmtTokSRange without range = %q, want '10.0 tok/s'", got)
+	}
+}
+
+func TestFmtTokSRange_Error(t *testing.T) {
+	b := benchResult{Error: "connection refused"}
+	got := fmtTokSRange(b)
+	if got != "error" {
+		t.Errorf("fmtTokSRange with error = %q, want 'error'", got)
+	}
 }
