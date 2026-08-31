@@ -42,7 +42,7 @@ Examples:
 			if !cmd.Flags().Changed("ctx-size") {
 				ctxSize = profileCtxSize(args[0])
 			}
-			return RunProfileSwitch(args[0], persistent, ctxSize)
+			return RunProfileSwitch(args[0], persistent, ctxSize, config.Yes)
 		},
 	}
 
@@ -52,7 +52,7 @@ Examples:
 	return cmd
 }
 
-func RunProfileSwitch(name string, persistent bool, ctxSize int) error {
+func RunProfileSwitch(name string, persistent bool, ctxSize int, autoConfirm bool) error {
 	profileKey := fmt.Sprintf("profiles.%s", name)
 	modelFile := viper.GetString(profileKey + ".model")
 	if modelFile == "" {
@@ -165,7 +165,7 @@ func RunProfileSwitch(name string, persistent bool, ctxSize int) error {
 		params = append(params, ui.OrderedParam{Key: "Flags", Value: strings.Join(profileFlags, " ")})
 	}
 
-	confirmed, err := ui.ConfirmOperationOrdered("Switch llama-server profile", params, "", false)
+	confirmed, err := ui.ConfirmOperationOrdered("Switch llama-server profile", params, "", autoConfirm)
 	if err != nil || !confirmed {
 		return err
 	}

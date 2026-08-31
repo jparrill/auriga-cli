@@ -156,7 +156,7 @@ func runSweep(configPath, format string) error {
 			ctxSize = 131072
 		}
 
-		if err := profile.RunProfileSwitch(cfg.Profile, true, ctxSize); err != nil {
+		if err := profile.RunProfileSwitch(cfg.Profile, true, ctxSize, true); err != nil {
 			ui.Warn(fmt.Sprintf("  profile switch failed: %v", err))
 			results = append(results, SweepResult{
 				Index:      i,
@@ -240,7 +240,7 @@ func runSweep(configPath, format string) error {
 		if ctxSize <= 0 {
 			ctxSize = 131072
 		}
-		if err := profile.RunProfileSwitch(cfg.Profile, true, ctxSize); err != nil {
+		if err := profile.RunProfileSwitch(cfg.Profile, true, ctxSize, true); err != nil {
 			ui.Warn(fmt.Sprintf("Failed to restore profile: %v", err))
 		}
 		os.Remove(backupPath)

@@ -72,7 +72,7 @@ func TestRunProfileSwitch_ProfileNotFound(t *testing.T) {
 	viper.Reset()
 	defer viper.Reset()
 
-	err := RunProfileSwitch("nonexistent", false, 131072)
+	err := RunProfileSwitch("nonexistent", false, 131072, false)
 
 	if err == nil {
 		t.Error("When profile not found, it should return error")
@@ -89,7 +89,7 @@ func TestRunProfileSwitch_ModelFileMissing(t *testing.T) {
 	viper.Set("profiles.test-profile.model", "nonexistent.gguf")
 	viper.Set("llama_server.gguf_dir", "/tmp/auriga-test-nonexistent")
 
-	err := RunProfileSwitch("test-profile", false, 131072)
+	err := RunProfileSwitch("test-profile", false, 131072, false)
 
 	if err == nil {
 		t.Error("When model file missing, it should return error")
@@ -115,7 +115,7 @@ func TestRunProfileSwitch_MmprojFileMissing(t *testing.T) {
 	viper.Set("llama_server.gguf_dir", tmpDir)
 	viper.Set("llama_server.mmproj_dir", "/tmp/auriga-test-nonexistent")
 
-	err := RunProfileSwitch("test-profile", false, 131072)
+	err := RunProfileSwitch("test-profile", false, 131072, false)
 
 	if err == nil {
 		t.Error("When mmproj file missing, it should return error")
@@ -269,7 +269,7 @@ func TestRunProfileSwitch_BinaryNotFound(t *testing.T) {
 	viper.Set("llama_server.gguf_dir", tmpDir)
 	viper.Set("llama_server.bin", "/also-nonexistent/llama-server")
 
-	err := RunProfileSwitch("test-profile", false, 131072)
+	err := RunProfileSwitch("test-profile", false, 131072, false)
 
 	if err == nil {
 		t.Error("When profile binary not found, it should return error")
@@ -746,7 +746,7 @@ func TestRunProfileSwitch_DFlashFileMissing(t *testing.T) {
 	viper.Set("profiles.test-profile.dflash", "dflash-missing.gguf")
 	viper.Set("llama_server.gguf_dir", tmpDir)
 
-	err := RunProfileSwitch("test-profile", false, 131072)
+	err := RunProfileSwitch("test-profile", false, 131072, false)
 
 	if err == nil {
 		t.Error("When dflash file missing, it should return error")
@@ -768,7 +768,7 @@ func TestRunProfileSwitch_MTPDrafterFileMissing(t *testing.T) {
 	viper.Set("profiles.test-profile.mtp_drafter", "mtp-missing.gguf")
 	viper.Set("llama_server.gguf_dir", tmpDir)
 
-	err := RunProfileSwitch("test-profile", false, 131072)
+	err := RunProfileSwitch("test-profile", false, 131072, false)
 
 	if err == nil {
 		t.Error("When mtp_drafter file missing, it should return error")
