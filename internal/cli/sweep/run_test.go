@@ -664,6 +664,116 @@ func TestCartesianProduct_EmptyValues(t *testing.T) {
 	}
 }
 
+func TestAbortTracker(t *testing.T) {
+	t.Run("two consecutive errors triggers abort", func(t *testing.T) {
+		a := newAbortTracker(2)
+		if a.recordFailure() {
+			t.Error("first failure should not trigger abort")
+		}
+		if !a.recordFailure() {
+			t.Error("second consecutive failure should trigger abort")
+		}
+	})
+
+	t.Run("single error does not abort", func(t *testing.T) {
+		a := newAbortTracker(2)
+		if a.recordFailure() {
+			t.Error("single failure should not trigger abort")
+		}
+	})
+
+	t.Run("error then success resets counter", func(t *testing.T) {
+		a := newAbortTracker(2)
+		a.recordFailure()
+		a.recordSuccess()
+		if a.consecutive != 0 {
+			t.Errorf("expected 0 consecutive errors after success, got %d", a.consecutive)
+		}
+		if a.recordFailure() {
+			t.Error("first failure after reset should not trigger abort")
+		}
+	})
+
+	t.Run("error-success-error-error triggers abort", func(t *testing.T) {
+		a := newAbortTracker(2)
+		a.recordFailure()
+		a.recordSuccess()
+		a.recordFailure()
+		if !a.recordFailure() {
+			t.Error("second consecutive failure should trigger abort")
+		}
+	})
+
+	t.Run("success-error-success-error no abort", func(t *testing.T) {
+		a := newAbortTracker(2)
+		a.recordSuccess()
+		a.recordFailure()
+		a.recordSuccess()
+		if a.recordFailure() {
+			t.Error("non-consecutive errors should not trigger abort")
+		}
+	})
+
+	t.Run("custom threshold of 3", func(t *testing.T) {
+		a := newAbortTracker(3)
+		a.recordFailure()
+		a.recordFailure()
+		if !a.recordFailure() {
+			t.Error("third consecutive failure should trigger abort with threshold 3")
+		}
+	})
+
+	t.Run("custom threshold of 3 not reached at 2", func(t *testing.T) {
+		a := newAbortTracker(3)
+		a.recordFailure()
+		if a.recordFailure() {
+			t.Error("second failure should not trigger abort with threshold 3")
+		}
+	})
+}
+
+func TestAbortTracker_SimulateLoop(t *testing.T) {
+	tests := []struct {
+		name     string
+		outcomes []bool
+		want     int
+	}{
+		{"all success", []bool{true, true, true, true}, -1},
+		{"fail-fail aborts at 2", []bool{false, false, true, true}, 2},
+		{"success-fail-fail aborts at 3", []bool{true, false, false, true}, 3},
+		{"fail-success-fail-fail aborts at 4", []bool{true, false, true, false, false}, 5},
+		{"alternating never aborts", []bool{false, true, false, true, false}, -1},
+		{"immediate double fail", []bool{false, false}, 2},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			a := newAbortTracker(2)
+			executed := 0
+			for _, ok := range tc.outcomes {
+				executed++
+				if !ok {
+					if a.recordFailure() {
+						break
+					}
+				} else {
+					a.recordSuccess()
+				}
+			}
+
+			if tc.want == -1 {
+				if executed != len(tc.outcomes) {
+					t.Errorf("expected all %d combos to run, aborted at %d", len(tc.outcomes), executed)
+				}
+			} else {
+				if executed != tc.want {
+					t.Errorf("expected abort after %d combos, got %d", tc.want, executed)
+				}
+			}
+		})
+	}
+}
+
 func TestCartesianProduct_BatchAlias(t *testing.T) {
 	t.Run("batch alias as single dimension", func(t *testing.T) {
 		cfg := SweepConfig{

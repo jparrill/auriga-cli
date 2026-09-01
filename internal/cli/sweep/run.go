@@ -131,6 +131,7 @@ func runSweep(configPath, format string) error {
 
 	port := resolvePort(cfg.Profile)
 	sweepStart := time.Now()
+	abort := newAbortTracker(2)
 
 	for i, combo := range combos {
 		if interrupted.Load() {
@@ -234,8 +235,13 @@ func runSweep(configPath, format string) error {
 		elapsed := time.Since(comboStart).Seconds()
 		if spinErr != nil {
 			ui.Warn(fmt.Sprintf("[%d/%d] %s — %s (%.0fs)", i+1, len(combos), label, result.Error, elapsed))
+			if abort.recordFailure() {
+				ui.Warn("2 consecutive failures — aborting sweep")
+				break
+			}
 		} else {
 			ui.Ok(fmt.Sprintf("[%d/%d] %s (%.0fs)", i+1, len(combos), label, elapsed))
+			abort.recordSuccess()
 		}
 
 		results = append(results, result)
@@ -645,4 +651,22 @@ func sortedKeys(m map[string][]string) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+type abortTracker struct {
+	consecutive int
+	threshold   int
+}
+
+func newAbortTracker(threshold int) *abortTracker {
+	return &abortTracker{threshold: threshold}
+}
+
+func (a *abortTracker) recordFailure() bool {
+	a.consecutive++
+	return a.consecutive >= a.threshold
+}
+
+func (a *abortTracker) recordSuccess() {
+	a.consecutive = 0
 }
