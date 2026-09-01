@@ -80,11 +80,16 @@ func runSweep(configPath, format string) error {
 
 	profileKey := fmt.Sprintf("profiles.%s", cfg.Profile)
 	model := viper.GetString(profileKey + ".model")
+	profileType := viper.GetString(profileKey + ".type")
+	if profileType == "" {
+		profileType = "dense"
+	}
 	estMinutes := float64(len(combos)) * 3.0
 	hostname, _ := os.Hostname()
 
 	params := []ui.OrderedParam{
 		{Key: "Profile", Value: cfg.Profile},
+		{Key: "Type", Value: profileType},
 		{Key: "Model", Value: model},
 		{Key: "Combinations", Value: fmt.Sprintf("%d", len(combos))},
 		{Key: "Iterations/combo", Value: fmt.Sprintf("%d", cfg.Iterations)},
