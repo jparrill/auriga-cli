@@ -74,7 +74,9 @@ func TestSyncProfile_AllFilesPresent(t *testing.T) {
 	modelFile := "test-model-Q4_K_M.gguf"
 	mmprojFile := "test-mmproj-BF16.gguf"
 	os.WriteFile(filepath.Join(ggufDir, modelFile), []byte("model"), 0644)
-	os.WriteFile(filepath.Join(mmprojDir, mmprojFile), []byte("mmproj"), 0644)
+	profileMmprojDir := filepath.Join(mmprojDir, "test-profile")
+	os.MkdirAll(profileMmprojDir, 0755)
+	os.WriteFile(filepath.Join(profileMmprojDir, mmprojFile), []byte("mmproj"), 0644)
 
 	viper.Reset()
 	viper.Set("profiles.test-profile.repo", "unsloth/test-GGUF")
@@ -326,7 +328,9 @@ func TestSyncProfile_AllFilesWithDrafters(t *testing.T) {
 	mmprojDir := t.TempDir()
 
 	os.WriteFile(filepath.Join(ggufDir, "model.gguf"), []byte("model"), 0644)
-	os.WriteFile(filepath.Join(mmprojDir, "mmproj.gguf"), []byte("mmproj"), 0644)
+	profileMmprojDir := filepath.Join(mmprojDir, "full")
+	os.MkdirAll(profileMmprojDir, 0755)
+	os.WriteFile(filepath.Join(profileMmprojDir, "mmproj.gguf"), []byte("mmproj"), 0644)
 	os.WriteFile(filepath.Join(ggufDir, "drafter.gguf"), []byte("drafter"), 0644)
 
 	viper.Reset()
@@ -392,4 +396,189 @@ func TestSyncResult_Fields(t *testing.T) {
 	if r.Detail != "downloaded" {
 		t.Errorf("expected Detail 'downloaded', got %q", r.Detail)
 	}
+}
+
+func TestMmprojPath(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+	viper.Set("llama_server.mmproj_dir", "/data/mmproj")
+
+	tests := []struct {
+		name    string
+		profile string
+		mmproj  string
+		want    string
+	}{
+		{
+			name:    "When profile and mmproj given, path includes profile subdirectory",
+			profile: "gemma4-31b-vision",
+			mmproj:  "mmproj-BF16.gguf",
+			want:    "/data/mmproj/gemma4-31b-vision/mmproj-BF16.gguf",
+		},
+		{
+			name:    "When two profiles use same mmproj filename, paths differ",
+			profile: "gemma4-12b-vision",
+			mmproj:  "mmproj-BF16.gguf",
+			want:    "/data/mmproj/gemma4-12b-vision/mmproj-BF16.gguf",
+		},
+		{
+			name:    "When mmproj has model-specific name, still uses profile subdir",
+			profile: "qwen3.6-vision",
+			mmproj:  "Qwen3.6-35B-A3B-MTP-mmproj-BF16.gguf",
+			want:    "/data/mmproj/qwen3.6-vision/Qwen3.6-35B-A3B-MTP-mmproj-BF16.gguf",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := MmprojPath(tt.profile, tt.mmproj)
+			if got != tt.want {
+				t.Errorf("MmprojPath(%q, %q) = %q, want %q", tt.profile, tt.mmproj, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMmprojPath_NoCollision(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+	viper.Set("llama_server.mmproj_dir", "/data/mmproj")
+
+	path31b := MmprojPath("gemma4-31b-vision", "mmproj-BF16.gguf")
+	path12b := MmprojPath("gemma4-12b-vision", "mmproj-BF16.gguf")
+	path26b := MmprojPath("gemma4-26b", "mmproj-BF16.gguf")
+
+	if path31b == path12b {
+		t.Errorf("31B and 12B should have different paths, both got %q", path31b)
+	}
+	if path31b == path26b {
+		t.Errorf("31B and 26B should have different paths, both got %q", path31b)
+	}
+	if path12b == path26b {
+		t.Errorf("12B and 26B should have different paths, both got %q", path12b)
+	}
+}
+
+func TestSyncProfile_MmprojSubdirectory(t *testing.T) {
+	t.Run("When mmproj in profile subdir, sync finds it", func(t *testing.T) {
+		ggufDir := t.TempDir()
+		mmprojDir := t.TempDir()
+
+		os.WriteFile(filepath.Join(ggufDir, "model.gguf"), []byte("model"), 0644)
+		profileDir := filepath.Join(mmprojDir, "subdir-test")
+		os.MkdirAll(profileDir, 0755)
+		os.WriteFile(filepath.Join(profileDir, "mmproj-BF16.gguf"), []byte("mmproj"), 0644)
+
+		viper.Reset()
+		defer viper.Reset()
+		viper.Set("profiles.subdir-test.repo", "org/repo")
+		viper.Set("profiles.subdir-test.model", "model.gguf")
+		viper.Set("profiles.subdir-test.mmproj", "mmproj-BF16.gguf")
+		viper.Set("llama_server.gguf_dir", ggufDir)
+		viper.Set("llama_server.mmproj_dir", mmprojDir)
+
+		result := SyncProfile("subdir-test")
+
+		if result.Status != "skip" {
+			t.Errorf("When mmproj in profile subdir, status should be 'skip', got %q (detail: %s)", result.Status, result.Detail)
+		}
+	})
+
+	t.Run("When mmproj not in profile subdir and no repo, sync warns", func(t *testing.T) {
+		ggufDir := t.TempDir()
+		mmprojDir := t.TempDir()
+
+		os.WriteFile(filepath.Join(ggufDir, "model.gguf"), []byte("model"), 0644)
+
+		viper.Reset()
+		defer viper.Reset()
+		viper.Set("profiles.no-mmproj.model", "model.gguf")
+		viper.Set("profiles.no-mmproj.mmproj", "mmproj-BF16.gguf")
+		viper.Set("llama_server.gguf_dir", ggufDir)
+		viper.Set("llama_server.mmproj_dir", mmprojDir)
+
+		result := SyncProfile("no-mmproj")
+
+		if result.Status == "skip" {
+			t.Error("When mmproj missing from profile subdir, status should not be 'skip'")
+		}
+		if result.Status != "warn" {
+			t.Errorf("When mmproj missing without repo, status should be 'warn', got %q", result.Status)
+		}
+	})
+
+	t.Run("When same mmproj name in flat dir but not profile subdir, sync does not find it", func(t *testing.T) {
+		ggufDir := t.TempDir()
+		mmprojDir := t.TempDir()
+
+		os.WriteFile(filepath.Join(ggufDir, "model.gguf"), []byte("model"), 0644)
+		os.WriteFile(filepath.Join(mmprojDir, "mmproj-BF16.gguf"), []byte("wrong-model-mmproj"), 0644)
+
+		viper.Reset()
+		defer viper.Reset()
+		viper.Set("profiles.isolated.model", "model.gguf")
+		viper.Set("profiles.isolated.mmproj", "mmproj-BF16.gguf")
+		viper.Set("llama_server.gguf_dir", ggufDir)
+		viper.Set("llama_server.mmproj_dir", mmprojDir)
+
+		result := SyncProfile("isolated")
+
+		if result.Status == "skip" {
+			t.Error("When mmproj only in flat dir (not profile subdir), should not be 'skip'")
+		}
+	})
+
+	t.Run("When two profiles have same mmproj filename, they are isolated", func(t *testing.T) {
+		ggufDir := t.TempDir()
+		mmprojDir := t.TempDir()
+
+		os.WriteFile(filepath.Join(ggufDir, "model-a.gguf"), []byte("model-a"), 0644)
+		os.WriteFile(filepath.Join(ggufDir, "model-b.gguf"), []byte("model-b"), 0644)
+
+		dirA := filepath.Join(mmprojDir, "profile-a")
+		dirB := filepath.Join(mmprojDir, "profile-b")
+		os.MkdirAll(dirA, 0755)
+		os.MkdirAll(dirB, 0755)
+		os.WriteFile(filepath.Join(dirA, "mmproj-BF16.gguf"), []byte("mmproj-a"), 0644)
+		os.WriteFile(filepath.Join(dirB, "mmproj-BF16.gguf"), []byte("mmproj-b"), 0644)
+
+		viper.Reset()
+		defer viper.Reset()
+		viper.Set("profiles.profile-a.repo", "org/model-a")
+		viper.Set("profiles.profile-a.model", "model-a.gguf")
+		viper.Set("profiles.profile-a.mmproj", "mmproj-BF16.gguf")
+		viper.Set("profiles.profile-b.repo", "org/model-b")
+		viper.Set("profiles.profile-b.model", "model-b.gguf")
+		viper.Set("profiles.profile-b.mmproj", "mmproj-BF16.gguf")
+		viper.Set("llama_server.gguf_dir", ggufDir)
+		viper.Set("llama_server.mmproj_dir", mmprojDir)
+
+		resultA := SyncProfile("profile-a")
+		resultB := SyncProfile("profile-b")
+
+		if resultA.Status != "skip" {
+			t.Errorf("profile-a should be 'skip', got %q", resultA.Status)
+		}
+		if resultB.Status != "skip" {
+			t.Errorf("profile-b should be 'skip', got %q", resultB.Status)
+		}
+	})
+
+	t.Run("When no mmproj configured, subdir is not required", func(t *testing.T) {
+		ggufDir := t.TempDir()
+		os.WriteFile(filepath.Join(ggufDir, "model.gguf"), []byte("model"), 0644)
+
+		viper.Reset()
+		defer viper.Reset()
+		viper.Set("profiles.no-vision.repo", "org/repo")
+		viper.Set("profiles.no-vision.model", "model.gguf")
+		viper.Set("llama_server.gguf_dir", ggufDir)
+		viper.Set("llama_server.mmproj_dir", t.TempDir())
+
+		result := SyncProfile("no-vision")
+
+		if result.Status != "skip" {
+			t.Errorf("When no mmproj configured, status should be 'skip', got %q", result.Status)
+		}
+	})
 }

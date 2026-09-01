@@ -87,7 +87,7 @@ func SyncProfile(name string) SyncResult {
 
 	mmprojExists := true
 	if mmproj != "" {
-		mmprojPath := filepath.Join(mmprojDir, mmproj)
+		mmprojPath := filepath.Join(mmprojDir, name, mmproj)
 		mmprojExists = fileExists(mmprojPath)
 
 		if mmprojExists && repo != "" {
@@ -169,9 +169,11 @@ func SyncProfile(name string) SyncResult {
 	}
 
 	if !mmprojExists {
+		profileMmprojDir := filepath.Join(mmprojDir, name)
+		os.MkdirAll(profileMmprojDir, 0755)
 		originalName := repoFilename(mmproj, repo)
 		url := huggingface.DownloadURL(repo, originalName)
-		mmprojPath := filepath.Join(mmprojDir, mmproj)
+		mmprojPath := filepath.Join(profileMmprojDir, mmproj)
 		label := fmt.Sprintf("[%s] %s", name, mmproj)
 		err := exec.DownloadFile(ctx, url, mmprojPath, label, exec.DownloadOpts{Resume: true})
 		if err != nil {
@@ -313,6 +315,11 @@ func verifyFile(profileName, displayName, localPath, repo, repoFilename string) 
 
 	ui.Ok(fmt.Sprintf("[%s] Verified: %s", profileName, displayName))
 	return true
+}
+
+func MmprojPath(profileName, mmprojFile string) string {
+	mmprojDir := config.ExpandHome(viper.GetString("llama_server.mmproj_dir"))
+	return filepath.Join(mmprojDir, profileName, mmprojFile)
 }
 
 func fileExists(path string) bool {
