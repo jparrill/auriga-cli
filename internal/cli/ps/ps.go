@@ -39,7 +39,7 @@ func NewPsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "ps",
 		Short: "Show running auriga components",
-		Long: `Show status of Ollama, llama-server, Pi, and system resources.
+		Long: `Show status of Ollama, llama-server, and system resources.
 
 Examples:
   auriga ps              # One-shot status
@@ -123,7 +123,6 @@ func gatherStatus() []processInfo {
 	var procs []processInfo
 	procs = append(procs, checkOllama())
 	procs = append(procs, checkLlamaServers()...)
-	procs = append(procs, checkPi())
 	procs = append(procs, checkContainer("hermes", "Hermes gateway")...)
 	procs = append(procs, checkContainer("hermes-dashboard", "Hermes dashboard")...)
 	procs = append(procs, checkContainer("hermes-searxng", "SearXNG")...)
@@ -346,36 +345,6 @@ func checkHealth(port string) string {
 	return fmt.Sprintf("http-%d", resp.StatusCode)
 }
 
-func checkPi() processInfo {
-	p := processInfo{Component: "pi", Status: "stopped", PID: "-", Port: "-", Model: "-", Extra: "-"}
-
-	ctx := context.Background()
-	out, err := exec.RunCapture(ctx, "pgrep", []string{"-a", "pi"}, exec.RunOpts{})
-	if err != nil || strings.TrimSpace(out) == "" {
-		return p
-	}
-
-	for _, line := range strings.Split(out, "\n") {
-		line = strings.TrimSpace(line)
-		if !strings.Contains(line, "pi --model") && !strings.Contains(line, "pi-coding-agent") {
-			continue
-		}
-
-		p.Status = "active"
-		parts := strings.SplitN(line, " ", 2)
-		p.PID = parts[0]
-
-		if len(parts) > 1 {
-			model := extractFlag(parts[1], "--model")
-			if model != "" {
-				p.Model = model
-			}
-		}
-		break
-	}
-
-	return p
-}
 
 func checkContainer(name, label string) []processInfo {
 	ctx := context.Background()

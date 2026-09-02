@@ -9,7 +9,6 @@
 <p align="center">
   <a href="https://go.dev"><img src="https://img.shields.io/badge/Go-1.26-00ADD8?style=flat-square&logo=go" alt="Go"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="License"></a>
-  <a href="https://pi.dev"><img src="https://img.shields.io/badge/Pi-0.79-bb9af7?style=flat-square" alt="Pi"></a>
 </p>
 
 ---
@@ -18,7 +17,7 @@
 
 `auriga` is a unified CLI for managing LLM models, benchmarks, and development workflows on a local AI server (AMD Ryzen AI Max+ 395, 128GB unified RAM, Fedora 44).
 
-It consolidates model management (Ollama + llama-server), vision-enabled inference (multimodal projectors), meta-benchmarks, and interactive fix sessions with [Pi](https://pi.dev) into a single binary.
+It consolidates model management (Ollama + llama-server), vision-enabled inference (multimodal projectors), meta-benchmarks, and interactive fix sessions into a single binary.
 
 ## Install
 
@@ -55,7 +54,7 @@ auriga profile switch <name> [--persistent]       # Switch to a different profil
 auriga profile stop [name]                        # Stop running llama-server instance(s)
 auriga profile validate                           # Validate configs vs model caps + GTT memory
 auriga benchmark list [--failed]                  # List meta-benchmark results
-auriga fix [--list] [--failed] [--model X]        # Interactive fix workflow with Pi
+auriga fix [--list] [--failed] [--model X]        # Interactive fix workflow
 ```
 
 ## Configuration
@@ -116,8 +115,6 @@ profiles:
 benchmark:
   results_dir: ~/Projects/auriga-lab/results
 
-pi:
-  bin: ~/.npm-global/bin/pi
 ```
 
 ### Environment Variables
@@ -172,8 +169,8 @@ Auriga supports multimodal inference via llama-server with `--mmproj` projectors
 # Start with vision profile
 auriga profile serve qwen3.6-vision
 
-# Use with Pi
-pi --model local -p @screenshot.png "What's wrong with this UI?"
+# Use with OpenCode or other clients
+LLAMA_SERVER_HOST=http://localhost:8090 opencode
 ```
 
 ## Fix Workflow
@@ -191,7 +188,7 @@ auriga fix
 auriga fix --model gemma4
 ```
 
-Flow: select result → start model (Ollama or llama-server) → generate `.pi/SYSTEM.md` → launch Pi → work → cleanup.
+Flow: select result → start model (Ollama or llama-server) → launch coding agent → work → cleanup.
 
 ## Speculative Decoding
 

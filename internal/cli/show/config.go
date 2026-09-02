@@ -19,7 +19,7 @@ func newShowConfigCmd() *cobra.Command {
 		Short: "Show connection URLs for all services",
 		Long: `Display connection details for Ollama and llama-server instances,
 including LAN, Tailscale, and localhost URLs. Useful for configuring
-Pi, OpenCode, or other clients.
+OpenCode or other clients.
 
 Examples:
   auriga show config`,
@@ -223,14 +223,6 @@ func printAPIEndpoints(densePort, moePort, lanIP, tsIP string) {
 
 func printClientExamples(densePort, moePort, lanIP, tsIP string) {
 	host := bestRemoteIP(lanIP, tsIP)
-
-	ui.Info("Pi examples:")
-	fmt.Printf("  pi --model local                                     # uses default profile\n")
-	fmt.Printf("  LLAMA_SERVER_HOST=http://%s:%s pi --model local   # dense\n", host, densePort)
-	if densePort != moePort {
-		fmt.Printf("  LLAMA_SERVER_HOST=http://%s:%s pi --model local   # moe\n", host, moePort)
-	}
-	fmt.Println()
 
 	ui.Info("OpenCode / other clients:")
 	fmt.Printf("  # Ollama (OpenAI-compatible)\n")

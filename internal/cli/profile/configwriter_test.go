@@ -20,8 +20,8 @@ func TestAddProfileToConfig(t *testing.T) {
 profiles:
     existing:
         model: some-model.gguf
-pi:
-    bin: pi
+hermes:
+    moe_profile: local
 `
 	os.WriteFile(tmpFile.Name(), []byte(initial), 0644)
 	viper.SetConfigFile(tmpFile.Name())
@@ -55,7 +55,7 @@ pi:
 	if !strings.Contains(result, "ollama") {
 		t.Error("When adding a profile, other sections should be preserved")
 	}
-	if !strings.Contains(result, "pi") {
+	if !strings.Contains(result, "hermes") {
 		t.Error("When adding a profile, all sections should be preserved")
 	}
 	if !strings.Contains(result, "--jinja") {

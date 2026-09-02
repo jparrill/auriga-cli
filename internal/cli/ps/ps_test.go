@@ -23,7 +23,7 @@ func TestExtractFlag(t *testing.T) {
 		{"model flag", "/bin/llama-server -m /path/to/model.gguf --port 8090", "-m", "/path/to/model.gguf"},
 		{"port flag", "/bin/llama-server -m model.gguf --port 8090", "--port", "8090"},
 		{"mmproj flag", "/bin/llama-server -m model.gguf --mmproj /path/mmproj.gguf", "--mmproj", "/path/mmproj.gguf"},
-		{"model in pi", "pi --model local", "--model", "local"},
+		{"model in opencode", "opencode --model local", "--model", "local"},
 		{"missing flag", "/bin/llama-server -m model.gguf", "--mmproj", ""},
 		{"empty args", "", "--model", ""},
 		{"flag at end no value", "/bin/llama-server --flash-attn", "--flash-attn", ""},
