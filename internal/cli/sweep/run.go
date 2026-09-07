@@ -95,8 +95,12 @@ func runSweep(configPath, format string) error {
 	estMinutes := float64(len(combos)) * (healthTimeoutMin + 3.0)
 	hostname, _ := os.Hostname()
 
+	port := resolvePort(cfg)
+	slotDisplay := fmt.Sprintf("%d (port %d)", cfg.Slot, port)
+
 	params := []ui.OrderedParam{
 		{Key: "Profile", Value: cfg.Profile},
+		{Key: "Slot", Value: slotDisplay},
 		{Key: "Type", Value: profileType},
 		{Key: "Model", Value: modelDisplay},
 		{Key: "Combinations", Value: fmt.Sprintf("%d", len(combos))},
@@ -137,7 +141,6 @@ func runSweep(configPath, format string) error {
 		}
 	}()
 
-	port := resolvePort(cfg)
 	sweepStart := time.Now()
 	abort := newAbortTracker(2)
 
