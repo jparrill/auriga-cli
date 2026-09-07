@@ -630,7 +630,7 @@ func TestSplitFiles(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := splitFiles(tt.filename)
+			got := SplitFiles(tt.filename)
 			if tt.want == nil {
 				if got != nil {
 					t.Errorf("got %v, want nil", got)

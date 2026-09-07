@@ -80,20 +80,28 @@ func runSweep(configPath, format string) error {
 
 	profileKey := fmt.Sprintf("profiles.%s", cfg.Profile)
 	model := viper.GetString(profileKey + ".model")
+	modelDisplay := filepath.Base(model)
+	if parts := profile.SplitFiles(filepath.Base(model)); parts != nil {
+		modelDisplay = fmt.Sprintf("%s (%d parts)", modelDisplay, len(parts))
+	}
 	profileType := viper.GetString(profileKey + ".type")
 	if profileType == "" {
 		profileType = "dense"
 	}
-	estMinutes := float64(len(combos)) * 3.0
+	healthTimeoutMin := float64(viper.GetInt("llama_server.health_timeout")) / 60.0
+	if healthTimeoutMin < 1.5 {
+		healthTimeoutMin = 1.5
+	}
+	estMinutes := float64(len(combos)) * (healthTimeoutMin + 3.0)
 	hostname, _ := os.Hostname()
 
 	params := []ui.OrderedParam{
 		{Key: "Profile", Value: cfg.Profile},
 		{Key: "Type", Value: profileType},
-		{Key: "Model", Value: model},
+		{Key: "Model", Value: modelDisplay},
 		{Key: "Combinations", Value: fmt.Sprintf("%d", len(combos))},
 		{Key: "Iterations/combo", Value: fmt.Sprintf("%d", cfg.Iterations)},
-		{Key: "Est. runtime", Value: fmt.Sprintf("~%.1fh", estMinutes/60.0)},
+		{Key: "Est. runtime", Value: fmt.Sprintf("~%.0fmin", estMinutes)},
 	}
 
 	if config.DryRun {

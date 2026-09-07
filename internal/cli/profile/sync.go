@@ -84,7 +84,7 @@ func SyncProfile(name string) SyncResult {
 	modelExists := fileExists(modelPath)
 
 	if modelExists {
-		if parts := splitFiles(filepath.Base(model)); parts != nil {
+		if parts := SplitFiles(filepath.Base(model)); parts != nil {
 			dir := filepath.Dir(model)
 			for _, p := range parts {
 				if dir != "." {
@@ -171,7 +171,7 @@ func SyncProfile(name string) SyncResult {
 
 	if !modelExists {
 		filesToDownload := []string{model}
-		if parts := splitFiles(filepath.Base(model)); parts != nil {
+		if parts := SplitFiles(filepath.Base(model)); parts != nil {
 			dir := filepath.Dir(model)
 			filesToDownload = nil
 			for _, p := range parts {
@@ -365,7 +365,7 @@ func fileExists(path string) bool {
 
 var splitPattern = regexp.MustCompile(`^(.*)-(\d{5})-of-(\d{5})(\.gguf)$`)
 
-func splitFiles(filename string) []string {
+func SplitFiles(filename string) []string {
 	m := splitPattern.FindStringSubmatch(filename)
 	if m == nil {
 		return nil
