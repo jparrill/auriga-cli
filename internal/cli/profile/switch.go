@@ -289,6 +289,8 @@ func buildExecStart(bin, modelPath, mmprojPath string, extraFlags []string, ctxS
 		"--flash-attn", "on",
 		"--gpu-layers", "99",
 		"--ctx-size", fmt.Sprintf("%d", ctxSize),
+		"--metrics",
+		"--slots",
 	}
 
 	if mmprojPath != "" {

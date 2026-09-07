@@ -188,6 +188,8 @@ func StartWithCtx(ctx context.Context, bin string, modelPath string, mmprojPath 
 		"--flash-attn", "on",
 		"--gpu-layers", "99",
 		"--ctx-size", fmt.Sprintf("%d", ctxSize),
+		"--metrics",
+		"--slots",
 	}
 
 	if mmprojPath != "" {

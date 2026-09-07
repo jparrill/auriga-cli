@@ -1,0 +1,55 @@
+# Template sensors for computed metrics
+#
+# Add to configuration.yaml:
+#   template: !include auriga_templates.yaml
+
+- sensor:
+    # Draft Acceptance Rate (DAR) for Dense instance
+    - name: "Auriga Dense DAR"
+      state: >-
+        {% set accepted = states('sensor.auriga_dense_draft_accepted') | int(0) %}
+        {% set total = states('sensor.auriga_dense_draft_total') | int(0) %}
+        {{ ((accepted / total) * 100) | round(1) if total > 0 else 0 }}
+      unit_of_measurement: "%"
+      icon: mdi:check-decagram
+      availability: >-
+        {{ states('sensor.auriga_dense_draft_total') | int(0) > 0 }}
+
+    # Draft Acceptance Rate (DAR) for MoE instance
+    - name: "Auriga MoE DAR"
+      state: >-
+        {% set accepted = states('sensor.auriga_moe_draft_accepted') | int(0) %}
+        {% set total = states('sensor.auriga_moe_draft_total') | int(0) %}
+        {{ ((accepted / total) * 100) | round(1) if total > 0 else 0 }}
+      unit_of_measurement: "%"
+      icon: mdi:check-decagram
+      availability: >-
+        {{ states('sensor.auriga_moe_draft_total') | int(0) > 0 }}
+
+    # Context usage as human-readable string (e.g., "4.4K / 128K")
+    - name: "Auriga Dense Context"
+      state: >-
+        {% set tokens = states('sensor.auriga_dense_kv_cache_tokens') | int(0) %}
+        {% set usage = states('sensor.auriga_dense_kv_cache_usage') | float(0) %}
+        {{ '{:.1f}K'.format(tokens / 1000) }} / {{ '{:.0f}K'.format(tokens / (usage / 100) / 1000) if usage > 0 else '?' }}
+      icon: mdi:text-box-outline
+
+    - name: "Auriga MoE Context"
+      state: >-
+        {% set tokens = states('sensor.auriga_moe_kv_cache_tokens') | int(0) %}
+        {% set usage = states('sensor.auriga_moe_kv_cache_usage') | float(0) %}
+        {{ '{:.1f}K'.format(tokens / 1000) }} / {{ '{:.0f}K'.format(tokens / (usage / 100) / 1000) if usage > 0 else '?' }}
+      icon: mdi:text-box-outline
+
+    # Combined instance status with model info
+    - name: "Auriga Dense Online"
+      state: >-
+        {{ 'on' if states('sensor.auriga_dense_status') == 'ok' else 'off' }}
+      icon: >-
+        {{ 'mdi:server' if states('sensor.auriga_dense_status') == 'ok' else 'mdi:server-off' }}
+
+    - name: "Auriga MoE Online"
+      state: >-
+        {{ 'on' if states('sensor.auriga_moe_status') == 'ok' else 'off' }}
+      icon: >-
+        {{ 'mdi:server' if states('sensor.auriga_moe_status') == 'ok' else 'mdi:server-off' }}
