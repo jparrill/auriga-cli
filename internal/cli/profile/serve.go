@@ -71,9 +71,12 @@ func profileCtxSize(name string) int {
 }
 
 func warnTypeMismatch(name, configuredType, modelName string) {
+	if configuredType == "" {
+		return
+	}
 	detected := detectModelType(modelName)
-	if configuredType != "" && configuredType != detected {
-		ui.Warn(fmt.Sprintf("Profile %q has type=%s but model name suggests %s", name, configuredType, detected))
+	if configuredType != detected {
+		ui.Info(fmt.Sprintf("Profile %q type=%s (model name heuristic: %s)", name, configuredType, detected))
 	}
 }
 
