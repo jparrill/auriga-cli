@@ -8,159 +8,167 @@
 # Usage:
 #   Add to configuration.yaml:
 #     rest: !include auriga_sensors.yaml
-#
-#   Or merge the rest: entries below into your existing configuration.yaml
-#
-# Adjust IP if using Tailscale (100.77.65.108) instead of LAN (100.77.65.108)
 
-# --- Dense instance (port 8090) ---
+# --- Slot 1 / Dense instance (port 8090) ---
 
-# Health endpoint (JSON)
 - resource: "http://100.77.65.108:8090/health"
   scan_interval: 15
   sensor:
-    - name: "Auriga Dense Status"
+    - name: "Auriga Slot1 Status"
       value_template: "{{ value_json.status }}"
-      json_attributes:
-        - slots_idle
-        - slots_processing
+      icon: >-
+        {{ 'mdi:server' if value_json.status == 'ok' else 'mdi:server-off' }}
 
-# Metrics endpoint (Prometheus text format)
+- resource: "http://100.77.65.108:8090/slots"
+  scan_interval: 15
+  sensor:
+    - name: "Auriga Slot1 Context Size"
+      value_template: "{{ value_json[0].n_ctx | int }}"
+      unit_of_measurement: "tokens"
+      icon: mdi:text-box-outline
+
+    - name: "Auriga Slot1 Processing"
+      value_template: "{{ value_json[0].is_processing }}"
+      icon: mdi:cog-transfer
+
+    - name: "Auriga Slot1 Speculative"
+      value_template: "{{ value_json[0].speculative }}"
+      icon: mdi:lightning-bolt
+
 - resource: "http://100.77.65.108:8090/metrics"
   scan_interval: 10
   sensor:
-    - name: "Auriga Dense PP Speed"
+    - name: "Auriga Slot1 PP Speed"
       value_template: >-
-        {% set m = value | regex_findall('llamacpp_prompt_tokens_seconds\s+([0-9.]+)') %}
+        {% set m = value | regex_findall('llamacpp:prompt_tokens_seconds\s+([0-9.]+)') %}
         {{ m[0] | float | round(1) if m else 0 }}
       unit_of_measurement: "tok/s"
       icon: mdi:speedometer
 
-    - name: "Auriga Dense TG Speed"
+    - name: "Auriga Slot1 TG Speed"
       value_template: >-
-        {% set m = value | regex_findall('llamacpp_tokens_predicted_seconds\s+([0-9.]+)') %}
+        {% set m = value | regex_findall('llamacpp:predicted_tokens_seconds\s+([0-9.]+)') %}
         {{ m[0] | float | round(1) if m else 0 }}
       unit_of_measurement: "tok/s"
       icon: mdi:message-text-fast-outline
 
-    - name: "Auriga Dense Prompt Tokens"
+    - name: "Auriga Slot1 Prompt Tokens"
       value_template: >-
-        {% set m = value | regex_findall('llamacpp_prompt_tokens_total\s+([0-9.]+)') %}
+        {% set m = value | regex_findall('llamacpp:prompt_tokens_total\s+([0-9.]+)') %}
         {{ m[0] | int if m else 0 }}
       unit_of_measurement: "tokens"
       icon: mdi:arrow-down-bold
 
-    - name: "Auriga Dense Generated Tokens"
+    - name: "Auriga Slot1 Generated Tokens"
       value_template: >-
-        {% set m = value | regex_findall('llamacpp_tokens_predicted_total\s+([0-9.]+)') %}
+        {% set m = value | regex_findall('llamacpp:tokens_predicted_total\s+([0-9.]+)') %}
         {{ m[0] | int if m else 0 }}
       unit_of_measurement: "tokens"
       icon: mdi:arrow-up-bold
 
-    - name: "Auriga Dense KV Cache Usage"
+    - name: "Auriga Slot1 Active Requests"
       value_template: >-
-        {% set m = value | regex_findall('llamacpp_kv_cache_usage_ratio\s+([0-9.]+)') %}
-        {{ (m[0] | float * 100) | round(1) if m else 0 }}
-      unit_of_measurement: "%"
-      icon: mdi:memory
-
-    - name: "Auriga Dense KV Cache Tokens"
-      value_template: >-
-        {% set m = value | regex_findall('llamacpp_kv_cache_tokens\s+([0-9.]+)') %}
-        {{ m[0] | int if m else 0 }}
-      unit_of_measurement: "tokens"
-      icon: mdi:database
-
-    - name: "Auriga Dense Active Requests"
-      value_template: >-
-        {% set m = value | regex_findall('llamacpp_requests_processing\s+([0-9.]+)') %}
+        {% set m = value | regex_findall('llamacpp:requests_processing\s+([0-9.]+)') %}
         {{ m[0] | int if m else 0 }}
       icon: mdi:server-network
 
-    - name: "Auriga Dense Draft Accepted"
+    - name: "Auriga Slot1 Draft Accepted"
       value_template: >-
-        {% set m = value | regex_findall('llamacpp_spec_decode_num_accepted_tokens_total\s+([0-9.]+)') %}
+        {% set m = value | regex_findall('llamacpp:spec_decode_num_accepted_tokens_total\s+([0-9.]+)') %}
         {{ m[0] | int if m else 0 }}
       unit_of_measurement: "tokens"
 
-    - name: "Auriga Dense Draft Total"
+    - name: "Auriga Slot1 Draft Total"
       value_template: >-
-        {% set m = value | regex_findall('llamacpp_spec_decode_num_draft_tokens_total\s+([0-9.]+)') %}
+        {% set m = value | regex_findall('llamacpp:spec_decode_num_draft_tokens_total\s+([0-9.]+)') %}
         {{ m[0] | int if m else 0 }}
       unit_of_measurement: "tokens"
 
-# --- MoE instance (port 8091) ---
+    - name: "Auriga Slot1 Cached Tokens"
+      value_template: >-
+        {% set m = value | regex_findall('llamacpp:prompt_tokens_cached_total\s+([0-9.]+)') %}
+        {{ m[0] | int if m else 0 }}
+      unit_of_measurement: "tokens"
+      icon: mdi:cached
 
-# Health endpoint (JSON)
+# --- Slot 2 / MoE instance (port 8091) ---
+
 - resource: "http://100.77.65.108:8091/health"
   scan_interval: 15
   sensor:
-    - name: "Auriga MoE Status"
+    - name: "Auriga Slot2 Status"
       value_template: "{{ value_json.status }}"
-      json_attributes:
-        - slots_idle
-        - slots_processing
+      icon: >-
+        {{ 'mdi:server' if value_json.status == 'ok' else 'mdi:server-off' }}
 
-# Metrics endpoint (Prometheus text format)
+- resource: "http://100.77.65.108:8091/slots"
+  scan_interval: 15
+  sensor:
+    - name: "Auriga Slot2 Context Size"
+      value_template: "{{ value_json[0].n_ctx | int }}"
+      unit_of_measurement: "tokens"
+      icon: mdi:text-box-outline
+
+    - name: "Auriga Slot2 Processing"
+      value_template: "{{ value_json[0].is_processing }}"
+      icon: mdi:cog-transfer
+
+    - name: "Auriga Slot2 Speculative"
+      value_template: "{{ value_json[0].speculative }}"
+      icon: mdi:lightning-bolt
+
 - resource: "http://100.77.65.108:8091/metrics"
   scan_interval: 10
   sensor:
-    - name: "Auriga MoE PP Speed"
+    - name: "Auriga Slot2 PP Speed"
       value_template: >-
-        {% set m = value | regex_findall('llamacpp_prompt_tokens_seconds\s+([0-9.]+)') %}
+        {% set m = value | regex_findall('llamacpp:prompt_tokens_seconds\s+([0-9.]+)') %}
         {{ m[0] | float | round(1) if m else 0 }}
       unit_of_measurement: "tok/s"
       icon: mdi:speedometer
 
-    - name: "Auriga MoE TG Speed"
+    - name: "Auriga Slot2 TG Speed"
       value_template: >-
-        {% set m = value | regex_findall('llamacpp_tokens_predicted_seconds\s+([0-9.]+)') %}
+        {% set m = value | regex_findall('llamacpp:predicted_tokens_seconds\s+([0-9.]+)') %}
         {{ m[0] | float | round(1) if m else 0 }}
       unit_of_measurement: "tok/s"
       icon: mdi:message-text-fast-outline
 
-    - name: "Auriga MoE Prompt Tokens"
+    - name: "Auriga Slot2 Prompt Tokens"
       value_template: >-
-        {% set m = value | regex_findall('llamacpp_prompt_tokens_total\s+([0-9.]+)') %}
+        {% set m = value | regex_findall('llamacpp:prompt_tokens_total\s+([0-9.]+)') %}
         {{ m[0] | int if m else 0 }}
       unit_of_measurement: "tokens"
       icon: mdi:arrow-down-bold
 
-    - name: "Auriga MoE Generated Tokens"
+    - name: "Auriga Slot2 Generated Tokens"
       value_template: >-
-        {% set m = value | regex_findall('llamacpp_tokens_predicted_total\s+([0-9.]+)') %}
+        {% set m = value | regex_findall('llamacpp:tokens_predicted_total\s+([0-9.]+)') %}
         {{ m[0] | int if m else 0 }}
       unit_of_measurement: "tokens"
       icon: mdi:arrow-up-bold
 
-    - name: "Auriga MoE KV Cache Usage"
+    - name: "Auriga Slot2 Active Requests"
       value_template: >-
-        {% set m = value | regex_findall('llamacpp_kv_cache_usage_ratio\s+([0-9.]+)') %}
-        {{ (m[0] | float * 100) | round(1) if m else 0 }}
-      unit_of_measurement: "%"
-      icon: mdi:memory
-
-    - name: "Auriga MoE KV Cache Tokens"
-      value_template: >-
-        {% set m = value | regex_findall('llamacpp_kv_cache_tokens\s+([0-9.]+)') %}
-        {{ m[0] | int if m else 0 }}
-      unit_of_measurement: "tokens"
-      icon: mdi:database
-
-    - name: "Auriga MoE Active Requests"
-      value_template: >-
-        {% set m = value | regex_findall('llamacpp_requests_processing\s+([0-9.]+)') %}
+        {% set m = value | regex_findall('llamacpp:requests_processing\s+([0-9.]+)') %}
         {{ m[0] | int if m else 0 }}
       icon: mdi:server-network
 
-    - name: "Auriga MoE Draft Accepted"
+    - name: "Auriga Slot2 Draft Accepted"
       value_template: >-
-        {% set m = value | regex_findall('llamacpp_spec_decode_num_accepted_tokens_total\s+([0-9.]+)') %}
+        {% set m = value | regex_findall('llamacpp:spec_decode_num_accepted_tokens_total\s+([0-9.]+)') %}
         {{ m[0] | int if m else 0 }}
       unit_of_measurement: "tokens"
 
-    - name: "Auriga MoE Draft Total"
+    - name: "Auriga Slot2 Draft Total"
       value_template: >-
-        {% set m = value | regex_findall('llamacpp_spec_decode_num_draft_tokens_total\s+([0-9.]+)') %}
+        {% set m = value | regex_findall('llamacpp:spec_decode_num_draft_tokens_total\s+([0-9.]+)') %}
         {{ m[0] | int if m else 0 }}
       unit_of_measurement: "tokens"
+
+    - name: "Auriga Slot2 Cached Tokens"
+      value_template: >-
+        {% set m = value | regex_findall('llamacpp:prompt_tokens_cached_total\s+([0-9.]+)') %}
+        {{ m[0] | int if m else 0 }}
+      unit_of_measurement: "tokens"
+      icon: mdi:cached

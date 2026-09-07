@@ -1,55 +1,43 @@
-# Template sensors for computed metrics
+# Template sensors for computed Auriga metrics
 #
 # Add to configuration.yaml:
 #   template: !include auriga_templates.yaml
 
 - sensor:
-    # Draft Acceptance Rate (DAR) for Dense instance
-    - name: "Auriga Dense DAR"
+    # Draft Acceptance Rate (DAR) for Slot 1
+    - name: "Auriga Slot1 DAR"
       state: >-
-        {% set accepted = states('sensor.auriga_dense_draft_accepted') | int(0) %}
-        {% set total = states('sensor.auriga_dense_draft_total') | int(0) %}
+        {% set accepted = states('sensor.auriga_slot1_draft_accepted') | int(0) %}
+        {% set total = states('sensor.auriga_slot1_draft_total') | int(0) %}
         {{ ((accepted / total) * 100) | round(1) if total > 0 else 0 }}
       unit_of_measurement: "%"
       icon: mdi:check-decagram
-      availability: >-
-        {{ states('sensor.auriga_dense_draft_total') | int(0) > 0 }}
 
-    # Draft Acceptance Rate (DAR) for MoE instance
-    - name: "Auriga MoE DAR"
+    # Draft Acceptance Rate (DAR) for Slot 2
+    - name: "Auriga Slot2 DAR"
       state: >-
-        {% set accepted = states('sensor.auriga_moe_draft_accepted') | int(0) %}
-        {% set total = states('sensor.auriga_moe_draft_total') | int(0) %}
+        {% set accepted = states('sensor.auriga_slot2_draft_accepted') | int(0) %}
+        {% set total = states('sensor.auriga_slot2_draft_total') | int(0) %}
         {{ ((accepted / total) * 100) | round(1) if total > 0 else 0 }}
       unit_of_measurement: "%"
       icon: mdi:check-decagram
-      availability: >-
-        {{ states('sensor.auriga_moe_draft_total') | int(0) > 0 }}
 
-    # Context usage as human-readable string (e.g., "4.4K / 128K")
-    - name: "Auriga Dense Context"
+    # Cache hit ratio for Slot 1
+    - name: "Auriga Slot1 Cache Hit"
       state: >-
-        {% set tokens = states('sensor.auriga_dense_kv_cache_tokens') | int(0) %}
-        {% set usage = states('sensor.auriga_dense_kv_cache_usage') | float(0) %}
-        {{ '{:.1f}K'.format(tokens / 1000) }} / {{ '{:.0f}K'.format(tokens / (usage / 100) / 1000) if usage > 0 else '?' }}
-      icon: mdi:text-box-outline
+        {% set cached = states('sensor.auriga_slot1_cached_tokens') | int(0) %}
+        {% set total = states('sensor.auriga_slot1_prompt_tokens') | int(0) %}
+        {% set all_tokens = cached + total %}
+        {{ ((cached / all_tokens) * 100) | round(1) if all_tokens > 0 else 0 }}
+      unit_of_measurement: "%"
+      icon: mdi:cached
 
-    - name: "Auriga MoE Context"
+    # Cache hit ratio for Slot 2
+    - name: "Auriga Slot2 Cache Hit"
       state: >-
-        {% set tokens = states('sensor.auriga_moe_kv_cache_tokens') | int(0) %}
-        {% set usage = states('sensor.auriga_moe_kv_cache_usage') | float(0) %}
-        {{ '{:.1f}K'.format(tokens / 1000) }} / {{ '{:.0f}K'.format(tokens / (usage / 100) / 1000) if usage > 0 else '?' }}
-      icon: mdi:text-box-outline
-
-    # Combined instance status with model info
-    - name: "Auriga Dense Online"
-      state: >-
-        {{ 'on' if states('sensor.auriga_dense_status') == 'ok' else 'off' }}
-      icon: >-
-        {{ 'mdi:server' if states('sensor.auriga_dense_status') == 'ok' else 'mdi:server-off' }}
-
-    - name: "Auriga MoE Online"
-      state: >-
-        {{ 'on' if states('sensor.auriga_moe_status') == 'ok' else 'off' }}
-      icon: >-
-        {{ 'mdi:server' if states('sensor.auriga_moe_status') == 'ok' else 'mdi:server-off' }}
+        {% set cached = states('sensor.auriga_slot2_cached_tokens') | int(0) %}
+        {% set total = states('sensor.auriga_slot2_prompt_tokens') | int(0) %}
+        {% set all_tokens = cached + total %}
+        {{ ((cached / all_tokens) * 100) | round(1) if all_tokens > 0 else 0 }}
+      unit_of_measurement: "%"
+      icon: mdi:cached
