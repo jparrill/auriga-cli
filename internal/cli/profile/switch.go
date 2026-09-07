@@ -256,7 +256,11 @@ func switchPersistent(name, bin, modelPath, mmprojPath string, extraFlags []stri
 		}
 	}
 
-	if err := llamaserver.WaitForHealthOnPort(port, 90*time.Second); err != nil {
+	healthTimeout := time.Duration(viper.GetInt("llama_server.health_timeout")) * time.Second
+	if healthTimeout <= 0 {
+		healthTimeout = 90 * time.Second
+	}
+	if err := llamaserver.WaitForHealthOnPort(port, healthTimeout); err != nil {
 		return fmt.Errorf("service started but health check failed: %w", err)
 	}
 

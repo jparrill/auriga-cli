@@ -173,7 +173,11 @@ func runServeStart(opts *serveStartOpts) error {
 		if startErr != nil {
 			return startErr
 		}
-		return waitForHealth(fmt.Sprintf("http://localhost:%d/health", port), 90*time.Second)
+		ht := time.Duration(viper.GetInt("llama_server.health_timeout")) * time.Second
+		if ht <= 0 {
+			ht = 90 * time.Second
+		}
+		return waitForHealth(fmt.Sprintf("http://localhost:%d/health", port), ht)
 	})
 	if err != nil {
 		return fmt.Errorf("llama-server failed to start: %w", err)
