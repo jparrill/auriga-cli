@@ -278,7 +278,7 @@ func resolveProfile(modelFilename string) (profile, modelType string) {
 	profiles := viper.GetStringMap("profiles")
 	for name := range profiles {
 		m := viper.GetString(fmt.Sprintf("profiles.%s.model", name))
-		if m == modelFilename {
+		if filepath.Base(m) == modelFilename {
 			t := viper.GetString(fmt.Sprintf("profiles.%s.type", name))
 			if t == "" {
 				t = detectType(modelFilename)
