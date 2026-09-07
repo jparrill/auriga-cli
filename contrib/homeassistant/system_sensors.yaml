@@ -1,0 +1,80 @@
+# Auriga system stats via HTTP (auriga-stats-server on port 9100)
+#
+# Prerequisites:
+#   1. auriga-stats.sh and auriga-stats-server.py deployed to ~/bin/ on Auriga
+#   2. systemd user service auriga-stats-server running
+#
+# Merge into auriga_sensors.yaml rest: entries, or include separately
+
+- resource: "http://100.77.65.108:9100/stats"
+  scan_interval: 30
+  sensor:
+    - name: "Auriga CPU"
+      value_template: "{{ value_json.cpu_usage }}"
+      unit_of_measurement: "%"
+      icon: mdi:cpu-64-bit
+
+    - name: "Auriga CPU Temp"
+      value_template: "{{ value_json.cpu_temp }}"
+      unit_of_measurement: "°C"
+      icon: mdi:thermometer
+
+    - name: "Auriga RAM Pct"
+      value_template: "{{ value_json.ram_pct }}"
+      unit_of_measurement: "%"
+      icon: mdi:memory
+
+    - name: "Auriga RAM Used"
+      value_template: "{{ (value_json.ram_used_mb / 1024) | round(1) }}"
+      unit_of_measurement: "GB"
+      icon: mdi:memory
+
+    - name: "Auriga GPU Use"
+      value_template: "{{ value_json.gpu_use }}"
+      unit_of_measurement: "%"
+      icon: mdi:expansion-card
+
+    - name: "Auriga GPU Temp"
+      value_template: "{{ value_json.gpu_temp }}"
+      unit_of_measurement: "°C"
+      icon: mdi:thermometer
+
+    - name: "Auriga GPU Power"
+      value_template: "{{ value_json.gpu_power | round(1) }}"
+      unit_of_measurement: "W"
+      icon: mdi:flash
+
+    - name: "Auriga GTT Used"
+      value_template: "{{ value_json.gtt_used_gb }}"
+      unit_of_measurement: "GB"
+      icon: mdi:chip
+
+    - name: "Auriga GTT Total"
+      value_template: "{{ value_json.gtt_total_gb }}"
+      unit_of_measurement: "GB"
+      icon: mdi:chip
+
+    - name: "Auriga GTT Pct"
+      value_template: "{{ ((value_json.gtt_used_gb / value_json.gtt_total_gb) * 100) | round(1) }}"
+      unit_of_measurement: "%"
+      icon: mdi:chip
+
+    - name: "Auriga Disk Pct"
+      value_template: "{{ value_json.disk_pct }}"
+      unit_of_measurement: "%"
+      icon: mdi:harddisk
+
+    - name: "Auriga Disk Used"
+      value_template: "{{ value_json.disk_used_gb }}"
+      unit_of_measurement: "GB"
+      icon: mdi:harddisk
+
+    - name: "Auriga Load"
+      value_template: "{{ value_json.load_1m }}"
+      icon: mdi:gauge
+
+    - name: "Auriga Uptime"
+      value_template: >-
+        {% set s = value_json.uptime_s | int %}
+        {{ '%dd %dh %dm' | format(s // 86400, (s % 86400) // 3600, (s % 3600) // 60) }}
+      icon: mdi:clock-outline

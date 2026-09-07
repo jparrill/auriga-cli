@@ -219,3 +219,138 @@ views:
                           name: Active Requests
                         - entity: sensor.auriga_slot2_speculative
                           name: Speculative Decoding
+
+              - attributes:
+                  label: "System"
+                  icon: mdi:server
+                card:
+                  type: vertical-stack
+                  cards:
+                    - type: markdown
+                      content: >-
+                        **Auriga** · CPU {{ states('sensor.auriga_cpu') }}%
+                        · Load {{ states('sensor.auriga_load') }}
+                        · Uptime {{ states('sensor.auriga_uptime') }}
+
+                    - type: horizontal-stack
+                      cards:
+                        - type: gauge
+                          entity: sensor.auriga_cpu
+                          name: CPU
+                          min: 0
+                          max: 100
+                          severity:
+                            green: 0
+                            yellow: 70
+                            red: 90
+
+                        - type: gauge
+                          entity: sensor.auriga_ram_pct
+                          name: RAM
+                          min: 0
+                          max: 100
+                          severity:
+                            green: 0
+                            yellow: 70
+                            red: 90
+
+                        - type: gauge
+                          entity: sensor.auriga_gtt_pct
+                          name: GTT
+                          min: 0
+                          max: 100
+                          severity:
+                            green: 0
+                            yellow: 70
+                            red: 90
+
+                        - type: gauge
+                          entity: sensor.auriga_disk_pct
+                          name: Disk
+                          min: 0
+                          max: 100
+                          severity:
+                            green: 0
+                            yellow: 70
+                            red: 90
+
+                    - type: horizontal-stack
+                      cards:
+                        - type: custom:mini-graph-card
+                          name: CPU %
+                          entities:
+                            - sensor.auriga_cpu
+                          hours_to_show: 6
+                          line_width: 2
+                          height: 100
+                          color_thresholds:
+                            - value: 0
+                              color: "#6bcb77"
+                            - value: 70
+                              color: "#ffd93d"
+                            - value: 90
+                              color: "#ff6b6b"
+
+                        - type: custom:mini-graph-card
+                          name: GPU Power (W)
+                          entities:
+                            - sensor.auriga_gpu_power
+                          hours_to_show: 6
+                          line_width: 2
+                          height: 100
+                          color_thresholds:
+                            - value: 0
+                              color: "#6bcb77"
+                            - value: 30
+                              color: "#ffd93d"
+                            - value: 60
+                              color: "#ff6b6b"
+
+                    - type: horizontal-stack
+                      cards:
+                        - type: custom:mini-graph-card
+                          name: CPU Temp (°C)
+                          entities:
+                            - sensor.auriga_cpu_temp
+                          hours_to_show: 6
+                          line_width: 2
+                          height: 100
+                          color_thresholds:
+                            - value: 30
+                              color: "#6bcb77"
+                            - value: 70
+                              color: "#ffd93d"
+                            - value: 85
+                              color: "#ff6b6b"
+
+                        - type: custom:mini-graph-card
+                          name: GPU Temp (°C)
+                          entities:
+                            - sensor.auriga_gpu_temp
+                          hours_to_show: 6
+                          line_width: 2
+                          height: 100
+                          color_thresholds:
+                            - value: 30
+                              color: "#6bcb77"
+                            - value: 70
+                              color: "#ffd93d"
+                            - value: 85
+                              color: "#ff6b6b"
+
+                    - type: entities
+                      entities:
+                        - entity: sensor.auriga_ram_used
+                          name: "RAM Used"
+                        - entity: sensor.auriga_gtt_used
+                          name: "GTT Used"
+                        - entity: sensor.auriga_gtt_total
+                          name: "GTT Total"
+                        - entity: sensor.auriga_gpu_use
+                          name: "GPU Utilization"
+                        - entity: sensor.auriga_gpu_power
+                          name: "GPU Power"
+                        - entity: sensor.auriga_disk_used
+                          name: "Disk Used"
+                        - entity: sensor.auriga_uptime
+                          name: "Uptime"
