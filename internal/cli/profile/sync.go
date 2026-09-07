@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/jparrill/auriga-cli/internal/config"
@@ -81,6 +83,21 @@ func SyncProfile(name string) SyncResult {
 	modelPath := filepath.Join(ggufDir, model)
 	modelExists := fileExists(modelPath)
 
+	if modelExists {
+		if parts := splitFiles(filepath.Base(model)); parts != nil {
+			dir := filepath.Dir(model)
+			for _, p := range parts {
+				if dir != "." {
+					p = filepath.Join(dir, p)
+				}
+				if !fileExists(filepath.Join(ggufDir, p)) {
+					modelExists = false
+					break
+				}
+			}
+		}
+	}
+
 	if modelExists && repo != "" {
 		modelExists = verifyFile(name, model, modelPath, repo, model)
 	}
@@ -153,18 +170,37 @@ func SyncProfile(name string) SyncResult {
 	ctx := context.Background()
 
 	if !modelExists {
-		url := huggingface.DownloadURL(repo, model)
-		label := fmt.Sprintf("[%s] %s", name, model)
-		err := exec.DownloadFile(ctx, url, modelPath, label, exec.DownloadOpts{Resume: true})
-		if err != nil {
-			detail := fmt.Sprintf("model download failed: %v", err)
-			ui.Fail(fmt.Sprintf("[%s] %s", name, detail))
-			return SyncResult{Name: name, Status: "fail", Detail: detail}
+		filesToDownload := []string{model}
+		if parts := splitFiles(filepath.Base(model)); parts != nil {
+			dir := filepath.Dir(model)
+			filesToDownload = nil
+			for _, p := range parts {
+				if dir != "." {
+					p = filepath.Join(dir, p)
+				}
+				filesToDownload = append(filesToDownload, p)
+			}
 		}
-		info, _ := os.Stat(modelPath)
-		if info != nil {
-			sizeGB := float64(info.Size()) / (1024 * 1024 * 1024)
-			ui.Ok(fmt.Sprintf("[%s] Downloaded: %s (%.1f GB)", name, model, sizeGB))
+
+		for _, f := range filesToDownload {
+			fPath := filepath.Join(ggufDir, f)
+			if fileExists(fPath) {
+				continue
+			}
+			os.MkdirAll(filepath.Dir(fPath), 0755)
+			url := huggingface.DownloadURL(repo, f)
+			label := fmt.Sprintf("[%s] %s", name, f)
+			err := exec.DownloadFile(ctx, url, fPath, label, exec.DownloadOpts{Resume: true})
+			if err != nil {
+				detail := fmt.Sprintf("model download failed: %v", err)
+				ui.Fail(fmt.Sprintf("[%s] %s", name, detail))
+				return SyncResult{Name: name, Status: "fail", Detail: detail}
+			}
+			info, _ := os.Stat(fPath)
+			if info != nil {
+				sizeGB := float64(info.Size()) / (1024 * 1024 * 1024)
+				ui.Ok(fmt.Sprintf("[%s] Downloaded: %s (%.1f GB)", name, f, sizeGB))
+			}
 		}
 	}
 
@@ -325,4 +361,27 @@ func MmprojPath(profileName, mmprojFile string) string {
 func fileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+var splitPattern = regexp.MustCompile(`^(.*)-(\d{5})-of-(\d{5})(\.gguf)$`)
+
+func splitFiles(filename string) []string {
+	m := splitPattern.FindStringSubmatch(filename)
+	if m == nil {
+		return nil
+	}
+	total, err := strconv.Atoi(m[3])
+	if err != nil || total <= 1 {
+		return nil
+	}
+	dir := filepath.Dir(filename)
+	var parts []string
+	for i := 1; i <= total; i++ {
+		part := fmt.Sprintf("%s-%05d-of-%05d%s", m[1], i, total, m[4])
+		if dir != "." {
+			part = filepath.Join(dir, filepath.Base(part))
+		}
+		parts = append(parts, part)
+	}
+	return parts
 }

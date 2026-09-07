@@ -582,3 +582,116 @@ func TestSyncProfile_MmprojSubdirectory(t *testing.T) {
 		}
 	})
 }
+
+func TestSplitFiles(t *testing.T) {
+	tests := []struct {
+		name     string
+		filename string
+		want     []string
+	}{
+		{
+			name:     "When filename is a 3-part split, it should return all 3 parts",
+			filename: "Model-UD-IQ3_XXS-00001-of-00003.gguf",
+			want: []string{
+				"Model-UD-IQ3_XXS-00001-of-00003.gguf",
+				"Model-UD-IQ3_XXS-00002-of-00003.gguf",
+				"Model-UD-IQ3_XXS-00003-of-00003.gguf",
+			},
+		},
+		{
+			name:     "When filename is a 2-part split, it should return both parts",
+			filename: "BigModel-Q4_K_M-00001-of-00002.gguf",
+			want: []string{
+				"BigModel-Q4_K_M-00001-of-00002.gguf",
+				"BigModel-Q4_K_M-00002-of-00002.gguf",
+			},
+		},
+		{
+			name:     "When filename is not a split file, it should return nil",
+			filename: "SmallModel-Q4_K_M.gguf",
+			want:     nil,
+		},
+		{
+			name:     "When filename has 1-of-1 parts, it should return nil",
+			filename: "Model-00001-of-00001.gguf",
+			want:     nil,
+		},
+		{
+			name:     "When filename is empty, it should return nil",
+			filename: "",
+			want:     nil,
+		},
+		{
+			name:     "When filename has wrong extension, it should return nil",
+			filename: "Model-00001-of-00003.bin",
+			want:     nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := splitFiles(tt.filename)
+			if tt.want == nil {
+				if got != nil {
+					t.Errorf("got %v, want nil", got)
+				}
+				return
+			}
+			if len(got) != len(tt.want) {
+				t.Fatalf("got %d parts, want %d", len(got), len(tt.want))
+			}
+			for i, g := range got {
+				if g != tt.want[i] {
+					t.Errorf("part %d: got %q, want %q", i, g, tt.want[i])
+				}
+			}
+		})
+	}
+}
+
+func TestSyncProfile_SplitFiles_AllPresent(t *testing.T) {
+	ggufDir := t.TempDir()
+
+	subdir := filepath.Join(ggufDir, "UD-IQ3_XXS")
+	os.MkdirAll(subdir, 0755)
+	os.WriteFile(filepath.Join(subdir, "Model-UD-IQ3_XXS-00001-of-00003.gguf"), []byte("part1"), 0644)
+	os.WriteFile(filepath.Join(subdir, "Model-UD-IQ3_XXS-00002-of-00003.gguf"), []byte("part2"), 0644)
+	os.WriteFile(filepath.Join(subdir, "Model-UD-IQ3_XXS-00003-of-00003.gguf"), []byte("part3"), 0644)
+
+	viper.Reset()
+	defer viper.Reset()
+	viper.Set("profiles.split-test.repo", "org/Model-GGUF")
+	viper.Set("profiles.split-test.model", "UD-IQ3_XXS/Model-UD-IQ3_XXS-00001-of-00003.gguf")
+	viper.Set("llama_server.gguf_dir", ggufDir)
+	viper.Set("llama_server.mmproj_dir", t.TempDir())
+
+	result := SyncProfile("split-test")
+
+	if result.Status != "skip" {
+		t.Errorf("When all split parts present, status should be 'skip', got %q (detail: %s)", result.Status, result.Detail)
+	}
+}
+
+func TestSyncProfile_SplitFiles_PartMissing(t *testing.T) {
+	ggufDir := t.TempDir()
+
+	subdir := filepath.Join(ggufDir, "UD-IQ3_XXS")
+	os.MkdirAll(subdir, 0755)
+	os.WriteFile(filepath.Join(subdir, "Model-UD-IQ3_XXS-00001-of-00003.gguf"), []byte("part1"), 0644)
+	// part 2 and 3 missing
+
+	viper.Reset()
+	defer viper.Reset()
+	viper.Set("profiles.split-missing.model", "UD-IQ3_XXS/Model-UD-IQ3_XXS-00001-of-00003.gguf")
+	viper.Set("llama_server.gguf_dir", ggufDir)
+	viper.Set("llama_server.mmproj_dir", t.TempDir())
+
+	result := SyncProfile("split-missing")
+
+	if result.Status == "skip" {
+		t.Error("When split parts missing, status should not be 'skip'")
+	}
+	if result.Status != "warn" {
+		t.Errorf("When split parts missing and no repo, status should be 'warn', got %q", result.Status)
+	}
+}
