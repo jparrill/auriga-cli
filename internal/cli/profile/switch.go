@@ -191,7 +191,7 @@ func RunProfileSwitch(name string, opts SwitchOpts) error {
 		params = append(params, ui.OrderedParam{Key: "Port", Value: fmt.Sprintf("%d", port)})
 		params = append(params, ui.OrderedParam{Key: "Context", Value: fmt.Sprintf("%d", opts.CtxSize)})
 		if profileFlags := viper.GetStringSlice(profileKey + ".flags"); len(profileFlags) > 0 {
-			params = append(params, ui.OrderedParam{Key: "Flags", Value: strings.Join(profileFlags, " ")})
+			params = append(params, ui.OrderedParam{Key: "Flags", Value: formatFlagPairs(profileFlags)})
 		}
 
 		confirmed, err := ui.ConfirmOperationOrdered("Switch llama-server profile", params, "", opts.AutoConfirm)
@@ -329,4 +329,29 @@ func stopRunningServer(port int, quiet bool) {
 	ctx := context.Background()
 	exec.RunCapture(ctx, "pkill", []string{"-f", fmt.Sprintf("llama-server.*--port %d", port)}, exec.RunOpts{})
 	time.Sleep(1 * time.Second)
+}
+
+func formatFlagPairs(flags []string) string {
+	const maxWidth = 70
+	var lines []string
+	var line strings.Builder
+	for i := 0; i < len(flags); i++ {
+		token := flags[i]
+		if i+1 < len(flags) && !strings.HasPrefix(flags[i+1], "-") {
+			token = flags[i] + " " + flags[i+1]
+			i++
+		}
+		if line.Len() > 0 && line.Len()+1+len(token) > maxWidth {
+			lines = append(lines, line.String())
+			line.Reset()
+		}
+		if line.Len() > 0 {
+			line.WriteString(" ")
+		}
+		line.WriteString(token)
+	}
+	if line.Len() > 0 {
+		lines = append(lines, line.String())
+	}
+	return strings.Join(lines, "\n         ")
 }

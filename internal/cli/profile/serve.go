@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
-	"strings"
 	"syscall"
 	"time"
 
@@ -206,7 +205,7 @@ func runProfileServe(name string, daemon bool, ctxSize int, slot int) error {
 	params = append(params, ui.OrderedParam{Key: "Port", Value: fmt.Sprintf("%d", port)})
 	params = append(params, ui.OrderedParam{Key: "Context", Value: fmt.Sprintf("%d", ctxSize)})
 	if profileFlags := viper.GetStringSlice(profileKey + ".flags"); len(profileFlags) > 0 {
-		params = append(params, ui.OrderedParam{Key: "Flags", Value: strings.Join(profileFlags, " ")})
+		params = append(params, ui.OrderedParam{Key: "Flags", Value: formatFlagPairs(profileFlags)})
 	}
 
 	confirmed, err := ui.ConfirmOperationOrdered("Start llama-server", params, "", false)
