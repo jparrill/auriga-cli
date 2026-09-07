@@ -203,7 +203,11 @@ func StartWithCtx(ctx context.Context, bin string, modelPath string, mmprojPath 
 		return nil, fmt.Errorf("failed to start llama-server: %w", err)
 	}
 
-	if err := WaitForHealthOnPort(port, 90*time.Second); err != nil {
+	healthTimeout := time.Duration(viper.GetInt("llama_server.health_timeout")) * time.Second
+	if healthTimeout <= 0 {
+		healthTimeout = 90 * time.Second
+	}
+	if err := WaitForHealthOnPort(port, healthTimeout); err != nil {
 		logFile.Close()
 		proc.Kill()
 		return nil, err

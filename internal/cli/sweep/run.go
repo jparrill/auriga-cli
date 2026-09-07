@@ -178,7 +178,11 @@ func runSweep(configPath, format string) error {
 				return err
 			}
 
-			if !waitForHealthy(port, 120*time.Second) {
+			healthTimeout := time.Duration(viper.GetInt("llama_server.health_timeout")) * time.Second
+			if healthTimeout < 120*time.Second {
+				healthTimeout = 120 * time.Second
+			}
+			if !waitForHealthy(port, healthTimeout) {
 				result = SweepResult{
 					Index:         i,
 					Overrides:     flattenCombo(combo),
