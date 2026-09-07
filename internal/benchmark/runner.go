@@ -1,9 +1,10 @@
 package benchmark
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -12,30 +13,25 @@ import (
 
 	"github.com/jparrill/auriga-cli/internal/benchmark/formats"
 	"github.com/jparrill/auriga-cli/internal/llamaserver"
-	"github.com/jparrill/auriga-cli/internal/ollama"
 	"github.com/jparrill/auriga-cli/internal/ui"
 )
 
 type RunConfig struct {
-	Backend     string
-	Models      []string
 	MaxRetries  int
 	MaxTokens   int
 	GenTimeout  time.Duration
 	ResultsDir  string
 	Host        string
 	Temperature float64
-	// Legacy (used when no suite specified)
-	PlanFile   string
-	SourceHTML string
-	Benchmarks string
-	// Suite mode
-	SuiteName  string
+	PlanFile    string
+	SourceHTML  string
+	Benchmarks  string
+	SuiteName   string
 }
 
 type Result struct {
 	Model        string `json:"model"`
-	Backend      string `json:"backend"`
+	Backend      string `json:"backend,omitempty"`
 	Suite        string `json:"suite,omitempty"`
 	TaskID       string `json:"task_id,omitempty"`
 	Level        string `json:"level,omitempty"`
@@ -50,6 +46,17 @@ type Result struct {
 }
 
 func RunAll(cfg RunConfig) ([]Result, error) {
+	model := detectRunningModel(cfg.Host)
+	if model == "" {
+		return nil, fmt.Errorf("no model detected on %s — is llama-server running?", cfg.Host)
+	}
+	ui.Ok(fmt.Sprintf("Detected model: %s", model))
+
+	// Warmup
+	ui.Info("Warmup request...")
+	_, _ = llamaserver.Generate("Hello", 16, 0.0, 30*time.Second)
+	ui.Ok("Warmup done")
+
 	var fmtSuite formats.Suite
 	var format formats.FormatRunner
 	var problems []formats.Problem
@@ -67,7 +74,6 @@ func RunAll(cfg RunConfig) ([]Result, error) {
 		if err != nil {
 			return nil, err
 		}
-		// Convert Problem types
 		for _, p := range rawProblems {
 			problems = append(problems, formats.Problem{
 				TaskID: p.TaskID, Prompt: p.Prompt, Test: p.Test,
@@ -98,7 +104,6 @@ func RunAll(cfg RunConfig) ([]Result, error) {
 		problems = []formats.Problem{{TaskID: "webgen"}}
 	}
 
-	// Create timestamped run directory
 	runTimestamp := time.Now().Format("2006-01-02_1504")
 	runDir := filepath.Join(cfg.ResultsDir, runTimestamp)
 	if err := os.MkdirAll(runDir, 0755); err != nil {
@@ -110,99 +115,39 @@ func RunAll(cfg RunConfig) ([]Result, error) {
 	os.Symlink(runTimestamp, latestLink)
 
 	ui.Info(fmt.Sprintf("Run: %s", runTimestamp))
+	ui.Info(fmt.Sprintf("Model: %s", model))
 	ui.Info(fmt.Sprintf("Suite: %s (%s)", fmtSuite.Name, fmtSuite.Format))
 	ui.Info(fmt.Sprintf("Problems: %d", len(problems)))
 
-	// Build jobs
-	type job struct {
-		model   string
-		backend string
-	}
-	var jobs []job
-
-	if cfg.Backend == "ollama" || cfg.Backend == "all" {
-		for _, m := range cfg.Models {
-			jobs = append(jobs, job{m, "ollama"})
-		}
-	}
-	if cfg.Backend == "llama-server" || cfg.Backend == "all" {
-		for _, m := range cfg.Models {
-			jobs = append(jobs, job{m, "llama-server"})
-		}
-	}
-	if len(cfg.Models) > 0 && cfg.Backend != "all" {
-		jobs = nil
-		for _, m := range cfg.Models {
-			jobs = append(jobs, job{m, cfg.Backend})
-		}
-	}
-
-	ui.Info(fmt.Sprintf("Total jobs: %d", len(jobs)))
+	fmt.Printf("\n%s\n%s — %d problems\n%s\n",
+		ui.BoldStyle.Render(strings.Repeat("═", 60)),
+		model, len(problems),
+		ui.BoldStyle.Render(strings.Repeat("═", 60)))
 
 	var results []Result
-	for _, j := range jobs {
-		var llamaProc *os.Process
+	passCount := 0
+	failCount := 0
 
-		fmt.Printf("\n%s\n%s (%s) — %d problems\n%s\n",
-			ui.BoldStyle.Render(strings.Repeat("═", 60)),
-			j.model, j.backend, len(problems),
-			ui.BoldStyle.Render(strings.Repeat("═", 60)))
-
-		// Start backend once per model
-		if j.backend == "llama-server" {
-			gguf := llamaserver.FindLocalGGUF(j.model)
-			if gguf == "" {
-				ui.Fail(fmt.Sprintf("No GGUF found for %s", j.model))
-				for _, p := range problems {
-					results = append(results, Result{Model: j.model, Backend: j.backend, Suite: fmtSuite.Name, TaskID: p.TaskID, Error: "no GGUF found"})
-				}
-				continue
-			}
-			ctx := context.Background()
-			var err error
-			llamaProc, err = llamaserver.Start(ctx, gguf, "", nil)
-			if err != nil {
-				ui.Fail(fmt.Sprintf("llama-server failed: %v", err))
-				for _, p := range problems {
-					results = append(results, Result{Model: j.model, Backend: j.backend, Suite: fmtSuite.Name, TaskID: p.TaskID, Error: err.Error()})
-				}
-				continue
-			}
-		}
-
-		passCount := 0
-		failCount := 0
-		for i, problem := range problems {
-			r := runSingle(j.model, j.backend, problem, fmtSuite, format, cfg, runDir, i+1, len(problems))
-			results = append(results, r)
-			if r.Success {
-				passCount++
-			} else {
-				failCount++
-			}
-		}
-
-		// Model summary
-		total := passCount + failCount
-		rate := float64(0)
-		if total > 0 {
-			rate = float64(passCount) / float64(total) * 100
-		}
-		fmt.Printf("\n  %s %s %s %s\n",
-			ui.BoldStyle.Render(fmt.Sprintf("Done: %d/%d", total, len(problems))),
-			ui.SuccessStyle.Render(fmt.Sprintf("Pass: %d", passCount)),
-			ui.ErrorStyle.Render(fmt.Sprintf("Fail: %d", failCount)),
-			ui.AccentStyle.Render(fmt.Sprintf("Rate: %.1f%%", rate)))
-
-		// Cleanup backend after all problems for this model
-		if llamaProc != nil {
-			llamaserver.Stop(llamaProc)
-		}
-		if j.backend == "ollama" {
-			ollama.StopModel(j.model)
-			time.Sleep(3 * time.Second)
+	for i, problem := range problems {
+		r := runSingle(model, problem, fmtSuite, format, cfg, runDir, i+1, len(problems))
+		results = append(results, r)
+		if r.Success {
+			passCount++
+		} else {
+			failCount++
 		}
 	}
+
+	total := passCount + failCount
+	rate := float64(0)
+	if total > 0 {
+		rate = float64(passCount) / float64(total) * 100
+	}
+	fmt.Printf("\n  %s %s %s %s\n",
+		ui.BoldStyle.Render(fmt.Sprintf("Done: %d/%d", total, len(problems))),
+		ui.SuccessStyle.Render(fmt.Sprintf("Pass: %d", passCount)),
+		ui.ErrorStyle.Render(fmt.Sprintf("Fail: %d", failCount)),
+		ui.AccentStyle.Render(fmt.Sprintf("Rate: %.1f%%", rate)))
 
 	summaryPath := filepath.Join(runDir, "summary.json")
 	data, _ := json.MarshalIndent(results, "", "  ")
@@ -211,23 +156,21 @@ func RunAll(cfg RunConfig) ([]Result, error) {
 	return results, nil
 }
 
-func runSingle(model, backend string, problem formats.Problem, suite formats.Suite, format formats.FormatRunner, cfg RunConfig, runDir string, idx, total int) Result {
+func runSingle(model string, problem formats.Problem, suite formats.Suite, format formats.FormatRunner, cfg RunConfig, runDir string, idx, total int) Result {
 	slug := regexp.MustCompile(`[/:]`).ReplaceAllString(model, "_")
 	taskSlug := regexp.MustCompile(`[/:]`).ReplaceAllString(problem.TaskID, "_")
-	outputDir := filepath.Join(runDir, fmt.Sprintf("%s__%s__%s", suite.Name, slug, backend))
+	outputDir := filepath.Join(runDir, fmt.Sprintf("%s__%s", suite.Name, slug))
 	if taskSlug != "webgen" {
 		outputDir = filepath.Join(outputDir, "problems", taskSlug)
 	}
 	os.MkdirAll(outputDir, 0755)
 	workDir := filepath.Join(outputDir, "project")
 
-	// Print problem header inline — result appended after execution
 	counter := ui.MutedStyle.Render(fmt.Sprintf("[%3d/%d]", idx, total))
 	taskName := problem.TaskID
 	if len(taskName) > 30 {
 		taskName = taskName[:30]
 	}
-	// Dots filler
 	dotsLen := 40 - len(taskName)
 	if dotsLen < 3 {
 		dotsLen = 3
@@ -242,11 +185,10 @@ func runSingle(model, backend string, problem formats.Problem, suite formats.Sui
 		filesCreated  int
 	)
 
-	// Build initial prompt
 	prompt, err := format.BuildPrompt(problem, suite)
 	if err != nil {
 		ui.Fail(fmt.Sprintf("Cannot build prompt: %v", err))
-		return Result{Model: model, Backend: backend, Suite: suite.Name, TaskID: problem.TaskID, Error: err.Error()}
+		return Result{Model: model, Suite: suite.Name, TaskID: problem.TaskID, Error: err.Error()}
 	}
 
 	currentPrompt := prompt
@@ -257,17 +199,7 @@ func runSingle(model, backend string, problem formats.Problem, suite formats.Sui
 		ui.Logger.Debug("attempt", "num", attempt, "max", cfg.MaxRetries)
 
 		start := time.Now()
-		var response string
-		var genErr error
-
-		if backend == "ollama" {
-			ui.Logger.Debug("calling", "backend", "ollama", "model", model)
-			response, genErr = ollama.Generate(model, currentPrompt, cfg.MaxTokens, cfg.Temperature, cfg.GenTimeout)
-		} else {
-			ui.Logger.Debug("calling", "backend", "llama-server")
-			response, genErr = llamaserver.Generate(currentPrompt, cfg.MaxTokens, cfg.Temperature, cfg.GenTimeout)
-		}
-
+		response, genErr := llamaserver.Generate(currentPrompt, cfg.MaxTokens, cfg.Temperature, cfg.GenTimeout)
 		duration := int(time.Since(start).Seconds())
 		totalDuration += duration
 
@@ -284,15 +216,12 @@ func runSingle(model, backend string, problem formats.Problem, suite formats.Sui
 		}
 		os.MkdirAll(workDir, 0755)
 
-		// Validate via format runner
 		ok, validationErr, err := format.ValidateResponse(response, problem, workDir)
 		if err != nil {
 			ui.Logger.Debug("validation error", "err", err)
 			continue
 		}
 
-		// Count files
-		entries, _ := os.ReadDir(workDir)
 		fileCount := 0
 		filepath.Walk(workDir, func(_ string, info os.FileInfo, _ error) error {
 			if info != nil && !info.IsDir() {
@@ -300,12 +229,7 @@ func runSingle(model, backend string, problem formats.Problem, suite formats.Sui
 			}
 			return nil
 		})
-		if attempt == 1 {
-			filesCreated = fileCount
-		} else {
-			filesCreated = fileCount
-		}
-		_ = entries
+		filesCreated = fileCount
 
 		if ok {
 			ui.Logger.Debug("validation passed", "files", fileCount)
@@ -327,7 +251,6 @@ func runSingle(model, backend string, problem formats.Problem, suite formats.Sui
 
 	result := Result{
 		Model:        model,
-		Backend:      backend,
 		Suite:        suite.Name,
 		TaskID:       problem.TaskID,
 		Attempts:     attempt,
@@ -342,7 +265,7 @@ func runSingle(model, backend string, problem formats.Problem, suite formats.Sui
 
 	if success {
 		fmt.Printf("%s %s\n",
-			ui.SuccessStyle.Render("✓ PASS"),
+			ui.SuccessStyle.Render("PASS"),
 			ui.MutedStyle.Render(fmt.Sprintf("%ds", totalDuration)))
 	} else {
 		extra := ""
@@ -350,12 +273,34 @@ func runSingle(model, backend string, problem formats.Problem, suite formats.Sui
 			extra = fmt.Sprintf(" (%d attempts)", attempt)
 		}
 		fmt.Printf("%s %s%s\n",
-			ui.ErrorStyle.Render("✗ FAIL"),
+			ui.ErrorStyle.Render("FAIL"),
 			ui.MutedStyle.Render(fmt.Sprintf("%ds", totalDuration)),
 			ui.MutedStyle.Render(extra))
 	}
 
 	return result
+}
+
+func detectRunningModel(host string) string {
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Get(host + "/v1/models")
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return ""
+	}
+	var result struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if json.Unmarshal(body, &result) == nil && len(result.Data) > 0 {
+		return result.Data[0].ID
+	}
+	return ""
 }
 
 func truncateValidationErr(s string) string {
@@ -370,20 +315,19 @@ func PrintSummary(results []Result) {
 	fmt.Printf("%s\n", ui.BoldStyle.Render("BENCHMARK SUMMARY"))
 	fmt.Printf("%s\n\n", ui.BoldStyle.Render(strings.Repeat("═", 60)))
 
-	// Aggregate by model
 	type modelStats struct {
-		model, backend, suite string
-		pass, fail, total     int
-		totalTime             int
+		model, suite      string
+		pass, fail, total int
+		totalTime         int
 	}
 	statsMap := make(map[string]*modelStats)
 	var order []string
 
 	for _, r := range results {
-		key := fmt.Sprintf("%s__%s__%s", r.Suite, r.Model, r.Backend)
+		key := fmt.Sprintf("%s__%s", r.Suite, r.Model)
 		s, ok := statsMap[key]
 		if !ok {
-			s = &modelStats{model: r.Model, backend: r.Backend, suite: r.Suite}
+			s = &modelStats{model: r.Model, suite: r.Suite}
 			statsMap[key] = s
 			order = append(order, key)
 		}
@@ -396,7 +340,7 @@ func PrintSummary(results []Result) {
 		}
 	}
 
-	tbl := ui.NewTable("Results by Model", "SUITE", "MODEL", "BACKEND", "PASS", "FAIL", "TOTAL", "RATE", "TIME")
+	tbl := ui.NewTable("Results by Model", "SUITE", "MODEL", "PASS", "FAIL", "TOTAL", "RATE", "TIME")
 	for _, key := range order {
 		s := statsMap[key]
 		rate := float64(0)
@@ -417,7 +361,7 @@ func PrintSummary(results []Result) {
 			rateStr = ui.ErrorStyle.Render(rateStr)
 		}
 
-		tbl.AddRow(s.suite, model, s.backend,
+		tbl.AddRow(s.suite, model,
 			ui.SuccessStyle.Render(fmt.Sprintf("%d", s.pass)),
 			ui.ErrorStyle.Render(fmt.Sprintf("%d", s.fail)),
 			fmt.Sprintf("%d", s.total),
@@ -426,7 +370,6 @@ func PrintSummary(results []Result) {
 	}
 	tbl.Print()
 
-	// Overall stats
 	totalPass := 0
 	totalFail := 0
 	totalTime := 0

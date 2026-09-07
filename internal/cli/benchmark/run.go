@@ -2,7 +2,6 @@ package benchmark
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	bench "github.com/jparrill/auriga-cli/internal/benchmark"
@@ -15,12 +14,9 @@ import (
 )
 
 type runOpts struct {
-	Backend     string
-	Models      string
-	GenTimeout  int
-	Suite       string
-	Host        string
 	Slot        int
+	Suite       string
+	GenTimeout  int
 	Temperature float64
 }
 
@@ -29,40 +25,38 @@ func newBenchmarkRunCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "run",
-		Short: "Run benchmark suite",
-		Long: `Run a benchmark suite against one or more models.
+		Short: "Run benchmark suite against a slot",
+		Long: `Run a benchmark suite against a running llama-server slot.
+
+The slot must already have a model loaded. The model is auto-detected
+from the running instance.
 
 Examples:
-  auriga benchmark run                                          # Default suite, all models
-  auriga benchmark run --suite humaneval                        # Specific suite
-  auriga benchmark run --suite humaneval --models "gemma4:26b"  # Specific model
-  auriga benchmark run --backend ollama --timeout 3600          # Ollama only, 1h timeout
-  auriga benchmark run --host http://remote:8090                # Against remote server`,
+  auriga benchmark run --slot 1                        # Default suite on slot 1
+  auriga benchmark run --slot 2 --suite humaneval      # HumanEval on slot 2
+  auriga benchmark run --slot 1 --timeout 3600         # 1h timeout`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runBenchmarkRun(opts)
 		},
 	}
 
-	cmd.Flags().StringVar(&opts.Backend, "backend", "all", "Backend (ollama, llama-server, all)")
-	cmd.Flags().StringVar(&opts.Models, "models", "", "Space-separated model list (overrides config)")
-	cmd.Flags().IntVar(&opts.GenTimeout, "timeout", 0, "Generation timeout in seconds (default from config)")
+	cmd.Flags().IntVar(&opts.Slot, "slot", 0, "Slot to benchmark (1 or 2, required)")
 	cmd.Flags().StringVar(&opts.Suite, "suite", "", "Benchmark suite to run (default: legacy webgen)")
-	cmd.Flags().StringVar(&opts.Host, "host", "", "Override host URL (e.g., http://remote:8090)")
-	cmd.Flags().IntVar(&opts.Slot, "slot", 0, "Slot to benchmark (1 or 2, sets host and backend automatically)")
+	cmd.Flags().IntVar(&opts.GenTimeout, "timeout", 0, "Generation timeout in seconds (default from config)")
 	cmd.Flags().Float64Var(&opts.Temperature, "temperature", 0.3, "LLM sampling temperature (0.0 = deterministic)")
+	cmd.MarkFlagRequired("slot")
 
 	return cmd
 }
 
 func runBenchmarkRun(opts *runOpts) error {
-	if opts.Slot != 0 {
-		if opts.Slot != 1 && opts.Slot != 2 {
-			return fmt.Errorf("--slot must be 1 or 2, got %d", opts.Slot)
-		}
-		port := llamaserver.SlotPort(opts.Slot)
-		opts.Host = llamaserver.HostForPort(port)
-		opts.Backend = "llama-server"
+	if opts.Slot != 1 && opts.Slot != 2 {
+		return fmt.Errorf("--slot must be 1 or 2, got %d", opts.Slot)
 	}
+
+	port := llamaserver.SlotPort(opts.Slot)
+	host := llamaserver.HostForPort(port)
+	viper.Set("llama_server.host", host)
 
 	resultsDir := config.ExpandHome(viper.GetString("benchmark.results_dir"))
 	maxRetries := viper.GetInt("benchmark.max_retries")
@@ -73,57 +67,36 @@ func runBenchmarkRun(opts *runOpts) error {
 		genTimeout = opts.GenTimeout
 	}
 
-	var models []string
-	if opts.Models != "" {
-		models = strings.Fields(opts.Models)
-	}
-
-	// Apply host override
-	if opts.Host != "" {
-		viper.Set("ollama.host", opts.Host)
-		viper.Set("llama_server.host", opts.Host)
-	}
-
 	suiteName := opts.Suite
 	if suiteName == "" {
 		suiteName = "(legacy webgen)"
 	}
 
 	params := []ui.OrderedParam{
+		{Key: "Slot", Value: fmt.Sprintf("%d (port %d)", opts.Slot, port)},
 		{Key: "Suite", Value: suiteName},
-		{Key: "Backend", Value: opts.Backend},
+		{Key: "Host", Value: host},
 		{Key: "Timeout", Value: fmt.Sprintf("%ds", genTimeout)},
 		{Key: "Max retries", Value: fmt.Sprintf("%d", maxRetries)},
 		{Key: "Results", Value: resultsDir},
 	}
-	if opts.Host != "" {
-		params = append(params, ui.OrderedParam{Key: "Host", Value: opts.Host})
-	}
-	if len(models) > 0 {
-		params = append(params, ui.OrderedParam{Key: "Models", Value: strings.Join(models, ", ")})
-	} else {
-		params = append(params, ui.OrderedParam{Key: "Models", Value: "from config/env"})
-	}
 
-	confirmed, err := ui.ConfirmOperationOrdered("Run Benchmark", params, "", false)
+	confirmed, err := ui.ConfirmOperationOrdered("Run Benchmark", params, "", config.Yes)
 	if err != nil || !confirmed {
 		return err
 	}
 
 	cfg := bench.RunConfig{
-		Backend:     opts.Backend,
-		Models:      models,
 		MaxRetries:  maxRetries,
 		MaxTokens:   maxTokens,
 		GenTimeout:  time.Duration(genTimeout) * time.Second,
 		ResultsDir:  resultsDir,
-		Host:        opts.Host,
+		Host:        host,
 		Temperature: opts.Temperature,
 		SuiteName:   opts.Suite,
-		// Legacy fields (used when no suite)
-		PlanFile:   config.ExpandHome(viper.GetString("benchmark.plan_file")),
-		SourceHTML: config.ExpandHome(viper.GetString("benchmark.source_html")),
-		Benchmarks: config.ExpandHome(viper.GetString("benchmark.benchmarks_json")),
+		PlanFile:    config.ExpandHome(viper.GetString("benchmark.plan_file")),
+		SourceHTML:  config.ExpandHome(viper.GetString("benchmark.source_html")),
+		Benchmarks:  config.ExpandHome(viper.GetString("benchmark.benchmarks_json")),
 	}
 
 	results, err := bench.RunAll(cfg)

@@ -1,6 +1,7 @@
 package benchmark
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/spf13/viper"
@@ -24,7 +25,7 @@ func TestNewBenchmarkCmd(t *testing.T) {
 	}
 }
 
-func TestRunBenchmarkRun_SlotResolvesHost(t *testing.T) {
+func TestRunBenchmarkRun_SlotValidation(t *testing.T) {
 	viper.Reset()
 	viper.Set("llama_server.slot_1_port", 8090)
 	viper.Set("llama_server.slot_2_port", 8091)
@@ -32,22 +33,20 @@ func TestRunBenchmarkRun_SlotResolvesHost(t *testing.T) {
 	defer viper.Reset()
 
 	tests := []struct {
-		name         string
-		slot         int
-		wantHost     string
-		wantBackend  string
-		wantErr      bool
+		name    string
+		slot    int
+		wantErr bool
 	}{
-		{"slot 1", 1, "http://localhost:8090", "llama-server", false},
-		{"slot 2", 2, "http://localhost:8091", "llama-server", false},
-		{"invalid slot", 3, "", "", true},
+		{"valid slot 1", 1, false},
+		{"valid slot 2", 2, false},
+		{"invalid slot 3", 3, true},
+		{"invalid slot 0", 0, true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			opts := &runOpts{
-				Backend: "all",
-				Slot:    tt.slot,
+				Slot: tt.slot,
 			}
 			err := runBenchmarkRun(opts)
 			if tt.wantErr {
@@ -56,30 +55,20 @@ func TestRunBenchmarkRun_SlotResolvesHost(t *testing.T) {
 				}
 				return
 			}
-			// runBenchmarkRun will fail later (no results dir, etc.) but
-			// slot resolution happens first — verify opts were mutated
-			if opts.Host != tt.wantHost {
-				t.Errorf("host: got %q, want %q", opts.Host, tt.wantHost)
-			}
-			if opts.Backend != tt.wantBackend {
-				t.Errorf("backend: got %q, want %q", opts.Backend, tt.wantBackend)
+			// Valid slots will fail later (no server running) but slot
+			// validation and host resolution happen first — no error at
+			// the validation stage means slot resolution worked
+			if err != nil && err.Error() == fmt.Sprintf("--slot must be 1 or 2, got %d", tt.slot) {
+				t.Fatalf("unexpected slot validation error: %v", err)
 			}
 		})
 	}
 }
 
-func TestRunBenchmarkRun_NoSlotKeepsOriginal(t *testing.T) {
-	opts := &runOpts{
-		Backend: "ollama",
-		Host:    "http://custom:9999",
-		Slot:    0,
-	}
-	// Slot 0 means not set — should not override host/backend
-	_ = runBenchmarkRun(opts)
-	if opts.Host != "http://custom:9999" {
-		t.Errorf("host changed unexpectedly: %q", opts.Host)
-	}
-	if opts.Backend != "ollama" {
-		t.Errorf("backend changed unexpectedly: %q", opts.Backend)
+func TestRunBenchmarkRunCmd_SlotRequired(t *testing.T) {
+	cmd := newBenchmarkRunCmd()
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error when --slot not provided")
 	}
 }

@@ -1,6 +1,10 @@
 package benchmark
 
 import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"testing"
 
@@ -77,6 +81,56 @@ func TestPrintSummary(t *testing.T) {
 			}()
 			PrintSummary(tt.results)
 		})
+	}
+}
+
+func TestDetectRunningModel(t *testing.T) {
+	tests := []struct {
+		name     string
+		handler  http.HandlerFunc
+		want     string
+	}{
+		{
+			name: "When server returns model it should detect it",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				json.NewEncoder(w).Encode(map[string]interface{}{
+					"data": []map[string]string{{"id": "Qwen3.8-Flash-Next-UD-IQ3_XXS"}},
+				})
+			},
+			want: "Qwen3.8-Flash-Next-UD-IQ3_XXS",
+		},
+		{
+			name: "When server returns empty data it should return empty",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				json.NewEncoder(w).Encode(map[string]interface{}{"data": []map[string]string{}})
+			},
+			want: "",
+		},
+		{
+			name: "When server returns invalid JSON it should return empty",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				fmt.Fprint(w, "not json")
+			},
+			want: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := httptest.NewServer(tt.handler)
+			defer srv.Close()
+			got := detectRunningModel(srv.URL)
+			if got != tt.want {
+				t.Errorf("detectRunningModel() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDetectRunningModel_Unreachable(t *testing.T) {
+	got := detectRunningModel("http://localhost:59999")
+	if got != "" {
+		t.Errorf("expected empty for unreachable host, got %q", got)
 	}
 }
 
