@@ -100,7 +100,7 @@ func printLlamaServerDetail(procs []processInfo) {
 		return
 	}
 
-	tbl := ui.NewTable("llama-server instances", "PROFILE", "TYPE", "PORT", "BINARY", "SPEC", "HEALTH", "MANAGED", "DETAILS")
+	tbl := ui.NewTable("llama-server instances", "PROFILE", "SLOT", "TYPE", "PORT", "BINARY", "SPEC", "HEALTH", "MANAGED", "DETAILS")
 	for _, s := range servers {
 		health := ui.ErrorStyle.Render(s.Health)
 		if s.Health == "healthy" {
@@ -114,7 +114,8 @@ func printLlamaServerDetail(procs []processInfo) {
 		if bin == "" {
 			bin = "-"
 		}
-		tbl.AddRow(s.Profile, s.ModelType, s.Port, bin, spec, health, s.Managed, s.Extra)
+		slot := portToSlot(s.Port)
+		tbl.AddRow(s.Profile, slot, s.ModelType, s.Port, bin, spec, health, s.Managed, s.Extra)
 	}
 	tbl.Print()
 }
@@ -465,4 +466,17 @@ func formatBytesStr(raw []byte) string {
 	var n int64
 	fmt.Sscanf(s, "%d", &n)
 	return formatGB(n)
+}
+
+func portToSlot(portStr string) string {
+	slot1 := fmt.Sprintf("%d", llamaserver.Slot1Port())
+	slot2 := fmt.Sprintf("%d", llamaserver.Slot2Port())
+	switch portStr {
+	case slot1:
+		return "1"
+	case slot2:
+		return "2"
+	default:
+		return "-"
+	}
 }
