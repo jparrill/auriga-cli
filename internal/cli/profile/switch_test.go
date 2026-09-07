@@ -29,6 +29,7 @@ func TestNewProfileSwitchCmd_Flags(t *testing.T) {
 	}{
 		{"When checking switch flags, it should have persistent flag", "persistent"},
 		{"When checking switch flags, it should have ctx-size flag", "ctx-size"},
+		{"When checking switch flags, it should have slot flag", "slot"},
 	}
 
 	for _, tt := range tests {
@@ -72,7 +73,7 @@ func TestRunProfileSwitch_ProfileNotFound(t *testing.T) {
 	viper.Reset()
 	defer viper.Reset()
 
-	err := RunProfileSwitch("nonexistent", SwitchOpts{CtxSize: 131072})
+	err := RunProfileSwitch("nonexistent", SwitchOpts{CtxSize: 131072, Slot: 1})
 
 	if err == nil {
 		t.Error("When profile not found, it should return error")
@@ -89,7 +90,7 @@ func TestRunProfileSwitch_ModelFileMissing(t *testing.T) {
 	viper.Set("profiles.test-profile.model", "nonexistent.gguf")
 	viper.Set("llama_server.gguf_dir", "/tmp/auriga-test-nonexistent")
 
-	err := RunProfileSwitch("test-profile", SwitchOpts{CtxSize: 131072})
+	err := RunProfileSwitch("test-profile", SwitchOpts{CtxSize: 131072, Slot: 1})
 
 	if err == nil {
 		t.Error("When model file missing, it should return error")
@@ -115,7 +116,7 @@ func TestRunProfileSwitch_MmprojFileMissing(t *testing.T) {
 	viper.Set("llama_server.gguf_dir", tmpDir)
 	viper.Set("llama_server.mmproj_dir", "/tmp/auriga-test-nonexistent")
 
-	err := RunProfileSwitch("test-profile", SwitchOpts{CtxSize: 131072})
+	err := RunProfileSwitch("test-profile", SwitchOpts{CtxSize: 131072, Slot: 1})
 
 	if err == nil {
 		t.Error("When mmproj file missing, it should return error")
@@ -216,7 +217,7 @@ func TestBuildExecStart_NoMmprojNoJinja(t *testing.T) {
 	}
 }
 
-func TestBuildExecStart_MoePort(t *testing.T) {
+func TestBuildExecStart_Slot2Port(t *testing.T) {
 	viper.Reset()
 	defer viper.Reset()
 
@@ -225,7 +226,7 @@ func TestBuildExecStart_MoePort(t *testing.T) {
 	got := buildExecStart("/usr/bin/llama-server", "/models/moe-model.gguf", "", nil, 131072, 8091)
 
 	if !strings.Contains(got, "--port 8091") {
-		t.Errorf("When MoE port, ExecStart should use port 8091, got: %s", got)
+		t.Errorf("When slot 2 port, ExecStart should use port 8091, got: %s", got)
 	}
 }
 
@@ -269,7 +270,7 @@ func TestRunProfileSwitch_BinaryNotFound(t *testing.T) {
 	viper.Set("llama_server.gguf_dir", tmpDir)
 	viper.Set("llama_server.bin", "/also-nonexistent/llama-server")
 
-	err := RunProfileSwitch("test-profile", SwitchOpts{CtxSize: 131072})
+	err := RunProfileSwitch("test-profile", SwitchOpts{CtxSize: 131072, Slot: 1})
 
 	if err == nil {
 		t.Error("When profile binary not found, it should return error")
@@ -292,9 +293,9 @@ func TestRunProfileServe_BinaryNotFound(t *testing.T) {
 	viper.Set("llama_server.gguf_dir", tmpDir)
 	viper.Set("llama_server.bin", "/also-nonexistent/llama-server")
 	viper.Set("llama_server.host", "http://localhost:8090")
-	viper.Set("llama_server.dense_port", 8090)
+	viper.Set("llama_server.slot_1_port", 8090)
 
-	err := runProfileServe("test-profile", false, 131072)
+	err := runProfileServe("test-profile", false, 131072, 1)
 
 	if err == nil {
 		t.Error("When profile binary not found, serve should return error")
@@ -340,60 +341,6 @@ func TestDetectModelType(t *testing.T) {
 				t.Errorf("detectModelType(%q) = %q, want %q", tt.modelName, got, tt.want)
 			}
 		})
-	}
-}
-
-func TestProfilePort_DenseDefault(t *testing.T) {
-	viper.Reset()
-	defer viper.Reset()
-
-	viper.Set("profiles.test-dense.model", "Qwen3.6-27B-UD-Q8_K_XL.gguf")
-	viper.Set("llama_server.dense_port", 8090)
-	viper.Set("llama_server.host", "http://localhost:8090")
-
-	port := profilePort("test-dense")
-	if port != 8090 {
-		t.Errorf("When dense profile, port should be 8090, got %d", port)
-	}
-}
-
-func TestProfilePort_MoeDefault(t *testing.T) {
-	viper.Reset()
-	defer viper.Reset()
-
-	viper.Set("profiles.test-moe.model", "Qwen3.6-35B-A3B-Q8_0.gguf")
-	viper.Set("llama_server.moe_port", 8091)
-
-	port := profilePort("test-moe")
-	if port != 8091 {
-		t.Errorf("When MoE profile, port should be 8091, got %d", port)
-	}
-}
-
-func TestProfilePort_ExplicitType(t *testing.T) {
-	viper.Reset()
-	defer viper.Reset()
-
-	viper.Set("profiles.override.model", "Qwen3.6-27B-UD-Q8_K_XL.gguf")
-	viper.Set("profiles.override.type", "moe")
-	viper.Set("llama_server.moe_port", 8091)
-
-	port := profilePort("override")
-	if port != 8091 {
-		t.Errorf("When type explicitly set to moe, port should be 8091, got %d", port)
-	}
-}
-
-func TestProfilePort_ExplicitPortOverride(t *testing.T) {
-	viper.Reset()
-	defer viper.Reset()
-
-	viper.Set("profiles.custom.model", "model.gguf")
-	viper.Set("profiles.custom.port", 9000)
-
-	port := profilePort("custom")
-	if port != 9000 {
-		t.Errorf("When port explicitly set, it should override, got %d", port)
 	}
 }
 
@@ -474,27 +421,27 @@ func TestAllProfilePorts_IncludesDefaults(t *testing.T) {
 	viper.Reset()
 	defer viper.Reset()
 
-	viper.Set("llama_server.dense_port", 8090)
-	viper.Set("llama_server.moe_port", 8091)
+	viper.Set("llama_server.slot_1_port", 8090)
+	viper.Set("llama_server.slot_2_port", 8091)
 	viper.Set("llama_server.host", "http://localhost:8090")
 
 	ports := allProfilePorts()
 
-	hasDense := false
-	hasMoe := false
+	hasSlot1 := false
+	hasSlot2 := false
 	for _, p := range ports {
 		if p == 8090 {
-			hasDense = true
+			hasSlot1 = true
 		}
 		if p == 8091 {
-			hasMoe = true
+			hasSlot2 = true
 		}
 	}
-	if !hasDense {
-		t.Error("When listing all ports, it should include dense port")
+	if !hasSlot1 {
+		t.Error("When listing all ports, it should include slot 1 port")
 	}
-	if !hasMoe {
-		t.Error("When listing all ports, it should include MoE port")
+	if !hasSlot2 {
+		t.Error("When listing all ports, it should include slot 2 port")
 	}
 }
 
@@ -502,8 +449,8 @@ func TestAllProfilePorts_IncludesCustomPorts(t *testing.T) {
 	viper.Reset()
 	defer viper.Reset()
 
-	viper.Set("llama_server.dense_port", 8090)
-	viper.Set("llama_server.moe_port", 8091)
+	viper.Set("llama_server.slot_1_port", 8090)
+	viper.Set("llama_server.slot_2_port", 8091)
 	viper.Set("llama_server.host", "http://localhost:8090")
 	viper.Set("profiles.custom.model", "model.gguf")
 	viper.Set("profiles.custom.port", 9000)
@@ -573,87 +520,6 @@ func TestProfileCtxSize_ProfileOverride(t *testing.T) {
 	got := profileCtxSize("test")
 	if got != 32768 {
 		t.Errorf("When profile ctx_size set, should override global, got %d", got)
-	}
-}
-
-func TestPrintHermesTip_MoeUsesLocalProfile(t *testing.T) {
-	viper.Reset()
-	defer viper.Reset()
-
-	viper.Set("hermes.moe_profile", "local")
-	viper.Set("hermes.dense_profile", "planning")
-
-	old := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	printHermesTip("Qwen3.6-35B-A3B-Q8_0.gguf", "moe", 8091)
-
-	w.Close()
-	os.Stdout = old
-	buf := make([]byte, 4096)
-	n, _ := r.Read(buf)
-	output := string(buf[:n])
-
-	if !strings.Contains(output, "local") {
-		t.Error("When MoE model, tip should reference local profile")
-	}
-	if !strings.Contains(output, "8091") {
-		t.Error("When MoE model, tip should show MoE port")
-	}
-}
-
-func TestPrintHermesTip_DenseUsesPlanningProfile(t *testing.T) {
-	viper.Reset()
-	defer viper.Reset()
-
-	viper.Set("hermes.moe_profile", "local")
-	viper.Set("hermes.dense_profile", "planning")
-
-	old := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	printHermesTip("Qwen3.6-27B-UD-Q8_K_XL.gguf", "dense", 8090)
-
-	w.Close()
-	os.Stdout = old
-	buf := make([]byte, 4096)
-	n, _ := r.Read(buf)
-	output := string(buf[:n])
-
-	if !strings.Contains(output, "planning") {
-		t.Error("When dense model, tip should reference planning profile")
-	}
-	if !strings.Contains(output, "hermes profile create planning") {
-		t.Error("When dense model, tip should show create command for planning profile")
-	}
-	if !strings.Contains(output, "fallback") {
-		t.Error("When dense model, tip should mention updating fallback in moe profile")
-	}
-	if !strings.Contains(output, "hermes gateway restart") {
-		t.Error("When dense model, tip should remind to restart gateway")
-	}
-}
-
-func TestPrintHermesTip_NoOutputWhenUnconfigured(t *testing.T) {
-	viper.Reset()
-	defer viper.Reset()
-
-	old := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	printHermesTip("model.gguf", "moe", 8091)
-
-	w.Close()
-	os.Stdout = old
-	buf := make([]byte, 4096)
-	n, _ := r.Read(buf)
-	output := string(buf[:n])
-
-	if strings.Contains(output, "hermes") {
-		t.Error("When hermes profiles not configured, should not print tip")
 	}
 }
 
@@ -746,7 +612,7 @@ func TestRunProfileSwitch_DFlashFileMissing(t *testing.T) {
 	viper.Set("profiles.test-profile.dflash", "dflash-missing.gguf")
 	viper.Set("llama_server.gguf_dir", tmpDir)
 
-	err := RunProfileSwitch("test-profile", SwitchOpts{CtxSize: 131072})
+	err := RunProfileSwitch("test-profile", SwitchOpts{CtxSize: 131072, Slot: 1})
 
 	if err == nil {
 		t.Error("When dflash file missing, it should return error")
@@ -768,7 +634,7 @@ func TestRunProfileSwitch_MTPDrafterFileMissing(t *testing.T) {
 	viper.Set("profiles.test-profile.mtp_drafter", "mtp-missing.gguf")
 	viper.Set("llama_server.gguf_dir", tmpDir)
 
-	err := RunProfileSwitch("test-profile", SwitchOpts{CtxSize: 131072})
+	err := RunProfileSwitch("test-profile", SwitchOpts{CtxSize: 131072, Slot: 1})
 
 	if err == nil {
 		t.Error("When mtp_drafter file missing, it should return error")
@@ -790,9 +656,9 @@ func TestRunProfileServe_DFlashFileMissing(t *testing.T) {
 	viper.Set("profiles.test-profile.dflash", "dflash-missing.gguf")
 	viper.Set("llama_server.gguf_dir", tmpDir)
 	viper.Set("llama_server.host", "http://localhost:8090")
-	viper.Set("llama_server.dense_port", 8090)
+	viper.Set("llama_server.slot_1_port", 8090)
 
-	err := runProfileServe("test-profile", false, 131072)
+	err := runProfileServe("test-profile", false, 131072, 1)
 
 	if err == nil {
 		t.Error("When dflash file missing, serve should return error")
@@ -814,9 +680,9 @@ func TestRunProfileServe_MTPDrafterFileMissing(t *testing.T) {
 	viper.Set("profiles.test-profile.mtp_drafter", "mtp-missing.gguf")
 	viper.Set("llama_server.gguf_dir", tmpDir)
 	viper.Set("llama_server.host", "http://localhost:8090")
-	viper.Set("llama_server.dense_port", 8090)
+	viper.Set("llama_server.slot_1_port", 8090)
 
-	err := runProfileServe("test-profile", false, 131072)
+	err := runProfileServe("test-profile", false, 131072, 1)
 
 	if err == nil {
 		t.Error("When mtp_drafter file missing, serve should return error")

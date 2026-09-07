@@ -79,8 +79,8 @@ var recommendedGlobalKeys = []struct {
 	reason  string
 }{
 	{"llama_server.mmproj_dir", "multimodal projector directory"},
-	{"llama_server.dense_port", "dense model port"},
-	{"llama_server.moe_port", "MoE model port"},
+	{"llama_server.slot_1_port", "slot 1 port"},
+	{"llama_server.slot_2_port", "slot 2 port"},
 	{"llama_server.ctx_size", "global default context size"},
 }
 
@@ -123,16 +123,10 @@ func runProfileValidate() error {
 	sort.Strings(names)
 
 	var validations []profileValidation
-	var denseProfiles, moeProfiles []profileValidation
 
 	for _, name := range names {
 		v := validateProfile(name, ggufDir)
 		validations = append(validations, v)
-		if v.Type == "dense" {
-			denseProfiles = append(denseProfiles, v)
-		} else {
-			moeProfiles = append(moeProfiles, v)
-		}
 		if len(v.Errors) > 0 {
 			hasErrors = true
 		}
@@ -166,16 +160,17 @@ func runProfileValidate() error {
 	}
 	profileTbl.Print()
 
-	// --- Dual-instance ---
-	if gtt > 0 && len(denseProfiles) > 0 && len(moeProfiles) > 0 {
+	// --- Dual-instance (any pair of profiles in 2 slots) ---
+	if gtt > 0 && len(validations) >= 2 {
 		gttLabel := fmt.Sprintf("Dual-Instance Fit (GTT: %.1f GB)", float64(gtt)/1e9)
-		dualTbl := ui.NewTable(gttLabel, "STATUS", "DENSE", "MOE", "COMBINED", "USAGE")
-		for _, d := range denseProfiles {
-			for _, m := range moeProfiles {
-				if d.TotalEst == 0 || m.TotalEst == 0 {
+		dualTbl := ui.NewTable(gttLabel, "STATUS", "SLOT-1", "SLOT-2", "COMBINED", "USAGE")
+		for i := 0; i < len(validations); i++ {
+			for j := i + 1; j < len(validations); j++ {
+				a, b := validations[i], validations[j]
+				if a.TotalEst == 0 || b.TotalEst == 0 {
 					continue
 				}
-				combined := d.TotalEst + m.TotalEst
+				combined := a.TotalEst + b.TotalEst
 				pct := float64(combined) / float64(gtt) * 100
 				status := ui.SuccessStyle.Render("✓")
 				if combined > gtt {
@@ -186,8 +181,8 @@ func runProfileValidate() error {
 				}
 				dualTbl.AddRow(
 					status,
-					d.Name,
-					m.Name,
+					a.Name,
+					b.Name,
 					fmt.Sprintf("%.1f GB", float64(combined)/1e9),
 					fmt.Sprintf("%.0f%%", pct),
 				)

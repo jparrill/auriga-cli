@@ -119,20 +119,31 @@ func FindLocalGGUF(hfRepo string) string {
 	return ""
 }
 
-func DensePort() int {
-	p := viper.GetInt("llama_server.dense_port")
+func Slot1Port() int {
+	p := viper.GetInt("llama_server.slot_1_port")
 	if p > 0 {
 		return p
 	}
-	return Port()
+	return 8090
 }
 
-func MoePort() int {
-	p := viper.GetInt("llama_server.moe_port")
+func Slot2Port() int {
+	p := viper.GetInt("llama_server.slot_2_port")
 	if p > 0 {
 		return p
 	}
 	return 8091
+}
+
+func SlotPort(slot int) int {
+	if slot == 2 {
+		return Slot2Port()
+	}
+	return Slot1Port()
+}
+
+func AllSlotPorts() []int {
+	return []int{Slot1Port(), Slot2Port()}
 }
 
 func HostForPort(port int) string {

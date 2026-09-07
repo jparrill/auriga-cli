@@ -30,8 +30,11 @@ Examples:
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 1 {
-				port := profilePort(args[0])
-				return stopOnPort(port)
+				p := viper.GetInt(fmt.Sprintf("profiles.%s.port", args[0]))
+				if p == 0 {
+					return fmt.Errorf("profile %q has no explicit port — use 'auriga profile stop' to stop all", args[0])
+				}
+				return stopOnPort(p)
 			}
 			return runProfileStopAll()
 		},
@@ -93,12 +96,15 @@ func stopOnPort(port int) error {
 
 func allProfilePorts() []int {
 	seen := map[int]bool{}
-	seen[llamaserver.DensePort()] = true
-	seen[llamaserver.MoePort()] = true
+	for _, port := range llamaserver.AllSlotPorts() {
+		seen[port] = true
+	}
 
 	profiles := viper.GetStringMap("profiles")
 	for name := range profiles {
-		seen[profilePort(name)] = true
+		if p := viper.GetInt(fmt.Sprintf("profiles.%s.port", name)); p > 0 {
+			seen[p] = true
+		}
 	}
 
 	ports := make([]int, 0, len(seen))

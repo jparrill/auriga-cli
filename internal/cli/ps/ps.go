@@ -123,9 +123,6 @@ func gatherStatus() []processInfo {
 	var procs []processInfo
 	procs = append(procs, checkOllama())
 	procs = append(procs, checkLlamaServers()...)
-	procs = append(procs, checkContainer("hermes", "Hermes gateway")...)
-	procs = append(procs, checkContainer("hermes-dashboard", "Hermes dashboard")...)
-	procs = append(procs, checkContainer("hermes-searxng", "SearXNG")...)
 	return procs
 }
 
@@ -346,38 +343,6 @@ func checkHealth(port string) string {
 }
 
 
-func checkContainer(name, label string) []processInfo {
-	ctx := context.Background()
-	// Try podman first, then docker
-	for _, runtime := range []string{"podman", "docker"} {
-		out, err := exec.RunCapture(ctx, runtime, []string{
-			"inspect", "--format", "{{.State.Status}}:{{.State.Pid}}", name,
-		}, exec.RunOpts{})
-		if err != nil {
-			continue
-		}
-		parts := strings.SplitN(strings.TrimSpace(out), ":", 2)
-		status := parts[0]
-		pid := "-"
-		if len(parts) > 1 && parts[1] != "0" {
-			pid = parts[1]
-		}
-
-		p := processInfo{
-			Component: label,
-			Status:    "stopped",
-			PID:       pid,
-			Port:      "-",
-			Model:     "-",
-			Extra:     runtime,
-		}
-		if status == "running" {
-			p.Status = "active"
-		}
-		return []processInfo{p}
-	}
-	return nil
-}
 
 func extractFlag(args, flag string) string {
 	fields := strings.Fields(args)

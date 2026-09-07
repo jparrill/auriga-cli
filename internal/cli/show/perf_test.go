@@ -158,32 +158,17 @@ func TestFmtTokS_Error(t *testing.T) {
 	}
 }
 
-func TestResolveProfilePort_Dense(t *testing.T) {
+func TestResolveProfilePort_DefaultSlot(t *testing.T) {
 	viper.Reset()
 	defer viper.Reset()
 
 	viper.Set("profiles.test-dense.model", "Qwen3.8-27B-Q8_0.gguf")
-	viper.Set("profiles.test-dense.type", "dense")
-	viper.Set("llama_server.dense_port", 8090)
+	viper.Set("llama_server.slot_1_port", 8090)
 	viper.Set("llama_server.host", "http://localhost:8090")
 
 	port := resolveProfilePort("test-dense")
 	if port != 8090 {
-		t.Errorf("When dense profile, port should be 8090, got %d", port)
-	}
-}
-
-func TestResolveProfilePort_MoE(t *testing.T) {
-	viper.Reset()
-	defer viper.Reset()
-
-	viper.Set("profiles.test-moe.model", "Qwen3.6-35B-A3B-Q8_0.gguf")
-	viper.Set("profiles.test-moe.type", "moe")
-	viper.Set("llama_server.moe_port", 8091)
-
-	port := resolveProfilePort("test-moe")
-	if port != 8091 {
-		t.Errorf("When MoE profile, port should be 8091, got %d", port)
+		t.Errorf("When no explicit port, should default to slot 1 (8090), got %d", port)
 	}
 }
 
@@ -204,8 +189,8 @@ func TestCollectActivePorts_NoServers(t *testing.T) {
 	viper.Reset()
 	defer viper.Reset()
 
-	viper.Set("llama_server.dense_port", 59870)
-	viper.Set("llama_server.moe_port", 59871)
+	viper.Set("llama_server.slot_1_port", 59870)
+	viper.Set("llama_server.slot_2_port", 59871)
 	viper.Set("llama_server.host", "http://localhost:59870")
 
 	ports := collectActivePorts()

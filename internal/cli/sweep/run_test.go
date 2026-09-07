@@ -356,46 +356,56 @@ func TestBackupRestoreConfig(t *testing.T) {
 }
 
 func TestResolvePort(t *testing.T) {
-	t.Run("default dense port", func(t *testing.T) {
+	t.Run("default slot 1 port", func(t *testing.T) {
 		viper.Reset()
 		defer viper.Reset()
 
-		port := resolvePort("test")
+		port := resolvePort(SweepConfig{Profile: "test", Slot: 1})
 		if port != 8090 {
 			t.Errorf("expected 8090, got %d", port)
 		}
 	})
 
-	t.Run("moe type uses moe port", func(t *testing.T) {
+	t.Run("slot 2 uses slot 2 port", func(t *testing.T) {
 		viper.Reset()
-		viper.Set("profiles.moemodel.type", "moe")
 		defer viper.Reset()
 
-		port := resolvePort("moemodel")
+		port := resolvePort(SweepConfig{Profile: "test", Slot: 2})
 		if port != 8091 {
 			t.Errorf("expected 8091, got %d", port)
 		}
 	})
 
-	t.Run("explicit profile port", func(t *testing.T) {
+	t.Run("explicit profile port overrides slot", func(t *testing.T) {
 		viper.Reset()
 		viper.Set("profiles.custom.port", 9090)
 		defer viper.Reset()
 
-		port := resolvePort("custom")
+		port := resolvePort(SweepConfig{Profile: "custom", Slot: 1})
 		if port != 9090 {
 			t.Errorf("expected 9090, got %d", port)
 		}
 	})
 
-	t.Run("custom dense port", func(t *testing.T) {
+	t.Run("custom slot 1 port from config", func(t *testing.T) {
 		viper.Reset()
-		viper.Set("llama_server.dense_port", 7070)
+		viper.Set("llama_server.slot_1_port", 7070)
 		defer viper.Reset()
 
-		port := resolvePort("test")
+		port := resolvePort(SweepConfig{Profile: "test", Slot: 1})
 		if port != 7070 {
 			t.Errorf("expected 7070, got %d", port)
+		}
+	})
+
+	t.Run("custom slot 2 port from config", func(t *testing.T) {
+		viper.Reset()
+		viper.Set("llama_server.slot_2_port", 7071)
+		defer viper.Reset()
+
+		port := resolvePort(SweepConfig{Profile: "test", Slot: 2})
+		if port != 7071 {
+			t.Errorf("expected 7071, got %d", port)
 		}
 	})
 }

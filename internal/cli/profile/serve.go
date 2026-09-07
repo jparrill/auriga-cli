@@ -38,16 +38,11 @@ func readPIDForPort(port int) int {
 	return pid
 }
 
-func profilePort(name string) int {
-	profileKey := fmt.Sprintf("profiles.%s", name)
-	if p := viper.GetInt(profileKey + ".port"); p > 0 {
-		return p
+func validateSlot(slot int) error {
+	if slot != 1 && slot != 2 {
+		return fmt.Errorf("--slot must be 1 or 2, got %d", slot)
 	}
-	t := profileType(name)
-	if t == "moe" {
-		return llamaserver.MoePort()
-	}
-	return llamaserver.DensePort()
+	return nil
 }
 
 func profileType(name string) string {
@@ -85,8 +80,9 @@ func warnTypeMismatch(name, configuredType, modelName string) {
 
 func newProfileServeCmd() *cobra.Command {
 	var (
-		daemon bool
+		daemon  bool
 		ctxSize int
+		slot    int
 	)
 
 	cmd := &cobra.Command{
@@ -98,32 +94,37 @@ If the profile has vision (mmproj), --jinja is added automatically.
 Context size resolves: --ctx-size flag > profile ctx_size > llama_server.ctx_size > 131072.
 
 Examples:
-  auriga profile serve qwen3.6-vision            # Foreground (Ctrl+C to stop)
-  auriga profile serve qwen3.6-vision --daemon    # Background (use 'auriga profile stop' to stop)
-  auriga profile serve gemma4-12b-vision --ctx-size 65536`,
+  auriga profile serve qwen3.6-vision --slot 1            # Foreground on slot 1
+  auriga profile serve qwen3.6-vision --slot 2 --daemon    # Background on slot 2
+  auriga profile serve gemma4-12b-vision --slot 1 --ctx-size 65536`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateSlot(slot); err != nil {
+				return err
+			}
 			if !cmd.Flags().Changed("ctx-size") {
 				ctxSize = profileCtxSize(args[0])
 			}
-			return runProfileServe(args[0], daemon, ctxSize)
+			return runProfileServe(args[0], daemon, ctxSize, slot)
 		},
 	}
 
 	cmd.Flags().BoolVarP(&daemon, "daemon", "d", false, "Run in background")
 	cmd.Flags().IntVar(&ctxSize, "ctx-size", 131072, "Context window size (default from config)")
+	cmd.Flags().IntVar(&slot, "slot", 0, "Slot to run on (1 or 2, required)")
+	cmd.MarkFlagRequired("slot")
 
 	return cmd
 }
 
-func runProfileServe(name string, daemon bool, ctxSize int) error {
+func runProfileServe(name string, daemon bool, ctxSize int, slot int) error {
 	profileKey := fmt.Sprintf("profiles.%s", name)
 	modelFile := viper.GetString(profileKey + ".model")
 	if modelFile == "" {
 		return fmt.Errorf("profile %q not found — run: auriga profile list", name)
 	}
 
-	port := profilePort(name)
+	port := llamaserver.SlotPort(slot)
 	pf := pidFileForPort(port)
 
 	configuredType := viper.GetString(profileKey + ".type")
@@ -230,7 +231,6 @@ func runProfileServe(name string, daemon bool, ctxSize int) error {
 	if daemon {
 		ui.Ok(fmt.Sprintf("llama-server running in background (PID %d) on port %d", proc.Pid, port))
 		ui.Info("Stop with: auriga profile stop")
-		printHermesTip(modelFile, pType, port)
 		proc.Release()
 		return nil
 	}
@@ -297,30 +297,3 @@ func processExists(pid int) bool {
 	return err == nil
 }
 
-func printHermesTip(modelFile, modelType string, port int) {
-	moeProfile := viper.GetString("hermes.moe_profile")
-	denseProfile := viper.GetString("hermes.dense_profile")
-
-	hermesProfile := moeProfile
-	if modelType == "dense" {
-		hermesProfile = denseProfile
-	}
-	if hermesProfile == "" {
-		return
-	}
-
-	fmt.Println()
-	ui.Info(fmt.Sprintf("Hermes: update %q profile for this %s model", hermesProfile, modelType))
-	fmt.Printf("  hermes profile use %s\n", hermesProfile)
-	fmt.Printf("  hermes config set model.base_url http://localhost:%d/v1\n", port)
-	fmt.Printf("  hermes config set model.default %s\n", modelFile)
-
-	if modelType == "dense" && moeProfile != "" {
-		fmt.Printf("\n  # Also update fallback in %q profile:\n", moeProfile)
-		fmt.Printf("  hermes profile use %s\n", moeProfile)
-		fmt.Printf("  hermes config set fallback_providers.0.model %s\n", modelFile)
-		fmt.Printf("  hermes gateway restart\n")
-		fmt.Printf("\n  # Create %q profile first if it doesn't exist:\n", denseProfile)
-		fmt.Printf("  hermes profile create %s --clone-from %s --description \"Deep planning with dense models\"\n", denseProfile, moeProfile)
-	}
-}

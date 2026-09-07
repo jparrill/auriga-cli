@@ -21,6 +21,7 @@ import (
 type SwitchOpts struct {
 	Persistent  bool
 	CtxSize     int
+	Slot        int
 	AutoConfirm bool
 	Quiet       bool
 }
@@ -29,6 +30,7 @@ func newProfileSwitchCmd() *cobra.Command {
 	var (
 		persistent bool
 		ctxSize    int
+		slot       int
 	)
 
 	cmd := &cobra.Command{
@@ -41,17 +43,21 @@ user service that survives reboots.
 Context size resolves: --ctx-size flag > profile ctx_size > llama_server.ctx_size > 131072.
 
 Examples:
-  auriga profile switch qwen3.6-vision
-  auriga profile switch gemma4-26b --persistent
-  auriga profile switch qwen3-coder --ctx-size 65536 --persistent`,
+  auriga profile switch qwen3.6-vision --slot 1
+  auriga profile switch gemma4-26b --slot 2 --persistent
+  auriga profile switch qwen3-coder --slot 1 --ctx-size 65536 --persistent`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateSlot(slot); err != nil {
+				return err
+			}
 			if !cmd.Flags().Changed("ctx-size") {
 				ctxSize = profileCtxSize(args[0])
 			}
 			return RunProfileSwitch(args[0], SwitchOpts{
 				Persistent:  persistent,
 				CtxSize:     ctxSize,
+				Slot:        slot,
 				AutoConfirm: config.Yes,
 			})
 		},
@@ -59,6 +65,8 @@ Examples:
 
 	cmd.Flags().BoolVar(&persistent, "persistent", false, "Create systemd user service for reboot persistence")
 	cmd.Flags().IntVar(&ctxSize, "ctx-size", 131072, "Context window size (default from config)")
+	cmd.Flags().IntVar(&slot, "slot", 0, "Slot to run on (1 or 2, required)")
+	cmd.MarkFlagRequired("slot")
 
 	return cmd
 }
@@ -144,7 +152,7 @@ func RunProfileSwitch(name string, opts SwitchOpts) error {
 		}
 	}
 
-	port := profilePort(name)
+	port := llamaserver.SlotPort(opts.Slot)
 
 	bin := llamaserver.BinForProfile(name)
 	if _, err := os.Stat(bin); err != nil {
@@ -217,10 +225,8 @@ func switchDaemon(name, bin, modelPath, mmprojPath string, extraFlags []string, 
 	proc.Release()
 
 	if !quiet {
-		pType := profileType(name)
 		ui.Ok(fmt.Sprintf("Switched to %s (PID %d) on port %d", name, proc.Pid, port))
 		ui.Info("Stop with: auriga profile stop")
-		printHermesTip(viper.GetString(fmt.Sprintf("profiles.%s.model", name)), pType, port)
 	}
 	return nil
 }
@@ -266,12 +272,10 @@ func switchPersistent(name, bin, modelPath, mmprojPath string, extraFlags []stri
 
 	if !quiet {
 		path, _ := systemd.UnitPathForPort(port)
-		pType := profileType(name)
 		ui.Ok(fmt.Sprintf("Switched to %s (systemd persistent) on port %d", name, port))
 		ui.Info(fmt.Sprintf("Service: %s", path))
 		ui.Info(fmt.Sprintf("Stop with: systemctl --user stop %s", unitName))
 		ui.Info(fmt.Sprintf("Logs with: journalctl --user -u %s -f", unitName))
-		printHermesTip(viper.GetString(fmt.Sprintf("profiles.%s.model", name)), pType, port)
 	}
 	return nil
 }

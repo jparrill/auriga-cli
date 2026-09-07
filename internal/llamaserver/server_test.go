@@ -197,50 +197,84 @@ func TestStartWithCtx_BinaryNotFound(t *testing.T) {
 	}
 }
 
-func TestDensePort_FromConfig(t *testing.T) {
+func TestSlot1Port_FromConfig(t *testing.T) {
 	viper.Reset()
 	defer viper.Reset()
 
-	viper.Set("llama_server.dense_port", 8090)
-	viper.Set("llama_server.host", "http://localhost:8090")
+	viper.Set("llama_server.slot_1_port", 8090)
 
-	p := DensePort()
+	p := Slot1Port()
 	if p != 8090 {
-		t.Errorf("When dense_port set, DensePort should return it, got %d", p)
+		t.Errorf("When slot_1_port set, Slot1Port should return it, got %d", p)
 	}
 }
 
-func TestDensePort_FallbackToPort(t *testing.T) {
+func TestSlot1Port_Default(t *testing.T) {
 	viper.Reset()
 	defer viper.Reset()
 
-	viper.Set("llama_server.host", "http://localhost:9090")
-
-	p := DensePort()
-	if p != 9090 {
-		t.Errorf("When dense_port not set, DensePort should fallback to Port(), got %d", p)
+	p := Slot1Port()
+	if p != 8090 {
+		t.Errorf("When slot_1_port not set, Slot1Port should return 8090, got %d", p)
 	}
 }
 
-func TestMoePort_FromConfig(t *testing.T) {
+func TestSlot2Port_FromConfig(t *testing.T) {
 	viper.Reset()
 	defer viper.Reset()
 
-	viper.Set("llama_server.moe_port", 8091)
+	viper.Set("llama_server.slot_2_port", 8091)
 
-	p := MoePort()
+	p := Slot2Port()
 	if p != 8091 {
-		t.Errorf("When moe_port set, MoePort should return it, got %d", p)
+		t.Errorf("When slot_2_port set, Slot2Port should return it, got %d", p)
 	}
 }
 
-func TestMoePort_FallbackDefault(t *testing.T) {
+func TestSlot2Port_Default(t *testing.T) {
 	viper.Reset()
 	defer viper.Reset()
 
-	p := MoePort()
+	p := Slot2Port()
 	if p != 8091 {
-		t.Errorf("When moe_port not set, MoePort should return 8091, got %d", p)
+		t.Errorf("When slot_2_port not set, Slot2Port should return 8091, got %d", p)
+	}
+}
+
+func TestSlotPort(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	viper.Set("llama_server.slot_1_port", 8090)
+	viper.Set("llama_server.slot_2_port", 8091)
+
+	if p := SlotPort(1); p != 8090 {
+		t.Errorf("SlotPort(1) should return slot 1 port, got %d", p)
+	}
+	if p := SlotPort(2); p != 8091 {
+		t.Errorf("SlotPort(2) should return slot 2 port, got %d", p)
+	}
+	if p := SlotPort(0); p != 8090 {
+		t.Errorf("SlotPort(0) should default to slot 1 port, got %d", p)
+	}
+}
+
+func TestAllSlotPorts(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	viper.Set("llama_server.slot_1_port", 8090)
+	viper.Set("llama_server.slot_2_port", 8091)
+
+	ports := AllSlotPorts()
+	if len(ports) != 2 {
+		t.Fatalf("expected 2 ports, got %d", len(ports))
+	}
+	if ports[0] != 8090 {
+		t.Errorf("first port should be 8090, got %d", ports[0])
+	}
+	if ports[1] != 8091 {
+		t.Errorf("second port should be 8091, got %d", ports[1])
 	}
 }
 

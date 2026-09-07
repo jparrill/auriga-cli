@@ -155,8 +155,8 @@ func TestRunShowConfig_NoProfiles(t *testing.T) {
 
 	viper.Set("ollama.host", "http://localhost:11434")
 	viper.Set("llama_server.host", "http://localhost:8090")
-	viper.Set("llama_server.dense_port", 8090)
-	viper.Set("llama_server.moe_port", 8091)
+	viper.Set("llama_server.slot_1_port", 8090)
+	viper.Set("llama_server.slot_2_port", 8091)
 
 	err := runShowConfig()
 	if err != nil {

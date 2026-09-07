@@ -33,7 +33,9 @@ func GenerateUnit(cfg ServiceConfig) string {
 		fmt.Fprintf(&sb, "Environment=%s\n", env)
 	}
 	sb.WriteString("Restart=on-failure\n")
-	sb.WriteString("RestartSec=5\n")
+	sb.WriteString("RestartSec=30\n")
+	sb.WriteString("StartLimitIntervalSec=600\n")
+	sb.WriteString("StartLimitBurst=3\n")
 	sb.WriteString("StandardOutput=journal\n")
 	sb.WriteString("StandardError=journal\n\n")
 

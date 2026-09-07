@@ -93,7 +93,7 @@ func collectActivePorts() []portInfo {
 	var active []portInfo
 	seen := map[int]bool{}
 
-	for _, port := range []int{llamaserver.DensePort(), llamaserver.MoePort()} {
+	for _, port := range llamaserver.AllSlotPorts() {
 		if seen[port] {
 			continue
 		}
@@ -124,15 +124,7 @@ func resolveProfilePort(name string) int {
 	if p := viper.GetInt(profileKey + ".port"); p > 0 {
 		return p
 	}
-	t := viper.GetString(profileKey + ".type")
-	if t == "" {
-		model := viper.GetString(profileKey + ".model")
-		t = detectModelTypeShow(model)
-	}
-	if t == "moe" {
-		return llamaserver.MoePort()
-	}
-	return llamaserver.DensePort()
+	return llamaserver.Slot1Port()
 }
 
 func resolveProfileForPort(port int) string {

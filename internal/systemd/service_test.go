@@ -28,7 +28,9 @@ func TestGenerateUnit_BasicProfile(t *testing.T) {
 		{"When generating unit, it should have ExecStart", "ExecStart=/usr/bin/llama-server -m /models/model.gguf --host 0.0.0.0 --port 8090"},
 		{"When generating unit, it should have environment", "Environment=AMD_VULKAN_ICD=RADV"},
 		{"When generating unit, it should have restart policy", "Restart=on-failure"},
-		{"When generating unit, it should have restart delay", "RestartSec=5"},
+		{"When generating unit, it should have restart delay", "RestartSec=30"},
+		{"When generating unit, it should have start limit interval", "StartLimitIntervalSec=600"},
+		{"When generating unit, it should have start limit burst", "StartLimitBurst=3"},
 		{"When generating unit, it should have journal output", "StandardOutput=journal"},
 		{"When generating unit, it should have Install section", "[Install]"},
 		{"When generating unit, it should have WantedBy", "WantedBy=default.target"},
@@ -99,8 +101,8 @@ func TestUnitNameForPort(t *testing.T) {
 		port int
 		want string
 	}{
-		{"When dense port, unit name includes port", 8090, "auriga-llama-server-8090.service"},
-		{"When MoE port, unit name includes port", 8091, "auriga-llama-server-8091.service"},
+		{"When slot 1 port, unit name includes port", 8090, "auriga-llama-server-8090.service"},
+		{"When slot 2 port, unit name includes port", 8091, "auriga-llama-server-8091.service"},
 		{"When custom port, unit name includes port", 9000, "auriga-llama-server-9000.service"},
 	}
 

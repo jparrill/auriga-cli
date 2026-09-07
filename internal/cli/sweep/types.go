@@ -2,6 +2,7 @@ package sweep
 
 type SweepConfig struct {
 	Profile       string              `yaml:"profile"`
+	Slot          int                 `yaml:"slot"`
 	Iterations    int                 `yaml:"iterations"`
 	ProfileFields map[string][]string `yaml:"profile_fields"`
 	Parameters    map[string][]string `yaml:"parameters"`

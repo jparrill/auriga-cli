@@ -137,7 +137,7 @@ func runSweep(configPath, format string) error {
 		}
 	}()
 
-	port := resolvePort(cfg.Profile)
+	port := resolvePort(cfg)
 	sweepStart := time.Now()
 	abort := newAbortTracker(2)
 
@@ -534,24 +534,12 @@ func restoreConfig(backupPath string) error {
 	return viper.ReadInConfig()
 }
 
-func resolvePort(profileName string) int {
-	profileKey := fmt.Sprintf("profiles.%s", profileName)
+func resolvePort(cfg SweepConfig) int {
+	profileKey := fmt.Sprintf("profiles.%s", cfg.Profile)
 	if p := viper.GetInt(profileKey + ".port"); p > 0 {
 		return p
 	}
-	t := viper.GetString(profileKey + ".type")
-	if t == "moe" {
-		moePort := viper.GetInt("llama_server.moe_port")
-		if moePort > 0 {
-			return moePort
-		}
-		return 8091
-	}
-	densePort := viper.GetInt("llama_server.dense_port")
-	if densePort > 0 {
-		return densePort
-	}
-	return 8090
+	return llamaserver.SlotPort(cfg.Slot)
 }
 
 func waitForHealthy(port int, timeout time.Duration) bool {

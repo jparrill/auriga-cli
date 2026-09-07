@@ -57,9 +57,12 @@ func runProfileList() error {
 			spec = ui.SuccessStyle.Render("mtp")
 		}
 		pType := profileType(name)
-		port := profilePort(name)
+		portStr := "-"
+		if p := viper.GetInt(profileKey + ".port"); p > 0 {
+			portStr = fmt.Sprintf("%d", p)
+		}
 
-		row := []string{name, pType, fmt.Sprintf("%d", port), spec, repo, model, vision}
+		row := []string{name, pType, portStr, spec, repo, model, vision}
 		if hasCustomBin {
 			binOverride := viper.GetString(profileKey + ".bin")
 			if binOverride != "" {

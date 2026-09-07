@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/jparrill/auriga-cli/internal/config"
+	"github.com/jparrill/auriga-cli/internal/llamaserver"
 	"github.com/jparrill/auriga-cli/internal/ui"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -104,6 +105,14 @@ func validateSweepConfig(cfg SweepConfig) []ValidationIssue {
 		issues = append(issues, ValidationIssue{Level: "error", Check: "profile", Message: "profile is empty"})
 	} else if model == "" {
 		issues = append(issues, ValidationIssue{Level: "error", Check: "profile", Message: fmt.Sprintf("profile %q not found in auriga config", cfg.Profile)})
+	}
+
+	if cfg.Slot != 1 && cfg.Slot != 2 {
+		if cfg.Slot == 0 {
+			issues = append(issues, ValidationIssue{Level: "warning", Check: "slot", Message: "slot not set — will default to slot 1 (port " + fmt.Sprintf("%d", llamaserver.Slot1Port()) + ")"})
+		} else {
+			issues = append(issues, ValidationIssue{Level: "error", Check: "slot", Message: fmt.Sprintf("slot must be 1 or 2, got %d", cfg.Slot)})
+		}
 	}
 
 	if cfg.Iterations <= 0 {

@@ -63,6 +63,7 @@ func runSweepInit(profileName string) error {
 
 	cfg := SweepConfig{
 		Profile:       profileName,
+		Slot:          1,
 		Iterations:    5,
 		ProfileFields: buildProfileFields(profileName),
 		Parameters:    buildParameters(flagMap),
@@ -86,6 +87,8 @@ func buildInitDocument(cfg SweepConfig) *yaml.Node {
 	root.Content = append(root.Content,
 		&yaml.Node{Kind: yaml.ScalarNode, Value: "profile"},
 		&yaml.Node{Kind: yaml.ScalarNode, Value: cfg.Profile},
+		&yaml.Node{Kind: yaml.ScalarNode, Value: "slot", HeadComment: "Which slot to run the sweep on (1 or 2)"},
+		&yaml.Node{Kind: yaml.ScalarNode, Value: fmt.Sprintf("%d", cfg.Slot), Tag: "!!int"},
 		&yaml.Node{Kind: yaml.ScalarNode, Value: "iterations"},
 		&yaml.Node{Kind: yaml.ScalarNode, Value: fmt.Sprintf("%d", cfg.Iterations), Tag: "!!int"},
 	)

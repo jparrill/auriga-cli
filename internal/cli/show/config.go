@@ -54,31 +54,25 @@ func runShowConfig() error {
 		TS:      formatURL(tsIP, ollamaPort),
 	})
 
-	densePort := fmt.Sprintf("%d", llamaserver.DensePort())
-	moePort := fmt.Sprintf("%d", llamaserver.MoePort())
-
-	endpoints = append(endpoints, endpoint{
-		Service: "llama-server",
-		Type:    "dense",
-		Port:    densePort,
-		Local:   fmt.Sprintf("http://localhost:%s", densePort),
-		LAN:     formatURL(lanIP, densePort),
-		TS:      formatURL(tsIP, densePort),
-	})
-
-	if densePort != moePort {
+	slotPorts := llamaserver.AllSlotPorts()
+	customPorts := map[string]bool{}
+	for i, sp := range slotPorts {
+		ps := fmt.Sprintf("%d", sp)
+		customPorts[ps] = true
 		endpoints = append(endpoints, endpoint{
 			Service: "llama-server",
-			Type:    "moe",
-			Port:    moePort,
-			Local:   fmt.Sprintf("http://localhost:%s", moePort),
-			LAN:     formatURL(lanIP, moePort),
-			TS:      formatURL(tsIP, moePort),
+			Type:    fmt.Sprintf("slot-%d", i+1),
+			Port:    ps,
+			Local:   fmt.Sprintf("http://localhost:%s", ps),
+			LAN:     formatURL(lanIP, ps),
+			TS:      formatURL(tsIP, ps),
 		})
 	}
 
+	slot1Port := fmt.Sprintf("%d", slotPorts[0])
+	slot2Port := fmt.Sprintf("%d", slotPorts[1])
+
 	profiles := viper.GetStringMap("profiles")
-	customPorts := map[string]bool{densePort: true, moePort: true}
 	for name := range profiles {
 		p := viper.GetInt(fmt.Sprintf("profiles.%s.port", name))
 		if p > 0 {
@@ -106,9 +100,9 @@ func runShowConfig() error {
 	fmt.Println()
 	printProfileDetails()
 	fmt.Println()
-	printAPIEndpoints(densePort, moePort, lanIP, tsIP)
+	printAPIEndpoints(slot1Port, slot2Port, lanIP, tsIP)
 	fmt.Println()
-	printClientExamples(densePort, moePort, lanIP, tsIP)
+	printClientExamples(slot1Port, slot2Port, lanIP, tsIP)
 
 	return nil
 }
@@ -131,11 +125,7 @@ func printProfileDetails() {
 
 		port := viper.GetInt(key + ".port")
 		if port == 0 {
-			if pType == "moe" {
-				port = llamaserver.MoePort()
-			} else {
-				port = llamaserver.DensePort()
-			}
+			port = llamaserver.Slot1Port()
 		}
 
 		vision := "no"
@@ -209,29 +199,29 @@ func detectModelTypeShow(modelName string) string {
 	return "dense"
 }
 
-func printAPIEndpoints(densePort, moePort, lanIP, tsIP string) {
+func printAPIEndpoints(slot1Port, slot2Port, lanIP, tsIP string) {
 	host := bestRemoteIP(lanIP, tsIP)
 
 	tbl := ui.NewTable("OpenAI-Compatible API", "SERVICE", "ENDPOINT")
 	tbl.AddRow("Ollama", fmt.Sprintf("http://%s:11434/v1", host))
-	tbl.AddRow("llama-server (dense)", fmt.Sprintf("http://%s:%s/v1", host, densePort))
-	if densePort != moePort {
-		tbl.AddRow("llama-server (moe)", fmt.Sprintf("http://%s:%s/v1", host, moePort))
+	tbl.AddRow("llama-server (slot-1)", fmt.Sprintf("http://%s:%s/v1", host, slot1Port))
+	if slot1Port != slot2Port {
+		tbl.AddRow("llama-server (slot-2)", fmt.Sprintf("http://%s:%s/v1", host, slot2Port))
 	}
 	tbl.Print()
 }
 
-func printClientExamples(densePort, moePort, lanIP, tsIP string) {
+func printClientExamples(slot1Port, slot2Port, lanIP, tsIP string) {
 	host := bestRemoteIP(lanIP, tsIP)
 
 	ui.Info("OpenCode / other clients:")
 	fmt.Printf("  # Ollama (OpenAI-compatible)\n")
 	fmt.Printf("  OPENAI_API_BASE=http://%s:11434/v1 OPENAI_API_KEY=unused\n", host)
-	fmt.Printf("  # llama-server dense\n")
-	fmt.Printf("  OPENAI_API_BASE=http://%s:%s/v1 OPENAI_API_KEY=unused\n", host, densePort)
-	if densePort != moePort {
-		fmt.Printf("  # llama-server moe\n")
-		fmt.Printf("  OPENAI_API_BASE=http://%s:%s/v1 OPENAI_API_KEY=unused\n", host, moePort)
+	fmt.Printf("  # llama-server slot-1\n")
+	fmt.Printf("  OPENAI_API_BASE=http://%s:%s/v1 OPENAI_API_KEY=unused\n", host, slot1Port)
+	if slot1Port != slot2Port {
+		fmt.Printf("  # llama-server slot-2\n")
+		fmt.Printf("  OPENAI_API_BASE=http://%s:%s/v1 OPENAI_API_KEY=unused\n", host, slot2Port)
 	}
 }
 
