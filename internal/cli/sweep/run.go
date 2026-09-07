@@ -177,6 +177,7 @@ func runSweep(configPath, format string) error {
 			if err := profile.RunProfileSwitch(cfg.Profile, profile.SwitchOpts{
 				Persistent: true,
 				CtxSize:    ctxSize,
+				Slot:       cfg.Slot,
 				Quiet:      true,
 			}); err != nil {
 				result = SweepResult{
@@ -280,6 +281,7 @@ func runSweep(configPath, format string) error {
 		if err := profile.RunProfileSwitch(cfg.Profile, profile.SwitchOpts{
 			Persistent: true,
 			CtxSize:    ctxSize,
+			Slot:       cfg.Slot,
 			Quiet:      true,
 		}); err != nil {
 			return err

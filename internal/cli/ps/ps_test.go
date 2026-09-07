@@ -173,3 +173,31 @@ func TestCheckHealth_InvalidPort(t *testing.T) {
 		t.Errorf("When port not listening, health should be unreachable, got %q", got)
 	}
 }
+
+func TestPortToSlot(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	viper.Set("llama_server.slot_1_port", 8090)
+	viper.Set("llama_server.slot_2_port", 8091)
+
+	tests := []struct {
+		name string
+		port string
+		want string
+	}{
+		{"slot 1", "8090", "1"},
+		{"slot 2", "8091", "2"},
+		{"unknown port", "9999", "-"},
+		{"empty port", "", "-"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := portToSlot(tt.port)
+			if got != tt.want {
+				t.Errorf("portToSlot(%q) = %q, want %q", tt.port, got, tt.want)
+			}
+		})
+	}
+}

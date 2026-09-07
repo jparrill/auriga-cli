@@ -3,202 +3,219 @@ views:
   - title: Auriga
     icon: mdi:brain
     path: auriga
+    panel: true
     cards:
-      - type: markdown
-        content: |
-          ## Auriga AI Server
-          AMD Ryzen AI Max+ 395 | 128GB LPDDR5x | 108GB GTT
-
       - type: vertical-stack
         cards:
-          - type: custom:mushroom-title-card
-            title: "Slot 1 (:8090)"
-            subtitle: >-
-              {{ states('sensor.auriga_slot1_status') | upper }}
-              {% if states('sensor.auriga_slot1_processing') == 'True' %} — ACTIVE{% endif %}
+          - type: markdown
+            content: |
+              ## Auriga AI Server
+              AMD Ryzen AI Max+ 395 | 128GB LPDDR5x | 108GB GTT
 
-          - type: horizontal-stack
-            cards:
-              - type: gauge
-                entity: sensor.auriga_slot1_pp_speed
-                name: PP
-                min: 0
-                max: 2000
-                severity:
-                  green: 500
-                  yellow: 100
-                  red: 0
-                needle: true
+          - type: custom:tabbed-card
+            tabs:
+              - attributes:
+                  label: "Slot 1 (:8090)"
+                  icon: mdi:server
+                card:
+                  type: vertical-stack
+                  cards:
+                    - type: markdown
+                      content: >-
+                        **{{ states('sensor.auriga_slot1_model') }}**
+                        · {{ states('sensor.auriga_slot1_quant') }}
+                        · CTX {{ states('sensor.auriga_slot1_max_context') }}
+                        · {{ states('sensor.auriga_slot1_status') | upper }}
+                        {% if states('sensor.auriga_slot1_processing') == 'True' %} · **ACTIVE**{% endif %}
 
-              - type: gauge
-                entity: sensor.auriga_slot1_tg_speed
-                name: TG
-                min: 0
-                max: 200
-                severity:
-                  green: 50
-                  yellow: 20
-                  red: 0
-                needle: true
+                    - type: horizontal-stack
+                      cards:
+                        - type: gauge
+                          entity: sensor.auriga_slot1_pp_speed
+                          name: PP (tok/s)
+                          min: 0
+                          max: 2000
+                          severity:
+                            green: 500
+                            yellow: 100
+                            red: 0
+                          needle: true
 
-              - type: gauge
-                entity: sensor.auriga_slot1_dar
-                name: DAR
-                min: 0
-                max: 100
-                severity:
-                  green: 60
-                  yellow: 40
-                  red: 0
+                        - type: gauge
+                          entity: sensor.auriga_slot1_tg_speed
+                          name: TG (tok/s)
+                          min: 0
+                          max: 200
+                          severity:
+                            green: 50
+                            yellow: 20
+                            red: 0
+                          needle: true
 
-              - type: gauge
-                entity: sensor.auriga_slot1_cache_hit
-                name: Cache Hit
-                min: 0
-                max: 100
-                severity:
-                  green: 50
-                  yellow: 20
-                  red: 0
+                        - type: gauge
+                          entity: sensor.auriga_slot1_dar
+                          name: DAR
+                          min: 0
+                          max: 100
+                          severity:
+                            green: 60
+                            yellow: 40
+                            red: 0
 
-          - type: horizontal-stack
-            cards:
-              - type: custom:mini-graph-card
-                name: PP tok/s
-                entities:
-                  - sensor.auriga_slot1_pp_speed
-                hours_to_show: 6
-                line_width: 2
-                height: 80
-                color_thresholds:
-                  - value: 0
-                    color: "#ff6b6b"
-                  - value: 100
-                    color: "#ffd93d"
-                  - value: 500
-                    color: "#6bcb77"
+                        - type: gauge
+                          entity: sensor.auriga_slot1_cache_hit
+                          name: Cache Hit
+                          min: 0
+                          max: 100
+                          severity:
+                            green: 50
+                            yellow: 20
+                            red: 0
 
-              - type: custom:mini-graph-card
-                name: TG tok/s
-                entities:
-                  - sensor.auriga_slot1_tg_speed
-                hours_to_show: 6
-                line_width: 2
-                height: 80
-                color_thresholds:
-                  - value: 0
-                    color: "#ff6b6b"
-                  - value: 20
-                    color: "#ffd93d"
-                  - value: 50
-                    color: "#6bcb77"
+                    - type: horizontal-stack
+                      cards:
+                        - type: custom:mini-graph-card
+                          name: PP tok/s
+                          entities:
+                            - sensor.auriga_slot1_pp_speed
+                          hours_to_show: 6
+                          line_width: 2
+                          height: 100
+                          color_thresholds:
+                            - value: 0
+                              color: "#ff6b6b"
+                            - value: 100
+                              color: "#ffd93d"
+                            - value: 500
+                              color: "#6bcb77"
 
-          - type: entities
-            entities:
-              - entity: sensor.auriga_slot1_prompt_tokens
-                name: IN tokens
-              - entity: sensor.auriga_slot1_generated_tokens
-                name: OUT tokens
-              - entity: sensor.auriga_slot1_cached_tokens
-                name: Cached tokens
-              - entity: sensor.auriga_slot1_active_requests
-                name: Active Requests
-              - entity: sensor.auriga_slot1_speculative
-                name: Speculative Decoding
+                        - type: custom:mini-graph-card
+                          name: TG tok/s
+                          entities:
+                            - sensor.auriga_slot1_tg_speed
+                          hours_to_show: 6
+                          line_width: 2
+                          height: 100
+                          color_thresholds:
+                            - value: 0
+                              color: "#ff6b6b"
+                            - value: 20
+                              color: "#ffd93d"
+                            - value: 50
+                              color: "#6bcb77"
 
-      - type: vertical-stack
-        cards:
-          - type: custom:mushroom-title-card
-            title: "Slot 2 (:8091)"
-            subtitle: >-
-              {{ states('sensor.auriga_slot2_status') | upper }}
-              {% if states('sensor.auriga_slot2_processing') == 'True' %} — ACTIVE{% endif %}
+                    - type: entities
+                      entities:
+                        - entity: sensor.auriga_slot1_prompt_tokens
+                          name: IN tokens
+                        - entity: sensor.auriga_slot1_generated_tokens
+                          name: OUT tokens
+                        - entity: sensor.auriga_slot1_cached_tokens
+                          name: Cached tokens
+                        - entity: sensor.auriga_slot1_active_requests
+                          name: Active Requests
+                        - entity: sensor.auriga_slot1_speculative
+                          name: Speculative Decoding
 
-          - type: horizontal-stack
-            cards:
-              - type: gauge
-                entity: sensor.auriga_slot2_pp_speed
-                name: PP
-                min: 0
-                max: 2000
-                severity:
-                  green: 500
-                  yellow: 100
-                  red: 0
-                needle: true
+              - attributes:
+                  label: "Slot 2 (:8091)"
+                  icon: mdi:server
+                card:
+                  type: vertical-stack
+                  cards:
+                    - type: markdown
+                      content: >-
+                        **{{ states('sensor.auriga_slot2_model') }}**
+                        · {{ states('sensor.auriga_slot2_quant') }}
+                        · CTX {{ states('sensor.auriga_slot2_max_context') }}
+                        · {{ states('sensor.auriga_slot2_status') | upper }}
+                        {% if states('sensor.auriga_slot2_processing') == 'True' %} · **ACTIVE**{% endif %}
 
-              - type: gauge
-                entity: sensor.auriga_slot2_tg_speed
-                name: TG
-                min: 0
-                max: 200
-                severity:
-                  green: 50
-                  yellow: 20
-                  red: 0
-                needle: true
+                    - type: horizontal-stack
+                      cards:
+                        - type: gauge
+                          entity: sensor.auriga_slot2_pp_speed
+                          name: PP (tok/s)
+                          min: 0
+                          max: 2000
+                          severity:
+                            green: 500
+                            yellow: 100
+                            red: 0
+                          needle: true
 
-              - type: gauge
-                entity: sensor.auriga_slot2_dar
-                name: DAR
-                min: 0
-                max: 100
-                severity:
-                  green: 60
-                  yellow: 40
-                  red: 0
+                        - type: gauge
+                          entity: sensor.auriga_slot2_tg_speed
+                          name: TG (tok/s)
+                          min: 0
+                          max: 200
+                          severity:
+                            green: 50
+                            yellow: 20
+                            red: 0
+                          needle: true
 
-              - type: gauge
-                entity: sensor.auriga_slot2_cache_hit
-                name: Cache Hit
-                min: 0
-                max: 100
-                severity:
-                  green: 50
-                  yellow: 20
-                  red: 0
+                        - type: gauge
+                          entity: sensor.auriga_slot2_dar
+                          name: DAR
+                          min: 0
+                          max: 100
+                          severity:
+                            green: 60
+                            yellow: 40
+                            red: 0
 
-          - type: horizontal-stack
-            cards:
-              - type: custom:mini-graph-card
-                name: PP tok/s
-                entities:
-                  - sensor.auriga_slot2_pp_speed
-                hours_to_show: 6
-                line_width: 2
-                height: 80
-                color_thresholds:
-                  - value: 0
-                    color: "#ff6b6b"
-                  - value: 100
-                    color: "#ffd93d"
-                  - value: 500
-                    color: "#6bcb77"
+                        - type: gauge
+                          entity: sensor.auriga_slot2_cache_hit
+                          name: Cache Hit
+                          min: 0
+                          max: 100
+                          severity:
+                            green: 50
+                            yellow: 20
+                            red: 0
 
-              - type: custom:mini-graph-card
-                name: TG tok/s
-                entities:
-                  - sensor.auriga_slot2_tg_speed
-                hours_to_show: 6
-                line_width: 2
-                height: 80
-                color_thresholds:
-                  - value: 0
-                    color: "#ff6b6b"
-                  - value: 20
-                    color: "#ffd93d"
-                  - value: 50
-                    color: "#6bcb77"
+                    - type: horizontal-stack
+                      cards:
+                        - type: custom:mini-graph-card
+                          name: PP tok/s
+                          entities:
+                            - sensor.auriga_slot2_pp_speed
+                          hours_to_show: 6
+                          line_width: 2
+                          height: 100
+                          color_thresholds:
+                            - value: 0
+                              color: "#ff6b6b"
+                            - value: 100
+                              color: "#ffd93d"
+                            - value: 500
+                              color: "#6bcb77"
 
-          - type: entities
-            entities:
-              - entity: sensor.auriga_slot2_prompt_tokens
-                name: IN tokens
-              - entity: sensor.auriga_slot2_generated_tokens
-                name: OUT tokens
-              - entity: sensor.auriga_slot2_cached_tokens
-                name: Cached tokens
-              - entity: sensor.auriga_slot2_active_requests
-                name: Active Requests
-              - entity: sensor.auriga_slot2_speculative
-                name: Speculative Decoding
+                        - type: custom:mini-graph-card
+                          name: TG tok/s
+                          entities:
+                            - sensor.auriga_slot2_tg_speed
+                          hours_to_show: 6
+                          line_width: 2
+                          height: 100
+                          color_thresholds:
+                            - value: 0
+                              color: "#ff6b6b"
+                            - value: 20
+                              color: "#ffd93d"
+                            - value: 50
+                              color: "#6bcb77"
+
+                    - type: entities
+                      entities:
+                        - entity: sensor.auriga_slot2_prompt_tokens
+                          name: IN tokens
+                        - entity: sensor.auriga_slot2_generated_tokens
+                          name: OUT tokens
+                        - entity: sensor.auriga_slot2_cached_tokens
+                          name: Cached tokens
+                        - entity: sensor.auriga_slot2_active_requests
+                          name: Active Requests
+                        - entity: sensor.auriga_slot2_speculative
+                          name: Speculative Decoding

@@ -703,3 +703,46 @@ func TestInjectDrafterFlags_NoDrafter(t *testing.T) {
 		t.Errorf("When no drafter configured, flags should be unchanged, got %v", result)
 	}
 }
+
+func TestFormatFlagPairs_SingleLine(t *testing.T) {
+	flags := []string{"--cache-type-k", "q4_0", "--threads", "16"}
+	got := formatFlagPairs(flags)
+	if got != "--cache-type-k q4_0 --threads 16" {
+		t.Errorf("When flags fit on one line, should not wrap, got %q", got)
+	}
+}
+
+func TestFormatFlagPairs_WrapsLongLines(t *testing.T) {
+	flags := []string{
+		"--cache-type-k", "q4_0", "--cache-type-v", "q4_0",
+		"--batch-size", "2048", "--ubatch-size", "1024",
+		"--threads", "16", "--spec-type", "draft-mtp",
+		"--spec-draft-n-max", "4", "--spec-draft-p-min", "0.75",
+	}
+	got := formatFlagPairs(flags)
+	lines := strings.Split(got, "\n         ")
+	if len(lines) < 2 {
+		t.Errorf("When flags exceed 70 chars, should wrap to multiple lines, got %d lines: %q", len(lines), got)
+	}
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if len(trimmed) > 80 {
+			t.Errorf("Line %d too long (%d chars): %q", i, len(trimmed), trimmed)
+		}
+	}
+}
+
+func TestFormatFlagPairs_BooleanFlag(t *testing.T) {
+	flags := []string{"--jinja", "--cache-type-k", "q8_0"}
+	got := formatFlagPairs(flags)
+	if got != "--jinja --cache-type-k q8_0" {
+		t.Errorf("When flag has no value (next starts with -), should stay standalone, got %q", got)
+	}
+}
+
+func TestFormatFlagPairs_Empty(t *testing.T) {
+	got := formatFlagPairs(nil)
+	if got != "" {
+		t.Errorf("When no flags, should return empty, got %q", got)
+	}
+}

@@ -9,7 +9,31 @@
 #   Add to configuration.yaml:
 #     rest: !include auriga_sensors.yaml
 
-# --- Slot 1 / Dense instance (port 8090) ---
+# --- Slot 1 (port 8090) ---
+
+- resource: "http://100.77.65.108:8090/v1/models"
+  scan_interval: 60
+  sensor:
+    - name: "Auriga Slot1 Model"
+      value_template: >-
+        {% set name = value_json.data[0].id | regex_findall('[^/]+$') %}
+        {{ name[0] | regex_replace('\.gguf$', '') | regex_replace('-0000[0-9]+-of-[0-9]+', '') if name else 'unknown' }}
+      icon: mdi:brain
+
+    - name: "Auriga Slot1 Quant"
+      value_template: "{{ value_json.data[0].meta.ftype }}"
+      icon: mdi:numeric
+
+    - name: "Auriga Slot1 Max Context"
+      value_template: "{{ value_json.data[0].meta.n_ctx }}"
+      unit_of_measurement: "tokens"
+      icon: mdi:arrow-expand-horizontal
+
+    - name: "Auriga Slot1 Modalities"
+      value_template: >-
+        {% set caps = value_json.data[0].aliases %}
+        {{ value_json.models[0].capabilities | join(', ') }}
+      icon: mdi:eye
 
 - resource: "http://100.77.65.108:8090/health"
   scan_interval: 15
@@ -91,7 +115,30 @@
       unit_of_measurement: "tokens"
       icon: mdi:cached
 
-# --- Slot 2 / MoE instance (port 8091) ---
+# --- Slot 2 (port 8091) ---
+
+- resource: "http://100.77.65.108:8091/v1/models"
+  scan_interval: 60
+  sensor:
+    - name: "Auriga Slot2 Model"
+      value_template: >-
+        {% set name = value_json.data[0].id | regex_findall('[^/]+$') %}
+        {{ name[0] | regex_replace('\.gguf$', '') | regex_replace('-0000[0-9]+-of-[0-9]+', '') if name else 'unknown' }}
+      icon: mdi:brain
+
+    - name: "Auriga Slot2 Quant"
+      value_template: "{{ value_json.data[0].meta.ftype }}"
+      icon: mdi:numeric
+
+    - name: "Auriga Slot2 Max Context"
+      value_template: "{{ value_json.data[0].meta.n_ctx }}"
+      unit_of_measurement: "tokens"
+      icon: mdi:arrow-expand-horizontal
+
+    - name: "Auriga Slot2 Modalities"
+      value_template: >-
+        {{ value_json.models[0].capabilities | join(', ') }}
+      icon: mdi:eye
 
 - resource: "http://100.77.65.108:8091/health"
   scan_interval: 15

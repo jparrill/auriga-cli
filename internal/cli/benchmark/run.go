@@ -8,6 +8,7 @@ import (
 	bench "github.com/jparrill/auriga-cli/internal/benchmark"
 	_ "github.com/jparrill/auriga-cli/internal/benchmark/formats" // register formats
 	"github.com/jparrill/auriga-cli/internal/config"
+	"github.com/jparrill/auriga-cli/internal/llamaserver"
 	"github.com/jparrill/auriga-cli/internal/ui"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -19,6 +20,7 @@ type runOpts struct {
 	GenTimeout  int
 	Suite       string
 	Host        string
+	Slot        int
 	Temperature float64
 }
 
@@ -46,12 +48,22 @@ Examples:
 	cmd.Flags().IntVar(&opts.GenTimeout, "timeout", 0, "Generation timeout in seconds (default from config)")
 	cmd.Flags().StringVar(&opts.Suite, "suite", "", "Benchmark suite to run (default: legacy webgen)")
 	cmd.Flags().StringVar(&opts.Host, "host", "", "Override host URL (e.g., http://remote:8090)")
+	cmd.Flags().IntVar(&opts.Slot, "slot", 0, "Slot to benchmark (1 or 2, sets host and backend automatically)")
 	cmd.Flags().Float64Var(&opts.Temperature, "temperature", 0.3, "LLM sampling temperature (0.0 = deterministic)")
 
 	return cmd
 }
 
 func runBenchmarkRun(opts *runOpts) error {
+	if opts.Slot != 0 {
+		if opts.Slot != 1 && opts.Slot != 2 {
+			return fmt.Errorf("--slot must be 1 or 2, got %d", opts.Slot)
+		}
+		port := llamaserver.SlotPort(opts.Slot)
+		opts.Host = llamaserver.HostForPort(port)
+		opts.Backend = "llama-server"
+	}
+
 	resultsDir := config.ExpandHome(viper.GetString("benchmark.results_dir"))
 	maxRetries := viper.GetInt("benchmark.max_retries")
 	maxTokens := viper.GetInt("benchmark.max_tokens")

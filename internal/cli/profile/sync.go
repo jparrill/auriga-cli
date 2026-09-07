@@ -99,7 +99,22 @@ func SyncProfile(name string) SyncResult {
 	}
 
 	if modelExists && repo != "" {
-		modelExists = verifyFile(name, model, modelPath, repo, model)
+		if parts := SplitFiles(filepath.Base(model)); parts != nil {
+			dir := filepath.Dir(model)
+			for _, p := range parts {
+				repoFile := p
+				if dir != "." {
+					repoFile = filepath.Join(dir, p)
+				}
+				partPath := filepath.Join(ggufDir, repoFile)
+				if !verifyFile(name, repoFile, partPath, repo, repoFile) {
+					modelExists = false
+					break
+				}
+			}
+		} else {
+			modelExists = verifyFile(name, model, modelPath, repo, model)
+		}
 	}
 
 	mmprojExists := true
