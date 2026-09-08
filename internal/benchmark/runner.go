@@ -52,10 +52,16 @@ func RunAll(cfg RunConfig) ([]Result, error) {
 	}
 	ui.Ok(fmt.Sprintf("Detected model: %s", model))
 
-	// Warmup
 	ui.Info("Warmup request...")
-	_, _ = llamaserver.Generate("Hello", 16, 0.0, 30*time.Second)
-	ui.Ok("Warmup done")
+	warmupStart := time.Now()
+	warmupPrompt := "Write a Python function that checks if a number is prime. Include type hints and a docstring. Then write 3 unit tests for it."
+	_, warmupErr := llamaserver.Generate(warmupPrompt, 512, 0.0, 60*time.Second)
+	warmupDur := time.Since(warmupStart).Seconds()
+	if warmupErr != nil {
+		ui.Warn(fmt.Sprintf("Warmup failed (%.1fs): %v", warmupDur, warmupErr))
+	} else {
+		ui.Ok(fmt.Sprintf("Warmup done (%.1fs)", warmupDur))
+	}
 
 	var fmtSuite formats.Suite
 	var format formats.FormatRunner
