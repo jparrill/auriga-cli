@@ -32,8 +32,8 @@ Examples:
   auriga profile serve qwen3.6-vision        # Start llama-server with profile
   auriga profile stop                        # Stop llama-server, restart Ollama
 
-  auriga benchmark list                      # Show all benchmark results
-  auriga benchmark list --failed             # Only failed results
+  auriga benchmark list                      # List all benchmark runs
+  auriga benchmark show                      # Show latest run details
 
   auriga ps                                  # Show running components`,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {

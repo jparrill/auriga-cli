@@ -14,7 +14,7 @@ var (
 	DefaultMMProjDir      = "~/infra/ai/models/mmproj"
 	DefaultModelfilesDir  = "~/infra/ai/models/modelfiles"
 	DefaultProfilesDir    = "~/infra/ai/profiles"
-	DefaultResultsDir     = "~/Projects/auriga-lab/results"
+	DefaultResultsDir     = "~/.config/auriga/benchmarks"
 	DefaultLlamaServerBin  = "~/infra/bin/llama-server"
 	DefaultOllamaHost      = "http://localhost:11434"
 	DefaultLlamaServerHost = "http://localhost:8090"

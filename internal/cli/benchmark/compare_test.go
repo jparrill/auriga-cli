@@ -314,47 +314,6 @@ func TestResolveRunDir(t *testing.T) {
 	}
 }
 
-func TestHasLegacyResults(t *testing.T) {
-	tests := []struct {
-		name  string
-		setup func(dir string)
-		want  bool
-	}{
-		{
-			name: "When dir has a subdirectory with metadata.json, it should return true",
-			setup: func(dir string) {
-				sub := filepath.Join(dir, "model__ollama")
-				os.MkdirAll(sub, 0755)
-				os.WriteFile(filepath.Join(sub, "metadata.json"), []byte("{}"), 0644)
-			},
-			want: true,
-		},
-		{
-			name:  "When dir is empty, it should return false",
-			setup: func(dir string) {},
-			want:  false,
-		},
-		{
-			name: "When dir has subdirectories without metadata.json, it should return false",
-			setup: func(dir string) {
-				os.MkdirAll(filepath.Join(dir, "subdir"), 0755)
-			},
-			want: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			dir := t.TempDir()
-			tt.setup(dir)
-			got := hasLegacyResults(dir)
-			if got != tt.want {
-				t.Errorf("got %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
 func TestNewBenchmarkCompareCmd(t *testing.T) {
 	tests := []struct {
 		name    string
