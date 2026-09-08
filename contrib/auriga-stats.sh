@@ -56,8 +56,10 @@ d = json.load(sys.stdin).get('card0', {})
 print(round(int(d.get('VRAM Total Used Memory (B)', '0')) / 1073741824, 1))
 " 2>/dev/null || echo 0)
 
-# Disk
-eval $(df / --output=size,used,avail,pcent 2>/dev/null | awk 'NR==2{gsub(/%/,"",$4); printf "disk_total=%d disk_used=%d disk_avail=%d disk_pct=%d", $1/1048576, $2/1048576, $3/1048576, $4}')
+# Disk (root)
+eval $(df / --output=size,used,avail,pcent 2>/dev/null | awk 'NR==2{gsub(/%/,"",$4); printf "disk_root_total=%d disk_root_used=%d disk_root_pct=%d", $1/1048576, $2/1048576, $4}')
+# Disk (data)
+eval $(df /data --output=size,used,avail,pcent 2>/dev/null | awk 'NR==2{gsub(/%/,"",$4); printf "disk_data_total=%d disk_data_used=%d disk_data_pct=%d", $1/1048576, $2/1048576, $4}')
 
 # Uptime and load
 load=$(awk '{print $1}' /proc/loadavg)
@@ -77,9 +79,12 @@ cat <<EOF
   "gtt_used_gb": ${gtt_used:-0},
   "vram_total_gb": ${vram_total:-0},
   "vram_used_gb": ${vram_used:-0},
-  "disk_total_gb": ${disk_total:-0},
-  "disk_used_gb": ${disk_used:-0},
-  "disk_pct": ${disk_pct:-0},
+  "disk_root_total_gb": ${disk_root_total:-0},
+  "disk_root_used_gb": ${disk_root_used:-0},
+  "disk_root_pct": ${disk_root_pct:-0},
+  "disk_data_total_gb": ${disk_data_total:-0},
+  "disk_data_used_gb": ${disk_data_used:-0},
+  "disk_data_pct": ${disk_data_pct:-0},
   "load_1m": ${load:-0},
   "uptime_s": ${uptime_s:-0}
 }

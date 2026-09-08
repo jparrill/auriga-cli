@@ -265,14 +265,15 @@ views:
                             red: 90
 
                         - type: gauge
-                          entity: sensor.auriga_disk_pct
-                          name: Disk
+                          entity: sensor.auriga_gtt_used
+                          name: GTT Used
                           min: 0
-                          max: 100
+                          max: 108
+                          unit: GB
                           severity:
                             green: 0
-                            yellow: 70
-                            red: 90
+                            yellow: 75
+                            red: 95
 
                     - type: horizontal-stack
                       cards:
@@ -338,19 +339,49 @@ views:
                             - value: 85
                               color: "#ff6b6b"
 
-                    - type: entities
-                      entities:
-                        - entity: sensor.auriga_ram_used
-                          name: "RAM Used"
-                        - entity: sensor.auriga_gtt_used
-                          name: "GTT Used"
-                        - entity: sensor.auriga_gtt_total
-                          name: "GTT Total"
-                        - entity: sensor.auriga_gpu_use
-                          name: "GPU Utilization"
-                        - entity: sensor.auriga_gpu_power
-                          name: "GPU Power"
-                        - entity: sensor.auriga_disk_used
-                          name: "Disk Used"
-                        - entity: sensor.auriga_uptime
-                          name: "Uptime"
+                    - type: horizontal-stack
+                      cards:
+                        - type: entities
+                          title: "Memory"
+                          icon: mdi:memory
+                          entities:
+                            - entity: sensor.auriga_ram_used
+                              name: "Used"
+                            - entity: sensor.auriga_ram_pct
+                              name: "Usage"
+
+                        - type: entities
+                          title: "GPU"
+                          icon: mdi:expansion-card
+                          entities:
+                            - entity: sensor.auriga_gtt_used
+                              name: "GTT Used"
+                            - entity: sensor.auriga_gtt_total
+                              name: "GTT Total"
+                            - entity: sensor.auriga_gpu_use
+                              name: "Utilization"
+                            - entity: sensor.auriga_gpu_power
+                              name: "Power"
+
+                        - type: entities
+                          title: "Storage"
+                          icon: mdi:harddisk
+                          entities:
+                            - entity: sensor.auriga_disk_root_used
+                              name: "nvme1 / (919 GB)"
+                            - entity: sensor.auriga_disk_root_pct
+                              name: "nvme1 / usage"
+                            - type: divider
+                            - entity: sensor.auriga_disk_data_used
+                              name: "nvme0 /data (3.7 TB)"
+                            - entity: sensor.auriga_disk_data_pct
+                              name: "nvme0 /data usage"
+
+                        - type: entities
+                          title: "System"
+                          icon: mdi:server
+                          entities:
+                            - entity: sensor.auriga_load
+                              name: "Load 1m"
+                            - entity: sensor.auriga_uptime
+                              name: "Uptime"

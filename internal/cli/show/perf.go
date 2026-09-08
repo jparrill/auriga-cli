@@ -135,7 +135,7 @@ func resolveProfileForPort(port int) string {
 			if runningModel == "" {
 				return name
 			}
-			if viper.GetString(fmt.Sprintf("profiles.%s.model", name)) == runningModel {
+			if filepath.Base(viper.GetString(fmt.Sprintf("profiles.%s.model", name))) == runningModel {
 				return name
 			}
 		}

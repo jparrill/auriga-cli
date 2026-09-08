@@ -280,13 +280,23 @@
       unit_of_measurement: "%"
       icon: mdi:chip
 
-    - name: "Auriga Disk Pct"
-      value_template: "{{ value_json.disk_pct }}"
+    - name: "Auriga Disk Root Pct"
+      value_template: "{{ value_json.disk_root_pct }}"
       unit_of_measurement: "%"
       icon: mdi:harddisk
 
-    - name: "Auriga Disk Used"
-      value_template: "{{ value_json.disk_used_gb }}"
+    - name: "Auriga Disk Root Used"
+      value_template: "{{ value_json.disk_root_used_gb }}"
+      unit_of_measurement: "GB"
+      icon: mdi:harddisk
+
+    - name: "Auriga Disk Data Pct"
+      value_template: "{{ value_json.disk_data_pct }}"
+      unit_of_measurement: "%"
+      icon: mdi:harddisk
+
+    - name: "Auriga Disk Data Used"
+      value_template: "{{ value_json.disk_data_used_gb }}"
       unit_of_measurement: "GB"
       icon: mdi:harddisk
 
