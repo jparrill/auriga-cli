@@ -121,6 +121,7 @@ func RunSandboxed(ctx context.Context, name string, args []string, opts SandboxO
 
 	containerArgs := []string{
 		"run", "--rm",
+		"--security-opt", "label=disable",
 		"-v", opts.Dir + ":/work",
 		"-w", "/work",
 		opts.Image,
