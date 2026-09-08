@@ -35,6 +35,25 @@ type chatResponse struct {
 			Content string `json:"content"`
 		} `json:"message"`
 	} `json:"choices"`
+	Usage struct {
+		PromptTokens     int `json:"prompt_tokens"`
+		CompletionTokens int `json:"completion_tokens"`
+	} `json:"usage"`
+	Timings struct {
+		PromptN       int     `json:"prompt_n"`
+		PromptMS      float64 `json:"prompt_ms"`
+		PredictedN    int     `json:"predicted_n"`
+		PredictedMS   float64 `json:"predicted_ms"`
+	} `json:"timings"`
+}
+
+type GenerateStats struct {
+	Content          string
+	PromptTokens     int
+	CompletionTokens int
+	PromptTokPerSec  float64
+	GenTokPerSec     float64
+	TTFT             float64
 }
 
 func Host() string {
@@ -299,4 +318,61 @@ func Generate(prompt string, maxTokens int, temperature float64, timeout time.Du
 		return "", fmt.Errorf("empty response from llama-server")
 	}
 	return chatResp.Choices[0].Message.Content, nil
+}
+
+func GenerateWithStats(prompt string, maxTokens int, temperature float64, timeout time.Duration) (GenerateStats, error) {
+	if temperature == 0 {
+		temperature = 0.3
+	}
+
+	payload := chatRequest{
+		Model: "local",
+		Messages: []chatMessage{
+			{Role: "user", Content: prompt},
+		},
+		MaxTokens:   maxTokens,
+		Temperature: temperature,
+		Stream:      false,
+	}
+
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return GenerateStats{}, err
+	}
+
+	client := &http.Client{Timeout: timeout}
+	resp, err := client.Post(Host()+"/v1/chat/completions", "application/json", strings.NewReader(string(data)))
+	if err != nil {
+		return GenerateStats{}, fmt.Errorf("llama-server call failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return GenerateStats{}, fmt.Errorf("llama-server returned %d", resp.StatusCode)
+	}
+
+	var chatResp chatResponse
+	if err := json.NewDecoder(resp.Body).Decode(&chatResp); err != nil {
+		return GenerateStats{}, fmt.Errorf("invalid response: %w", err)
+	}
+
+	if len(chatResp.Choices) == 0 {
+		return GenerateStats{}, fmt.Errorf("empty response from llama-server")
+	}
+
+	stats := GenerateStats{
+		Content:          chatResp.Choices[0].Message.Content,
+		PromptTokens:     chatResp.Usage.PromptTokens,
+		CompletionTokens: chatResp.Usage.CompletionTokens,
+	}
+
+	if chatResp.Timings.PromptMS > 0 && chatResp.Timings.PromptN > 0 {
+		stats.PromptTokPerSec = float64(chatResp.Timings.PromptN) / (chatResp.Timings.PromptMS / 1000.0)
+		stats.TTFT = chatResp.Timings.PromptMS
+	}
+	if chatResp.Timings.PredictedMS > 0 && chatResp.Timings.PredictedN > 0 {
+		stats.GenTokPerSec = float64(chatResp.Timings.PredictedN) / (chatResp.Timings.PredictedMS / 1000.0)
+	}
+
+	return stats, nil
 }
