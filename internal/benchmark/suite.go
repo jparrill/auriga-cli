@@ -36,13 +36,16 @@ type Level struct {
 }
 
 type Problem struct {
-	TaskID     string   `json:"task_id"`
-	Prompt     string   `json:"prompt"`
-	Test       string   `json:"test,omitempty"`
-	EntryPoint string   `json:"entry_point,omitempty"`
-	Level      string   `json:"level,omitempty"`
-	Eval       []string `json:"eval,omitempty"`
-	TestCmd    string   `json:"test_cmd,omitempty"`
+	TaskID      string   `json:"task_id"`
+	Prompt      string   `json:"prompt"`
+	Test        string   `json:"test,omitempty"`
+	EntryPoint  string   `json:"entry_point,omitempty"`
+	Level       string   `json:"level,omitempty"`
+	Eval        []string `json:"eval,omitempty"`
+	TestCmd     string   `json:"test_cmd,omitempty"`
+	Import      string   `json:"import,omitempty"`
+	Declaration string   `json:"declaration,omitempty"`
+	TestSetup   string   `json:"test_setup,omitempty"`
 }
 
 func SuitesDir() string {
