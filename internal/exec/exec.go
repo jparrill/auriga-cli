@@ -105,34 +105,40 @@ type SandboxOpts struct {
 }
 
 func RunSandboxed(ctx context.Context, name string, args []string, opts SandboxOpts) (string, error) {
+	runtime := containerRuntime()
+
 	if config.DryRun {
-		cmdStr := fmt.Sprintf("docker run --rm -v %s:/work -w /work %s %s %s",
-			opts.Dir, opts.Image, name, strings.Join(args, " "))
+		cmdStr := fmt.Sprintf("%s run --rm -v %s:/work -w /work %s %s %s",
+			runtime, opts.Dir, opts.Image, name, strings.Join(args, " "))
 		fmt.Println(ui.MutedStyle.Render("[dry-run]"), cmdStr)
 		return "", nil
 	}
 
-	if !dockerAvailable() {
-		ui.Warn("Docker not available — running validation without sandbox")
+	if runtime == "" {
+		ui.Warn("No container runtime (docker/podman) — running validation without sandbox")
 		return RunCapture(ctx, name, args, RunOpts{Dir: opts.Dir})
 	}
 
-	dockerArgs := []string{
+	containerArgs := []string{
 		"run", "--rm",
 		"-v", opts.Dir + ":/work",
 		"-w", "/work",
 		opts.Image,
 		name,
 	}
-	dockerArgs = append(dockerArgs, args...)
+	containerArgs = append(containerArgs, args...)
 
-	ui.Logger.Debug("sandbox", "image", opts.Image, "cmd", name+" "+strings.Join(args, " "))
-	return RunCapture(ctx, "docker", dockerArgs, RunOpts{})
+	ui.Logger.Debug("sandbox", "runtime", runtime, "image", opts.Image, "cmd", name+" "+strings.Join(args, " "))
+	return RunCapture(ctx, runtime, containerArgs, RunOpts{})
 }
 
-func dockerAvailable() bool {
-	cmd := exec.Command("docker", "info")
-	return cmd.Run() == nil
+func containerRuntime() string {
+	for _, rt := range []string{"docker", "podman"} {
+		if exec.Command(rt, "info").Run() == nil {
+			return rt
+		}
+	}
+	return ""
 }
 
 func buildEnv(extra map[string]string) []string {
