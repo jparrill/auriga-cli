@@ -64,33 +64,48 @@ func runBenchmarkList(failedOnly bool, run string) error {
 		return fmt.Errorf("run %q not found in %s", run, resultsDir)
 	}
 
-	entries, err := os.ReadDir(runDir)
-	if err != nil {
-		return fmt.Errorf("cannot read run dir %s: %w", runDir, err)
+	var results []benchmarkResult
+
+	summaryPath := filepath.Join(runDir, "summary.json")
+	if data, err := os.ReadFile(summaryPath); err == nil {
+		var summaryResults []benchmarkResult
+		if json.Unmarshal(data, &summaryResults) == nil {
+			for _, r := range summaryResults {
+				if failedOnly && r.Success {
+					continue
+				}
+				results = append(results, r)
+			}
+		}
 	}
 
-	var results []benchmarkResult
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		metaPath := filepath.Join(runDir, e.Name(), "metadata.json")
-		data, err := os.ReadFile(metaPath)
+	if len(results) == 0 {
+		entries, err := os.ReadDir(runDir)
 		if err != nil {
-			continue
+			return fmt.Errorf("cannot read run dir %s: %w", runDir, err)
 		}
-		var r benchmarkResult
-		if err := json.Unmarshal(data, &r); err != nil {
-			continue
-		}
-		r.Dir = filepath.Join(runDir, e.Name())
-		_, srcErr := os.Stat(filepath.Join(r.Dir, "project", "src"))
-		r.HasSrc = srcErr == nil
+		for _, e := range entries {
+			if !e.IsDir() {
+				continue
+			}
+			metaPath := filepath.Join(runDir, e.Name(), "metadata.json")
+			data, err := os.ReadFile(metaPath)
+			if err != nil {
+				continue
+			}
+			var r benchmarkResult
+			if err := json.Unmarshal(data, &r); err != nil {
+				continue
+			}
+			r.Dir = filepath.Join(runDir, e.Name())
+			_, srcErr := os.Stat(filepath.Join(r.Dir, "project", "src"))
+			r.HasSrc = srcErr == nil
 
-		if failedOnly && r.Success {
-			continue
+			if failedOnly && r.Success {
+				continue
+			}
+			results = append(results, r)
 		}
-		results = append(results, r)
 	}
 
 	sort.Slice(results, func(i, j int) bool {
@@ -99,7 +114,7 @@ func runBenchmarkList(failedOnly bool, run string) error {
 
 	runName := filepath.Base(runDir)
 
-	tbl := ui.NewTable(fmt.Sprintf("Run: %s", runName), "MODEL", "BACKEND", "PASS", "FILES", "TIME", "SRC")
+	tbl := ui.NewTable(fmt.Sprintf("Run: %s", runName), "MODEL", "PASS", "FILES", "TIME", "SRC")
 
 	for _, r := range results {
 		status := ui.ErrorStyle.Render("✗")
@@ -114,7 +129,7 @@ func runBenchmarkList(failedOnly bool, run string) error {
 		if len(model) > 50 {
 			model = model[:50]
 		}
-		tbl.AddRow(model, r.Backend, status, fmt.Sprintf("%d", r.FilesCreated), fmt.Sprintf("%ds", r.Duration), src)
+		tbl.AddRow(model, status, fmt.Sprintf("%d", r.FilesCreated), fmt.Sprintf("%ds", r.Duration), src)
 	}
 
 	tbl.Print()
