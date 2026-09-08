@@ -100,8 +100,9 @@ const (
 )
 
 type SandboxOpts struct {
-	Dir   string
-	Image string
+	Dir          string
+	Image        string
+	ExtraVolumes []string
 }
 
 func RunSandboxed(ctx context.Context, name string, args []string, opts SandboxOpts) (string, error) {
@@ -124,9 +125,11 @@ func RunSandboxed(ctx context.Context, name string, args []string, opts SandboxO
 		"--security-opt", "label=disable",
 		"-v", opts.Dir + ":/work",
 		"-w", "/work",
-		opts.Image,
-		name,
 	}
+	for _, vol := range opts.ExtraVolumes {
+		containerArgs = append(containerArgs, "-v", vol)
+	}
+	containerArgs = append(containerArgs, opts.Image, name)
 	containerArgs = append(containerArgs, args...)
 
 	ui.Logger.Debug("sandbox", "runtime", runtime, "image", opts.Image, "cmd", name+" "+strings.Join(args, " "))

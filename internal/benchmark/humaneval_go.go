@@ -41,28 +41,23 @@ func (h *HumanEvalGoRunner) ValidateResponse(response string, problem formats.Pr
 	goMod := "module solution\n\ngo 1.22\n\nrequire github.com/stretchr/testify v1.9.0\n\nrequire (\n\tgithub.com/davecgh/go-spew v1.1.1 // indirect\n\tgithub.com/pmezard/go-difflib v1.0.0 // indirect\n\tgithub.com/stretchr/objx v0.5.2 // indirect\n\tgopkg.in/yaml.v3 v3.0.1 // indirect\n)\n"
 	os.WriteFile(filepath.Join(workDir, "go.mod"), []byte(goMod), 0644)
 
-	goSum := `github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
-github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
-github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
-github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77E/DIRtfOGp7rxMxcFuKD9Tt6pToFo5MfzbppSQ=
-github.com/stretchr/objx v0.5.2 h1:xuMeJ0Sdp5ZMRXx/aWO6RZxdr3beISkG5/G/aIRr3pY=
-github.com/stretchr/objx v0.5.2/go.mod h1:pMhQbd1rxFRPy+5PCCU+MczzoTm/2dNs+t5aJIolccM=
-github.com/stretchr/testify v1.9.0 h1:HtqpIVDClZ4nwg75+f6Lvsy/wHu+3BoSGCbBAcpTsTg=
-github.com/stretchr/testify v1.9.0/go.mod h1:r2ic/lqez/lEtzL7wO/rwa5dbSLXVDPFyf8C91i36aY=
-gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405 h1:yhCVgyC4o1EVCAEJBkOfkSuQQ1skiXFQoGk/Y2O6UJo=
-gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Gy0=
-gopkg.in/yaml.v3 v3.0.1 h1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJE68CQ=
-gopkg.in/yaml.v3 v3.0.1/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
-`
-	os.WriteFile(filepath.Join(workDir, "go.sum"), []byte(goSum), 0644)
+	cacheDir := filepath.Join(os.TempDir(), "auriga-go-mod-cache")
+	os.MkdirAll(cacheDir, 0755)
+	sandboxOpts := exec.SandboxOpts{
+		Dir:          workDir,
+		Image:        exec.ImageGo,
+		ExtraVolumes: []string{cacheDir + ":/go/pkg/mod"},
+	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
-	out, err := exec.RunSandboxed(ctx, "go", []string{"test", "-v", "-count=1", "./..."}, exec.SandboxOpts{
-		Dir:   workDir,
-		Image: exec.ImageGo,
-	})
+	_, tidyErr := exec.RunSandboxed(ctx, "go", []string{"mod", "tidy"}, sandboxOpts)
+	if tidyErr != nil {
+		return false, fmt.Sprintf("go mod tidy failed: %v", tidyErr), nil
+	}
+
+	out, err := exec.RunSandboxed(ctx, "go", []string{"test", "-v", "-count=1", "./..."}, sandboxOpts)
 
 	if err != nil {
 		return false, fmt.Sprintf("test_fail: %s\n%s", err.Error(), truncateStr(out, 500)), nil
