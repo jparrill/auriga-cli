@@ -152,7 +152,7 @@ runner: python3
 	ui.Ok(fmt.Sprintf("Created %s", yamlPath))
 
 	ui.Ok(fmt.Sprintf("Suite %q ready", name))
-	ui.Info(fmt.Sprintf("Run: auriga benchmark run --suite %s --models \"gemma4:26b\"", name))
+	ui.Info(fmt.Sprintf("Run: auriga benchmark run --suite %s --slot 1", name))
 
 	return nil
 }
