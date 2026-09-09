@@ -28,6 +28,7 @@ type RunConfig struct {
 	SourceHTML  string
 	Benchmarks  string
 	SuiteName   string
+	ResumeDir   string
 }
 
 type Result struct {
@@ -118,8 +119,17 @@ func RunAll(cfg RunConfig) ([]Result, error) {
 		problems = []formats.Problem{{TaskID: "webgen"}}
 	}
 
-	runTimestamp := time.Now().Format("2006-01-02_1504")
-	runDir := filepath.Join(cfg.ResultsDir, runTimestamp)
+	var runDir string
+	var runTimestamp string
+
+	if cfg.ResumeDir != "" {
+		runDir = cfg.ResumeDir
+		runTimestamp = filepath.Base(runDir)
+	} else {
+		runTimestamp = time.Now().Format("2006-01-02_1504")
+		runDir = filepath.Join(cfg.ResultsDir, runTimestamp)
+	}
+
 	if err := os.MkdirAll(runDir, 0755); err != nil {
 		return nil, fmt.Errorf("cannot create run dir: %w", err)
 	}
@@ -128,10 +138,21 @@ func RunAll(cfg RunConfig) ([]Result, error) {
 	os.Remove(latestLink)
 	os.Symlink(runTimestamp, latestLink)
 
+	completed := loadCompletedResults(runDir, model, fmtSuite.Name)
+	skipped := 0
+	if len(completed) > 0 {
+		for _, r := range completed {
+			if r.Success {
+				skipped++
+			}
+		}
+		ui.Ok(fmt.Sprintf("Resuming: %d/%d already completed (%d passed)", len(completed), len(problems), skipped))
+	}
+
 	ui.Info(fmt.Sprintf("Run: %s", runTimestamp))
 	ui.Info(fmt.Sprintf("Model: %s", model))
 	ui.Info(fmt.Sprintf("Suite: %s (%s)", fmtSuite.Name, fmtSuite.Format))
-	ui.Info(fmt.Sprintf("Problems: %d", len(problems)))
+	ui.Info(fmt.Sprintf("Problems: %d (%d remaining)", len(problems), len(problems)-len(completed)))
 
 	fmt.Printf("\n%s\n%s — %d problems\n%s\n",
 		ui.BoldStyle.Render(strings.Repeat("═", 60)),
@@ -143,6 +164,25 @@ func RunAll(cfg RunConfig) ([]Result, error) {
 	failCount := 0
 
 	for i, problem := range problems {
+		if prev, ok := completed[problem.TaskID]; ok && prev.Success {
+			results = append(results, prev)
+			passCount++
+			counter := ui.MutedStyle.Render(fmt.Sprintf("[%3d/%d]", i+1, len(problems)))
+			taskName := problem.TaskID
+			if len(taskName) > 30 {
+				taskName = taskName[:30]
+			}
+			dotsLen := 40 - len(taskName)
+			if dotsLen < 3 {
+				dotsLen = 3
+			}
+			dots := ui.MutedStyle.Render(strings.Repeat("·", dotsLen))
+			fmt.Printf("  %s %s %s %s %s\n", counter, taskName, dots,
+				ui.MutedStyle.Render("SKIP"),
+				ui.MutedStyle.Render("(already passed)"))
+			continue
+		}
+
 		r := runSingle(model, problem, fmtSuite, format, cfg, runDir, i+1, len(problems))
 		results = append(results, r)
 		if r.Success {
@@ -360,6 +400,43 @@ func median(vals []float64) float64 {
 		return (sorted[n/2-1] + sorted[n/2]) / 2
 	}
 	return sorted[n/2]
+}
+
+func loadCompletedResults(runDir, model, suite string) map[string]Result {
+	completed := make(map[string]Result)
+
+	summaryPath := filepath.Join(runDir, "summary.json")
+	if data, err := os.ReadFile(summaryPath); err == nil {
+		var results []Result
+		if json.Unmarshal(data, &results) == nil {
+			for _, r := range results {
+				completed[r.TaskID] = r
+			}
+			return completed
+		}
+	}
+
+	slug := regexp.MustCompile(`[/:]`).ReplaceAllString(model, "_")
+	problemsDir := filepath.Join(runDir, fmt.Sprintf("%s__%s", suite, slug), "problems")
+	entries, err := os.ReadDir(problemsDir)
+	if err != nil {
+		return completed
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		metaPath := filepath.Join(problemsDir, e.Name(), "metadata.json")
+		data, err := os.ReadFile(metaPath)
+		if err != nil {
+			continue
+		}
+		var r Result
+		if json.Unmarshal(data, &r) == nil && r.TaskID != "" {
+			completed[r.TaskID] = r
+		}
+	}
+	return completed
 }
 
 func truncateValidationErr(s string) string {

@@ -2,6 +2,7 @@ package benchmark
 
 import (
 	"fmt"
+	"path/filepath"
 	"time"
 
 	bench "github.com/jparrill/auriga-cli/internal/benchmark"
@@ -18,6 +19,7 @@ type runOpts struct {
 	Suite       string
 	GenTimeout  int
 	Temperature float64
+	Resume      string
 }
 
 func newBenchmarkRunCmd() *cobra.Command {
@@ -34,7 +36,8 @@ from the running instance.
 Examples:
   auriga benchmark run --slot 1                        # Default suite on slot 1
   auriga benchmark run --slot 2 --suite humaneval      # HumanEval on slot 2
-  auriga benchmark run --slot 1 --timeout 3600         # 1h timeout`,
+  auriga benchmark run --slot 1 --timeout 3600         # 1h timeout
+  auriga benchmark run --slot 1 --suite humaneval --resume latest  # Resume interrupted run`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runBenchmarkRun(opts)
 		},
@@ -44,6 +47,7 @@ Examples:
 	cmd.Flags().StringVar(&opts.Suite, "suite", "", "Benchmark suite to run (default: legacy webgen)")
 	cmd.Flags().IntVar(&opts.GenTimeout, "timeout", 0, "Generation timeout in seconds (default from config)")
 	cmd.Flags().Float64Var(&opts.Temperature, "temperature", 0.3, "LLM sampling temperature (0.0 = deterministic)")
+	cmd.Flags().StringVar(&opts.Resume, "resume", "", "Resume interrupted run ('latest' or timestamp)")
 	cmd.MarkFlagRequired("slot")
 
 	return cmd
@@ -67,9 +71,22 @@ func runBenchmarkRun(opts *runOpts) error {
 		genTimeout = opts.GenTimeout
 	}
 
+	var resumeDir string
+	if opts.Resume != "" {
+		resumeDir = resolveRunDir(resultsDir, opts.Resume)
+		if resumeDir == "" {
+			return fmt.Errorf("run %q not found in %s", opts.Resume, resultsDir)
+		}
+	}
+
 	suiteName := opts.Suite
 	if suiteName == "" {
 		suiteName = "(legacy webgen)"
+	}
+
+	resumeLabel := "-"
+	if resumeDir != "" {
+		resumeLabel = filepath.Base(resumeDir)
 	}
 
 	params := []ui.OrderedParam{
@@ -79,6 +96,7 @@ func runBenchmarkRun(opts *runOpts) error {
 		{Key: "Timeout", Value: fmt.Sprintf("%ds", genTimeout)},
 		{Key: "Max retries", Value: fmt.Sprintf("%d", maxRetries)},
 		{Key: "Results", Value: resultsDir},
+		{Key: "Resume", Value: resumeLabel},
 	}
 
 	confirmed, err := ui.ConfirmOperationOrdered("Run Benchmark", params, "", config.Yes)
@@ -94,6 +112,7 @@ func runBenchmarkRun(opts *runOpts) error {
 		Host:        host,
 		Temperature: opts.Temperature,
 		SuiteName:   opts.Suite,
+		ResumeDir:   resumeDir,
 		PlanFile:    config.ExpandHome(viper.GetString("benchmark.plan_file")),
 		SourceHTML:  config.ExpandHome(viper.GetString("benchmark.source_html")),
 		Benchmarks:  config.ExpandHome(viper.GetString("benchmark.benchmarks_json")),
