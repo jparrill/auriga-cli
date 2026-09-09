@@ -328,8 +328,10 @@ func validateProfile(name, ggufDir string) profileValidation {
 	mmprojFile := viper.GetString(profileKey + ".mmproj")
 	mmprojDir := config.ExpandHome(viper.GetString("llama_server.mmproj_dir"))
 	if mmprojFile != "" {
-		if _, err := os.Stat(filepath.Join(mmprojDir, mmprojFile)); err != nil {
-			v.Warnings = append(v.Warnings, fmt.Sprintf("mmproj not on disk: %s", mmprojFile))
+		if _, err := os.Stat(filepath.Join(mmprojDir, name, mmprojFile)); err != nil {
+			if _, err2 := os.Stat(filepath.Join(mmprojDir, mmprojFile)); err2 != nil {
+				v.Warnings = append(v.Warnings, fmt.Sprintf("mmproj not on disk: %s", mmprojFile))
+			}
 		}
 	}
 

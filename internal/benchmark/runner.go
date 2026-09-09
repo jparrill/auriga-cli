@@ -30,6 +30,7 @@ type RunConfig struct {
 	SuiteName   string
 	ResumeDir   string
 	RetryFailed bool
+	ProfileName string
 }
 
 type Result struct {
@@ -121,14 +122,19 @@ func RunAll(cfg RunConfig) ([]Result, error) {
 	}
 
 	var runDir string
-	var runTimestamp string
+	var runDirName string
 
 	if cfg.ResumeDir != "" {
 		runDir = cfg.ResumeDir
-		runTimestamp = filepath.Base(runDir)
+		runDirName = filepath.Base(runDir)
 	} else {
-		runTimestamp = time.Now().Format("2006-01-02_1504")
-		runDir = filepath.Join(cfg.ResultsDir, runTimestamp)
+		ts := time.Now().Format("2006-01-02_1504")
+		profile := cfg.ProfileName
+		if profile == "" {
+			profile = "unknown"
+		}
+		runDirName = fmt.Sprintf("%s-%s-%s", fmtSuite.Name, profile, ts)
+		runDir = filepath.Join(cfg.ResultsDir, runDirName)
 	}
 
 	if err := os.MkdirAll(runDir, 0755); err != nil {
@@ -137,9 +143,9 @@ func RunAll(cfg RunConfig) ([]Result, error) {
 
 	latestLink := filepath.Join(cfg.ResultsDir, "latest")
 	os.Remove(latestLink)
-	os.Symlink(runTimestamp, latestLink)
+	os.Symlink(runDirName, latestLink)
 
-	completed := loadCompletedResults(runDir, model, fmtSuite.Name)
+	completed := loadCompletedResults(runDir)
 	skipped := 0
 	if len(completed) > 0 {
 		for _, r := range completed {
@@ -150,7 +156,7 @@ func RunAll(cfg RunConfig) ([]Result, error) {
 		ui.Ok(fmt.Sprintf("Resuming: %d/%d already completed (%d passed)", len(completed), len(problems), skipped))
 	}
 
-	ui.Info(fmt.Sprintf("Run: %s", runTimestamp))
+	ui.Info(fmt.Sprintf("Run: %s", runDirName))
 	ui.Info(fmt.Sprintf("Model: %s", model))
 	ui.Info(fmt.Sprintf("Suite: %s (%s)", fmtSuite.Name, fmtSuite.Format))
 	ui.Info(fmt.Sprintf("Problems: %d (%d remaining)", len(problems), len(problems)-len(completed)))
@@ -223,11 +229,10 @@ func RunAll(cfg RunConfig) ([]Result, error) {
 }
 
 func runSingle(model string, problem formats.Problem, suite formats.Suite, format formats.FormatRunner, cfg RunConfig, runDir string, idx, total int) Result {
-	slug := regexp.MustCompile(`[/:]`).ReplaceAllString(model, "_")
 	taskSlug := regexp.MustCompile(`[/:]`).ReplaceAllString(problem.TaskID, "_")
-	outputDir := filepath.Join(runDir, fmt.Sprintf("%s__%s", suite.Name, slug))
+	outputDir := runDir
 	if taskSlug != "webgen" {
-		outputDir = filepath.Join(outputDir, "problems", taskSlug)
+		outputDir = filepath.Join(runDir, "problems", taskSlug)
 	}
 	os.MkdirAll(outputDir, 0755)
 	workDir := filepath.Join(outputDir, "project")
@@ -414,7 +419,7 @@ func median(vals []float64) float64 {
 	return sorted[n/2]
 }
 
-func loadCompletedResults(runDir, model, suite string) map[string]Result {
+func loadCompletedResults(runDir string) map[string]Result {
 	completed := make(map[string]Result)
 
 	summaryPath := filepath.Join(runDir, "summary.json")
@@ -428,8 +433,7 @@ func loadCompletedResults(runDir, model, suite string) map[string]Result {
 		}
 	}
 
-	slug := regexp.MustCompile(`[/:]`).ReplaceAllString(model, "_")
-	problemsDir := filepath.Join(runDir, fmt.Sprintf("%s__%s", suite, slug), "problems")
+	problemsDir := filepath.Join(runDir, "problems")
 	entries, err := os.ReadDir(problemsDir)
 	if err != nil {
 		return completed

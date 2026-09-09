@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -163,6 +164,42 @@ func SlotPort(slot int) int {
 
 func AllSlotPorts() []int {
 	return []int{Slot1Port(), Slot2Port()}
+}
+
+func ProfileForPort(port int) string {
+	runningModel := ""
+	client := &http.Client{Timeout: 2 * time.Second}
+	resp, err := client.Get(fmt.Sprintf("http://localhost:%d/v1/models", port))
+	if err == nil {
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		var result struct {
+			Data []struct {
+				ID string `json:"id"`
+			} `json:"data"`
+		}
+		if json.Unmarshal(body, &result) == nil && len(result.Data) > 0 {
+			runningModel = filepath.Base(result.Data[0].ID)
+		}
+	}
+
+	profiles := viper.GetStringMap("profiles")
+	for name := range profiles {
+		profileKey := fmt.Sprintf("profiles.%s", name)
+		p := viper.GetInt(profileKey + ".port")
+		if p == 0 {
+			p = Slot1Port()
+		}
+		if p == port {
+			if runningModel == "" {
+				return name
+			}
+			if filepath.Base(viper.GetString(profileKey+".model")) == runningModel {
+				return name
+			}
+		}
+	}
+	return fmt.Sprintf("port-%d", port)
 }
 
 func HostForPort(port int) string {

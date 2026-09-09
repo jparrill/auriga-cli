@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	bench "github.com/jparrill/auriga-cli/internal/benchmark"
 	"github.com/jparrill/auriga-cli/internal/config"
@@ -84,6 +85,16 @@ func resolveRunDir(resultsDir, run string) string {
 	dir := filepath.Join(resultsDir, run)
 	if _, err := os.Stat(dir); err == nil {
 		return dir
+	}
+
+	entries, err := os.ReadDir(resultsDir)
+	if err != nil {
+		return ""
+	}
+	for _, e := range entries {
+		if e.IsDir() && strings.Contains(e.Name(), run) {
+			return filepath.Join(resultsDir, e.Name())
+		}
 	}
 	return ""
 }

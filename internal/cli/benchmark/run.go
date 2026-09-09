@@ -64,6 +64,8 @@ func runBenchmarkRun(opts *runOpts) error {
 	host := llamaserver.HostForPort(port)
 	viper.Set("llama_server.host", host)
 
+	profileName := llamaserver.ProfileForPort(port)
+
 	resultsDir := config.ExpandHome(viper.GetString("benchmark.results_dir"))
 	maxRetries := viper.GetInt("benchmark.max_retries")
 	maxTokens := viper.GetInt("benchmark.max_tokens")
@@ -91,13 +93,14 @@ func runBenchmarkRun(opts *runOpts) error {
 		resumeLabel = filepath.Base(resumeDir)
 	}
 
-	runTimestamp := time.Now().Format("2006-01-02_1504")
+	runLabel := time.Now().Format("2006-01-02_1504")
 	if resumeDir != "" {
-		runTimestamp = filepath.Base(resumeDir)
+		runLabel = filepath.Base(resumeDir)
 	}
 
 	params := []ui.OrderedParam{
-		{Key: "Run", Value: runTimestamp},
+		{Key: "Run", Value: runLabel},
+		{Key: "Profile", Value: profileName},
 		{Key: "Slot", Value: fmt.Sprintf("%d (port %d)", opts.Slot, port)},
 		{Key: "Suite", Value: suiteName},
 		{Key: "Host", Value: host},
@@ -122,6 +125,7 @@ func runBenchmarkRun(opts *runOpts) error {
 		SuiteName:   opts.Suite,
 		ResumeDir:   resumeDir,
 		RetryFailed: opts.RetryFailed,
+		ProfileName: profileName,
 		PlanFile:    config.ExpandHome(viper.GetString("benchmark.plan_file")),
 		SourceHTML:  config.ExpandHome(viper.GetString("benchmark.source_html")),
 		Benchmarks:  config.ExpandHome(viper.GetString("benchmark.benchmarks_json")),

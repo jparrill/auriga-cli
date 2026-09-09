@@ -156,9 +156,14 @@ func runProfileServe(name string, daemon bool, ctxSize int, slot int) error {
 
 	var mmprojPath string
 	if mmprojFile != "" {
-		mmprojPath = filepath.Join(mmprojDir, mmprojFile)
+		mmprojPath = filepath.Join(mmprojDir, name, mmprojFile)
 		if _, err := os.Stat(mmprojPath); err != nil {
-			return fmt.Errorf("mmproj not found: %s\nRun: auriga model ensure --profile %s", mmprojPath, name)
+			legacyPath := filepath.Join(mmprojDir, mmprojFile)
+			if _, legacyErr := os.Stat(legacyPath); legacyErr == nil {
+				mmprojPath = legacyPath
+			} else {
+				return fmt.Errorf("mmproj not found: %s\nRun: auriga model ensure --profile %s", mmprojPath, name)
+			}
 		}
 	}
 
