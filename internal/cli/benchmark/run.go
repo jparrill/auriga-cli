@@ -20,6 +20,7 @@ type runOpts struct {
 	GenTimeout  int
 	Temperature float64
 	Resume      string
+	RetryFailed bool
 }
 
 func newBenchmarkRunCmd() *cobra.Command {
@@ -48,6 +49,7 @@ Examples:
 	cmd.Flags().IntVar(&opts.GenTimeout, "timeout", 0, "Generation timeout in seconds (default from config)")
 	cmd.Flags().Float64Var(&opts.Temperature, "temperature", 0.3, "LLM sampling temperature (0.0 = deterministic)")
 	cmd.Flags().StringVar(&opts.Resume, "resume", "", "Resume interrupted run ('latest' or timestamp)")
+	cmd.Flags().BoolVar(&opts.RetryFailed, "retry-failed", false, "Re-execute failed problems when resuming")
 	cmd.MarkFlagRequired("slot")
 
 	return cmd
@@ -113,6 +115,7 @@ func runBenchmarkRun(opts *runOpts) error {
 		Temperature: opts.Temperature,
 		SuiteName:   opts.Suite,
 		ResumeDir:   resumeDir,
+		RetryFailed: opts.RetryFailed,
 		PlanFile:    config.ExpandHome(viper.GetString("benchmark.plan_file")),
 		SourceHTML:  config.ExpandHome(viper.GetString("benchmark.source_html")),
 		Benchmarks:  config.ExpandHome(viper.GetString("benchmark.benchmarks_json")),

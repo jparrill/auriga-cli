@@ -29,6 +29,7 @@ type RunConfig struct {
 	Benchmarks  string
 	SuiteName   string
 	ResumeDir   string
+	RetryFailed bool
 }
 
 type Result struct {
@@ -164,23 +165,34 @@ func RunAll(cfg RunConfig) ([]Result, error) {
 	failCount := 0
 
 	for i, problem := range problems {
-		if prev, ok := completed[problem.TaskID]; ok && prev.Success {
-			results = append(results, prev)
-			passCount++
-			counter := ui.MutedStyle.Render(fmt.Sprintf("[%3d/%d]", i+1, len(problems)))
-			taskName := problem.TaskID
-			if len(taskName) > 30 {
-				taskName = taskName[:30]
+		if prev, ok := completed[problem.TaskID]; ok {
+			skip := prev.Success || !cfg.RetryFailed
+			if skip {
+				results = append(results, prev)
+				if prev.Success {
+					passCount++
+				} else {
+					failCount++
+				}
+				counter := ui.MutedStyle.Render(fmt.Sprintf("[%3d/%d]", i+1, len(problems)))
+				taskName := problem.TaskID
+				if len(taskName) > 30 {
+					taskName = taskName[:30]
+				}
+				dotsLen := 40 - len(taskName)
+				if dotsLen < 3 {
+					dotsLen = 3
+				}
+				dots := ui.MutedStyle.Render(strings.Repeat("·", dotsLen))
+				status := "passed"
+				if !prev.Success {
+					status = "failed"
+				}
+				fmt.Printf("  %s %s %s %s %s\n", counter, taskName, dots,
+					ui.MutedStyle.Render("SKIP"),
+					ui.MutedStyle.Render(fmt.Sprintf("(already %s)", status)))
+				continue
 			}
-			dotsLen := 40 - len(taskName)
-			if dotsLen < 3 {
-				dotsLen = 3
-			}
-			dots := ui.MutedStyle.Render(strings.Repeat("·", dotsLen))
-			fmt.Printf("  %s %s %s %s %s\n", counter, taskName, dots,
-				ui.MutedStyle.Render("SKIP"),
-				ui.MutedStyle.Render("(already passed)"))
-			continue
 		}
 
 		r := runSingle(model, problem, fmtSuite, format, cfg, runDir, i+1, len(problems))
