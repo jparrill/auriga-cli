@@ -91,7 +91,13 @@ func runBenchmarkRun(opts *runOpts) error {
 		resumeLabel = filepath.Base(resumeDir)
 	}
 
+	runTimestamp := time.Now().Format("2006-01-02_1504")
+	if resumeDir != "" {
+		runTimestamp = filepath.Base(resumeDir)
+	}
+
 	params := []ui.OrderedParam{
+		{Key: "Run", Value: runTimestamp},
 		{Key: "Slot", Value: fmt.Sprintf("%d (port %d)", opts.Slot, port)},
 		{Key: "Suite", Value: suiteName},
 		{Key: "Host", Value: host},
