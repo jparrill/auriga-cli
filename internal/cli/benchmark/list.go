@@ -94,6 +94,11 @@ func runBenchmarkList() error {
 	}
 
 	sort.Slice(runs, func(i, j int) bool {
+		ri := float64(runs[i].pass) / max(float64(runs[i].total), 1)
+		rj := float64(runs[j].pass) / max(float64(runs[j].total), 1)
+		if ri != rj {
+			return ri > rj
+		}
 		return runs[i].name > runs[j].name
 	})
 
@@ -125,7 +130,7 @@ func runBenchmarkList() error {
 			rateStr = ui.ErrorStyle.Render(rateStr)
 		}
 
-		tbl.AddRow(name, r.suite, model, fmt.Sprintf("%d", r.pass), rateStr, fmt.Sprintf("%ds", r.time))
+		tbl.AddRow(name, r.suite, model, fmt.Sprintf("%d", r.pass), rateStr, fmtDuration(r.time))
 	}
 	tbl.Print()
 
@@ -134,4 +139,13 @@ func runBenchmarkList() error {
 	}
 
 	return nil
+}
+
+func fmtDuration(seconds int) string {
+	h := seconds / 3600
+	m := (seconds % 3600) / 60
+	if h > 0 {
+		return fmt.Sprintf("%dh%02dm", h, m)
+	}
+	return fmt.Sprintf("%dm%02ds", m, seconds%60)
 }
