@@ -16,21 +16,25 @@ import (
 	"github.com/spf13/viper"
 )
 
+var skipPerplexity bool
+
 func newShowPerfCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "perf [profile-name]",
 		Short: "Quick performance test for running llama-server instances",
 		Long: `Send test prompts to each running llama-server instance and report:
   - TTFT: Time to first token (prompt processing latency)
   - Prompt: Prompt processing speed (tok/s)
   - Gen: Token generation speed (tok/s), median of 5 runs with min-max range
+  - Perplexity: wikitext-2 score (auto-measured on first run, cached after)
 
 A warmup request runs before measuring to avoid cold-cache penalties.
 If a profile name is given, only test that profile's port.
 
 Examples:
-  auriga show perf              # Test all running instances
-  auriga show perf qwen3.8-27b  # Test specific profile`,
+  auriga show perf                    # Test all (runs perplexity if not cached)
+  auriga show perf qwen3.8-27b        # Test specific profile
+  auriga show perf --skip-perplexity  # Skip perplexity measurement`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 1 {
@@ -39,19 +43,22 @@ Examples:
 			return runPerfAll()
 		},
 	}
+	cmd.Flags().BoolVar(&skipPerplexity, "skip-perplexity", false, "Skip perplexity measurement even if not cached")
+	return cmd
 }
 
 type perfResult struct {
-	Port      int
-	Profile   string
-	ModelType string
-	SpecType  string
-	Model     string
-	Binary    string
-	TTFT      time.Duration
-	NoThink   perf.BenchResult
-	Think     perf.BenchResult
-	Error     string
+	Port       int
+	Profile    string
+	ModelType  string
+	SpecType   string
+	Model      string
+	Binary     string
+	TTFT       time.Duration
+	NoThink    perf.BenchResult
+	Think      perf.BenchResult
+	Perplexity *perf.PerplexityResult
+	Error      string
 }
 
 func runPerfAll() error {
@@ -204,7 +211,41 @@ func benchPort(port int, profile string) perfResult {
 	ui.Info(fmt.Sprintf("  think (%d runs)...", perf.Iterations))
 	result.Think = perf.RunBench(port, true)
 
+	modelFile := result.Model
+	if modelFile == "" {
+		modelFile = viper.GetString(profileKey + ".model")
+	}
+	result.Perplexity = resolvePerplexity(profile, modelFile)
+
 	return result
+}
+
+func resolvePerplexity(profile, modelFile string) *perf.PerplexityResult {
+	if cached, ok := perf.GetCachedPerplexity(modelFile); ok {
+		return &cached
+	}
+
+	if skipPerplexity {
+		return nil
+	}
+
+	if !perf.PerplexityBinExists() {
+		ui.Warn("llama-perplexity binary not found, skipping perplexity")
+		return nil
+	}
+	if !perf.DatasetExists() {
+		ui.Warn("wikitext-2 dataset not found, skipping perplexity")
+		return nil
+	}
+
+	modelPath := filepath.Join(llamaserver.GGUFDir(), modelFile)
+	ui.Info("  perplexity (this takes 5-15 minutes)...")
+	result, err := perf.RunPerplexity(modelPath)
+	if err != nil {
+		ui.Warn(fmt.Sprintf("perplexity failed: %v", err))
+		return nil
+	}
+	return &result
 }
 
 func printPerfResults(results []perfResult) {
@@ -213,6 +254,7 @@ func printPerfResults(results []perfResult) {
 		"PROFILE", "TYPE", "PORT", "BINARY", "SPEC", "MODEL",
 		"TTFT", "PROMPT",
 		"NO-THINK GEN", "THINK GEN",
+		"PPL",
 	)
 
 	for _, r := range results {
@@ -221,7 +263,7 @@ func printPerfResults(results []perfResult) {
 			spec = ui.SuccessStyle.Render(spec)
 		}
 		if r.Error != "" {
-			tbl.AddRow(r.Profile, "-", fmt.Sprintf("%d", r.Port), r.Binary, spec, "-", "-", "-", "-", "-")
+			tbl.AddRow(r.Profile, "-", fmt.Sprintf("%d", r.Port), r.Binary, spec, "-", "-", "-", "-", "-", "-")
 			continue
 		}
 
@@ -229,6 +271,7 @@ func printPerfResults(results []perfResult) {
 		prompt := fmtTokS(r.NoThink.PromptTokPerSec, r.NoThink.Error)
 		noThinkGen := fmtTokSRange(r.NoThink)
 		thinkGen := fmtTokSRange(r.Think)
+		ppl := fmtPerplexity(r.Perplexity)
 
 		tbl.AddRow(
 			r.Profile,
@@ -241,9 +284,17 @@ func printPerfResults(results []perfResult) {
 			prompt,
 			noThinkGen,
 			thinkGen,
+			ppl,
 		)
 	}
 	tbl.Print()
+}
+
+func fmtPerplexity(p *perf.PerplexityResult) string {
+	if p == nil {
+		return "-"
+	}
+	return fmt.Sprintf("%.4f ±%.4f", p.Score, p.StdDev)
 }
 
 func resolveSpecType(profile string) string {

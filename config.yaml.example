@@ -17,6 +17,9 @@ llama_server:
   quant: Q4_K_M
   dense_port: 8090
   moe_port: 8091
+  perplexity:
+    bin: ~/infra/bin/llama-perplexity
+    dataset: ~/infra/ai/models/datasets/wikitext-2-raw/wiki.test.raw
 
 profiles:
   qwen3.6-27b:

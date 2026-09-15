@@ -385,6 +385,23 @@ func TestPrintPerfResults_NoError(t *testing.T) {
 	printPerfResults(results)
 }
 
+func TestPrintPerfResults_WithPerplexity(t *testing.T) {
+	ppl := &perf.PerplexityResult{Score: 6.7794, StdDev: 0.05}
+	results := []perfResult{
+		{
+			Port:       8090,
+			Profile:    "test",
+			Binary:     "llama-server",
+			Model:      "model.gguf",
+			TTFT:       150 * time.Millisecond,
+			NoThink:    perf.BenchResult{PromptTokPerSec: 30.0, GenerationTokPerSec: 10.0, GenMin: 9.5, GenMax: 10.5},
+			Think:      perf.BenchResult{PromptTokPerSec: 25.0, GenerationTokPerSec: 7.0, GenMin: 6.5, GenMax: 7.5},
+			Perplexity: ppl,
+		},
+	}
+	printPerfResults(results)
+}
+
 func TestFmtTokSRange_WithRange(t *testing.T) {
 	b := perf.BenchResult{GenerationTokPerSec: 19.5, GenMin: 18.9, GenMax: 20.1}
 	got := fmtTokSRange(b)
@@ -406,5 +423,55 @@ func TestFmtTokSRange_Error(t *testing.T) {
 	got := fmtTokSRange(b)
 	if got != "error" {
 		t.Errorf("fmtTokSRange with error = %q, want 'error'", got)
+	}
+}
+
+func TestFmtPerplexity_Nil(t *testing.T) {
+	got := fmtPerplexity(nil)
+	if got != "-" {
+		t.Errorf("fmtPerplexity(nil) = %q, want '-'", got)
+	}
+}
+
+func TestFmtPerplexity_WithResult(t *testing.T) {
+	p := &perf.PerplexityResult{Score: 6.7794, StdDev: 0.0500}
+	got := fmtPerplexity(p)
+	if got != "6.7794 ±0.0500" {
+		t.Errorf("fmtPerplexity = %q, want '6.7794 ±0.0500'", got)
+	}
+}
+
+func TestResolvePerplexity_NoCacheSkipOn(t *testing.T) {
+	origCache := perf.DefaultCachePath
+	perf.DefaultCachePath = "/tmp/nonexistent-ppl-test.json"
+	defer func() { perf.DefaultCachePath = origCache }()
+
+	origFlag := skipPerplexity
+	skipPerplexity = true
+	defer func() { skipPerplexity = origFlag }()
+
+	result := resolvePerplexity("test-profile", "test-model.gguf")
+	if result != nil {
+		t.Error("When no cache and skip=true, resolvePerplexity should return nil")
+	}
+}
+
+func TestResolvePerplexity_NoCacheBinaryMissing(t *testing.T) {
+	origCache := perf.DefaultCachePath
+	origBin := perf.DefaultPerplexityBin
+	perf.DefaultCachePath = "/tmp/nonexistent-ppl-test.json"
+	perf.DefaultPerplexityBin = "/nonexistent/llama-perplexity"
+	defer func() {
+		perf.DefaultCachePath = origCache
+		perf.DefaultPerplexityBin = origBin
+	}()
+
+	origFlag := skipPerplexity
+	skipPerplexity = false
+	defer func() { skipPerplexity = origFlag }()
+
+	result := resolvePerplexity("test-profile", "test-model.gguf")
+	if result != nil {
+		t.Error("When no cache and binary missing, resolvePerplexity should return nil")
 	}
 }
