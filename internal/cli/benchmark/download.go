@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	bench "github.com/jparrill/auriga-cli/internal/benchmark"
@@ -14,70 +15,79 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var knownSuites = map[string]struct {
-	URL         string
-	Description string
-	Language    string
-	Format      string
-	Compressed  bool
-	Runner      string
-}{
-	"humaneval": {
-		URL:         "https://github.com/openai/human-eval/raw/master/data/HumanEval.jsonl.gz",
-		Description: "OpenAI HumanEval — 164 Python coding problems with unit tests",
-		Language:    "python",
-		Format:      "humaneval",
-		Compressed:  true,
-		Runner:      "python3",
-	},
-	"humaneval-go": {
-		URL:         "https://github.com/zai-org/CodeGeeX2/raw/main/benchmark/humanevalx/humanevalx_go.jsonl.gz",
-		Description: "HumanEval-X Go — 164 Go coding problems with unit tests",
-		Language:    "go",
-		Format:      "humaneval",
-		Compressed:  true,
-		Runner:      "go",
-	},
-	"mbpp": {
-		URL:         "https://raw.githubusercontent.com/google-research/google-research/master/mbpp/mbpp.jsonl",
-		Description: "MBPP — 974 basic Python programming problems",
-		Language:    "python",
-		Format:      "humaneval",
-		Compressed:  false,
-		Runner:      "python3",
-	},
-}
+var (
+	downloadURL         string
+	downloadDescription string
+	downloadLanguage    string
+	downloadFormat      string
+	downloadRunner      string
+	downloadCompressed  bool
+)
 
 func newBenchmarkDownloadCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "download <suite-name>",
 		Short: "Download a benchmark suite",
-		Long: `Download a known benchmark suite to ~/.config/auriga/suites/.
+		Long: `Download a benchmark suite to ~/.config/auriga/suites/.
 
-Available suites:
-  humaneval      OpenAI HumanEval — 164 Python coding problems
-  humaneval-go   HumanEval-X Go — 164 Go coding problems
-  mbpp           MBPP — 974 basic Python programming problems
+If the suite is in the registry, downloads from its registered URL.
+If --url is provided, registers the suite and downloads it.
 
 Examples:
-  auriga benchmark download humaneval
   auriga benchmark download humaneval-go
-  auriga benchmark download mbpp`,
+  auriga benchmark download gsm8k --url "https://example.com/gsm8k.jsonl.gz" --description "Grade school math" --format humaneval --language go --compressed`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runBenchmarkDownload(args[0])
 		},
 	}
+
+	cmd.Flags().StringVar(&downloadURL, "url", "", "URL to download the suite JSONL from")
+	cmd.Flags().StringVar(&downloadDescription, "description", "", "Suite description")
+	cmd.Flags().StringVar(&downloadLanguage, "language", "", "Programming language (go, python, etc.)")
+	cmd.Flags().StringVar(&downloadFormat, "format", "humaneval", "Problem format (humaneval, humaneval-go, quality, webgen)")
+	cmd.Flags().StringVar(&downloadRunner, "runner", "", "Runner for execution (go, python3, etc.)")
+	cmd.Flags().BoolVar(&downloadCompressed, "compressed", false, "URL points to gzip-compressed file")
+
+	return cmd
 }
 
 func runBenchmarkDownload(name string) error {
-	known, ok := knownSuites[name]
-	if !ok {
-		available := make([]string, 0, len(knownSuites))
-		for k := range knownSuites {
+	registry, err := bench.LoadRegistry()
+	if err != nil {
+		return fmt.Errorf("load registry: %w", err)
+	}
+
+	entry, inRegistry := registry[name]
+
+	if downloadURL != "" {
+		entry = bench.RegistryEntry{
+			URL:         downloadURL,
+			Description: downloadDescription,
+			Language:    downloadLanguage,
+			Format:      downloadFormat,
+			Compressed:  downloadCompressed,
+			Runner:      downloadRunner,
+		}
+		if entry.Runner == "" {
+			entry.Runner = entry.Language
+		}
+
+		registry[name] = entry
+		if err := bench.SaveRegistry(registry); err != nil {
+			return fmt.Errorf("save registry: %w", err)
+		}
+		ui.Ok(fmt.Sprintf("Registered suite %q in registry", name))
+		inRegistry = true
+	}
+
+	if !inRegistry {
+		available := make([]string, 0, len(registry))
+		for k := range registry {
 			available = append(available, k)
 		}
-		return fmt.Errorf("unknown suite %q. Available: %s", name, strings.Join(available, ", "))
+		sort.Strings(available)
+		return fmt.Errorf("unknown suite %q. Available: %s\nTo add a new suite, use: auriga benchmark download %s --url <URL>", name, strings.Join(available, ", "), name)
 	}
 
 	suitesDir := bench.SuitesDir()
@@ -90,7 +100,7 @@ func runBenchmarkDownload(name string) error {
 
 	params := []ui.OrderedParam{
 		{Key: "Suite", Value: name},
-		{Key: "Source", Value: known.URL},
+		{Key: "Source", Value: entry.URL},
 		{Key: "Destination", Value: suiteDir},
 	}
 
@@ -101,9 +111,8 @@ func runBenchmarkDownload(name string) error {
 
 	os.MkdirAll(suiteDir, 0755)
 
-	// Download
 	ui.Info(fmt.Sprintf("Downloading %s...", name))
-	resp, err := http.Get(known.URL)
+	resp, err := http.Get(entry.URL)
 	if err != nil {
 		return fmt.Errorf("download failed: %w", err)
 	}
@@ -114,7 +123,7 @@ func runBenchmarkDownload(name string) error {
 	}
 
 	var reader io.Reader = resp.Body
-	if known.Compressed {
+	if entry.Compressed {
 		gz, err := gzip.NewReader(resp.Body)
 		if err != nil {
 			return fmt.Errorf("cannot decompress: %w", err)
@@ -137,15 +146,19 @@ func runBenchmarkDownload(name string) error {
 
 	ui.Ok(fmt.Sprintf("Downloaded %d bytes → %s", written, problemsPath))
 
-	// Write suite.yaml
+	runner := entry.Runner
+	if runner == "" {
+		runner = entry.Language
+	}
+
 	suiteYaml := fmt.Sprintf(`name: %s
 description: %s
 language: %s
 format: %s
 source: %s
 problems: problems.jsonl
-runner: python3
-`, name, known.Description, known.Language, known.Format, known.URL)
+runner: %s
+`, name, entry.Description, entry.Language, entry.Format, entry.URL, runner)
 
 	yamlPath := filepath.Join(suiteDir, "suite.yaml")
 	os.WriteFile(yamlPath, []byte(suiteYaml), 0644)

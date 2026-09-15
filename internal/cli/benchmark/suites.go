@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 
 	bench "github.com/jparrill/auriga-cli/internal/benchmark"
 	"github.com/jparrill/auriga-cli/internal/benchmark/formats"
@@ -16,7 +17,7 @@ func newBenchmarkSuitesCmd() *cobra.Command {
 		Use:   "suites",
 		Short: "List available benchmark suites",
 		Long: `List all benchmark suites installed in ~/.config/auriga/suites/.
-Also shows downloadable suites not yet installed.
+Also shows downloadable suites from the registry not yet installed.
 
 Examples:
   auriga benchmark suites`,
@@ -57,13 +58,20 @@ func runBenchmarkSuites() error {
 		tbl.Print()
 	}
 
-	// Show downloadable suites not yet installed
+	registry, err := bench.LoadRegistry()
+	if err != nil {
+		return fmt.Errorf("load registry: %w", err)
+	}
+
 	var downloadable []struct{ name, desc string }
-	for name, info := range knownSuites {
+	for name, info := range registry {
 		if !installed[name] {
 			downloadable = append(downloadable, struct{ name, desc string }{name, info.Description})
 		}
 	}
+	sort.Slice(downloadable, func(i, j int) bool {
+		return downloadable[i].name < downloadable[j].name
+	})
 
 	if len(downloadable) > 0 {
 		tbl := ui.NewTable("Available for Download", "NAME", "DESCRIPTION", "COMMAND")
