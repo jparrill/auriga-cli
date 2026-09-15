@@ -131,7 +131,8 @@ func RunPerplexity(modelPath string) (PerplexityResult, error) {
 		"-f", datasetPath,
 	}
 
-	out, err := exec.RunCapture(ctx, binPath, args, exec.RunOpts{})
+	env := perplexityEnv(binPath)
+	out, err := exec.RunCapture(ctx, binPath, args, exec.RunOpts{Env: env})
 	if err != nil {
 		return PerplexityResult{}, fmt.Errorf("llama-perplexity failed: %w", err)
 	}
@@ -155,6 +156,21 @@ func RunPerplexity(modelPath string) (PerplexityResult, error) {
 	}
 
 	return result, nil
+}
+
+func perplexityEnv(binPath string) map[string]string {
+	real, err := filepath.EvalSymlinks(binPath)
+	if err != nil {
+		real = binPath
+	}
+	libDir := filepath.Join(filepath.Dir(real), "..", "lib64")
+	if _, err := os.Stat(libDir); err != nil {
+		libDir = filepath.Join(filepath.Dir(real), "..", "lib")
+		if _, err := os.Stat(libDir); err != nil {
+			return nil
+		}
+	}
+	return map[string]string{"LD_LIBRARY_PATH": libDir}
 }
 
 func ParsePerplexityOutput(output string) (PerplexityResult, error) {

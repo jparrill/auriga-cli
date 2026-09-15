@@ -1,13 +1,13 @@
 package show
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"time"
-
-	"encoding/json"
-	"io"
 
 	"github.com/jparrill/auriga-cli/internal/llamaserver"
 	"github.com/jparrill/auriga-cli/internal/perf"
@@ -239,6 +239,11 @@ func resolvePerplexity(profile, modelFile string) *perf.PerplexityResult {
 	}
 
 	modelPath := filepath.Join(llamaserver.GGUFDir(), modelFile)
+	if _, err := os.Stat(modelPath); err != nil {
+		if configModel := viper.GetString(fmt.Sprintf("profiles.%s.model", profile)); configModel != "" {
+			modelPath = filepath.Join(llamaserver.GGUFDir(), configModel)
+		}
+	}
 	ui.Info("  perplexity (this takes 5-15 minutes)...")
 	result, err := perf.RunPerplexity(modelPath)
 	if err != nil {
