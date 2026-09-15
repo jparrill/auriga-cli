@@ -95,6 +95,7 @@ func RunAll(cfg RunConfig) ([]Result, error) {
 				TaskID: p.TaskID, Prompt: p.Prompt, Test: p.Test,
 				EntryPoint: p.EntryPoint, Level: p.Level, Eval: p.Eval, TestCmd: p.TestCmd,
 				Import: p.Import, Declaration: p.Declaration, TestSetup: p.TestSetup,
+				Key: p.Key, InstructionIDList: p.InstructionIDList, Kwargs: p.Kwargs,
 			})
 		}
 		if len(problems) == 0 && suite.Format == "webgen" {

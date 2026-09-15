@@ -36,16 +36,19 @@ type Level struct {
 }
 
 type Problem struct {
-	TaskID      string   `json:"task_id"`
-	Prompt      string   `json:"prompt"`
-	Test        string   `json:"test,omitempty"`
-	EntryPoint  string   `json:"entry_point,omitempty"`
-	Level       string   `json:"level,omitempty"`
-	Eval        []string `json:"eval,omitempty"`
-	TestCmd     string   `json:"test_cmd,omitempty"`
-	Import      string   `json:"import,omitempty"`
-	Declaration string   `json:"declaration,omitempty"`
-	TestSetup   string   `json:"test_setup,omitempty"`
+	TaskID            string          `json:"task_id"`
+	Prompt            string          `json:"prompt"`
+	Test              string          `json:"test,omitempty"`
+	EntryPoint        string          `json:"entry_point,omitempty"`
+	Level             string          `json:"level,omitempty"`
+	Eval              []string        `json:"eval,omitempty"`
+	TestCmd           string          `json:"test_cmd,omitempty"`
+	Import            string          `json:"import,omitempty"`
+	Declaration       string          `json:"declaration,omitempty"`
+	TestSetup         string          `json:"test_setup,omitempty"`
+	Key               int             `json:"key,omitempty"`
+	InstructionIDList []string        `json:"instruction_id_list,omitempty"`
+	Kwargs            json.RawMessage `json:"kwargs,omitempty"`
 }
 
 func SuitesDir() string {
@@ -115,15 +118,41 @@ func LoadProblems(suite *Suite) ([]Problem, error) {
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
 
+	lineNum := 0
 	for scanner.Scan() {
 		line := scanner.Text()
 		if line == "" {
 			continue
 		}
+		lineNum++
 		var p Problem
 		if err := json.Unmarshal([]byte(line), &p); err != nil {
 			continue
 		}
+
+		if p.Prompt == "" || p.Test == "" {
+			var raw map[string]interface{}
+			if err := json.Unmarshal([]byte(line), &raw); err == nil {
+				if p.Prompt == "" {
+					if v, ok := raw["question"].(string); ok {
+						p.Prompt = v
+					}
+				}
+				if p.Test == "" {
+					if v, ok := raw["answer"].(string); ok {
+						p.Test = v
+					}
+				}
+			}
+		}
+
+		if p.TaskID == "" && p.Key > 0 {
+			p.TaskID = fmt.Sprintf("ifeval_%d", p.Key)
+		}
+		if p.TaskID == "" {
+			p.TaskID = fmt.Sprintf("%d", lineNum)
+		}
+
 		problems = append(problems, p)
 	}
 
