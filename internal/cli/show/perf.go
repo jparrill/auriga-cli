@@ -147,7 +147,24 @@ func resolveProfileForPort(port int) string {
 			}
 		}
 	}
+	if runningModel != "" {
+		for name := range profiles {
+			if profileAlias(name) == runningModel {
+				return name
+			}
+		}
+	}
 	return fmt.Sprintf("port-%d", port)
+}
+
+func profileAlias(name string) string {
+	flags := viper.GetStringSlice(fmt.Sprintf("profiles.%s.flags", name))
+	for i, f := range flags {
+		if f == "--alias" && i+1 < len(flags) {
+			return flags[i+1]
+		}
+	}
+	return ""
 }
 
 func getRunningModel(port int) string {
