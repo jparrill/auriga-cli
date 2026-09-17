@@ -23,11 +23,11 @@ func makeResult(model, taskID string, success bool, duration int) bench.Result {
 
 func TestBuildComparison(t *testing.T) {
 	tests := []struct {
-		name         string
-		a, b         []bench.Result
-		wantRows     int
-		checkNilA    string
-		checkNilB    string
+		name      string
+		a, b      []bench.Result
+		wantRows  int
+		checkNilA string
+		checkNilB string
 	}{
 		{
 			name:     "When both runs have the same 2 tasks, it should produce 2 matched rows",
@@ -92,9 +92,9 @@ func TestDeltaSymbol(t *testing.T) {
 	fail := makeResult("m", "t", false, 10)
 
 	tests := []struct {
-		name     string
-		row      comparisonRow
-		wantHas  string
+		name    string
+		row     comparisonRow
+		wantHas string
 	}{
 		{
 			name:    "When task improved fail to pass, it should show +",
@@ -166,8 +166,8 @@ func TestTimeStr(t *testing.T) {
 		result  *bench.Result
 		wantHas string
 	}{
-		{"When result has 10s duration, it should show 10s", &r10, "10s"},
-		{"When result has 120s duration, it should show 120s", &r120, "120s"},
+		{"When result has 10s duration, it should show seconds only", &r10, "10s"},
+		{"When result has 120s duration, it should show minutes and seconds", &r120, "2m00s"},
 		{"When result is nil, it should show dash", nil, "—"},
 	}
 
@@ -178,6 +178,45 @@ func TestTimeStr(t *testing.T) {
 				t.Errorf("got %q, want substring %q", s, tt.wantHas)
 			}
 		})
+	}
+}
+
+func TestWinner(t *testing.T) {
+	passA := makeResult("model-a", "task", true, 10)
+	passB := makeResult("model-b", "task", true, 15)
+	failA := makeResult("model-a", "task", false, 10)
+
+	tests := []struct {
+		name string
+		row  comparisonRow
+		want string
+	}{
+		{
+			name: "When both pass and A is faster, it should name A with time gap",
+			row:  comparisonRow{resultA: &passA, resultB: &passB},
+			want: "A (-5s)",
+		},
+		{
+			name: "When correctness differs, it should prefer passing result",
+			row:  comparisonRow{resultA: &failA, resultB: &passB},
+			want: "B (+5s)",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := winner(tt.row, "A", "B"); got != tt.want {
+				t.Errorf("winner() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestProfileLabel(t *testing.T) {
+	result := makeResult("Qwen3.8-27B-Q4.gguf", "task", true, 10)
+	got := profileLabel("humaneval-go-qwen3.8-27b-q4-2026-09-09_1903", "humaneval-go", &result)
+	if got != "qwen3.8-27b-q4" {
+		t.Errorf("profileLabel() = %q, want %q", got, "qwen3.8-27b-q4")
 	}
 }
 
@@ -194,10 +233,10 @@ func TestResultKey(t *testing.T) {
 			wantEqual: false,
 		},
 		{
-			name:      "When model differs, keys should be different",
+			name:      "When model differs for same task, keys should be equal",
 			r1:        makeResult("model-a", "task-1", true, 10),
 			r2:        makeResult("model-b", "task-1", true, 10),
-			wantEqual: false,
+			wantEqual: true,
 		},
 		{
 			name:      "When all key fields match, keys should be equal",

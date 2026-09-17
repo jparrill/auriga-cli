@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 
+	"github.com/charmbracelet/lipgloss"
 	bench "github.com/jparrill/auriga-cli/internal/benchmark"
 	"github.com/jparrill/auriga-cli/internal/config"
 	"github.com/jparrill/auriga-cli/internal/ui"
@@ -34,7 +37,6 @@ Examples:
 
 type comparisonRow struct {
 	suite   string
-	model   string
 	taskID  string
 	backend string
 	resultA *bench.Result
@@ -80,7 +82,7 @@ func loadSummary(runDir string) ([]bench.Result, error) {
 }
 
 func resultKey(r bench.Result) string {
-	return fmt.Sprintf("%s__%s__%s__%s", r.Suite, r.TaskID, r.Model, r.Backend)
+	return fmt.Sprintf("%s__%s__%s", r.Suite, r.TaskID, r.Backend)
 }
 
 func buildComparison(a, b []bench.Result) []comparisonRow {
@@ -105,7 +107,6 @@ func buildComparison(a, b []bench.Result) []comparisonRow {
 		seen[key] = true
 		row := comparisonRow{
 			suite:   r.Suite,
-			model:   r.Model,
 			taskID:  r.TaskID,
 			backend: r.Backend,
 			resultA: mapA[key],
@@ -122,7 +123,6 @@ func buildComparison(a, b []bench.Result) []comparisonRow {
 		seen[key] = true
 		rows = append(rows, comparisonRow{
 			suite:   r.Suite,
-			model:   r.Model,
 			taskID:  r.TaskID,
 			backend: r.Backend,
 			resultA: nil,
@@ -163,7 +163,90 @@ func timeStr(r *bench.Result) string {
 	if r == nil {
 		return ui.MutedStyle.Render("—")
 	}
-	return fmt.Sprintf("%ds", r.Duration)
+	return formatDuration(r.Duration, false)
+}
+
+func formatDuration(seconds int, signed bool) string {
+	sign := ""
+	if signed && seconds > 0 {
+		sign = "+"
+	} else if signed && seconds < 0 {
+		sign = "-"
+	}
+	seconds = absInt(seconds)
+	if seconds < 60 {
+		return fmt.Sprintf("%s%ds", sign, seconds)
+	}
+	if seconds < 3600 {
+		return fmt.Sprintf("%s%dm%02ds", sign, seconds/60, seconds%60)
+	}
+	return fmt.Sprintf("%s%dh%02dm", sign, seconds/3600, (seconds%3600)/60)
+}
+
+func resultStr(r *bench.Result) string {
+	if r == nil {
+		return ui.MutedStyle.Render("—")
+	}
+	return fmt.Sprintf("%s %s", passSymbol(r), timeStr(r))
+}
+
+func profileLabel(runName, suite string, result *bench.Result) string {
+	name := filepath.Base(runName)
+	name = strings.TrimPrefix(name, suite+"-")
+	name = regexp.MustCompile(`-\d{4}-\d{2}-\d{2}_\d{4}$`).ReplaceAllString(name, "")
+	if name == filepath.Base(runName) && result != nil {
+		name = strings.TrimSuffix(filepath.Base(result.Model), filepath.Ext(result.Model))
+	}
+	if len(name) > 28 {
+		return name[:25] + "..."
+	}
+	return name
+}
+
+func comparisonProfile(rows []comparisonRow, runName string, first bool) string {
+	for _, row := range rows {
+		result := row.resultB
+		if first {
+			result = row.resultA
+		}
+		if result != nil {
+			return profileLabel(runName, row.suite, result)
+		}
+	}
+	return profileLabel(runName, "", nil)
+}
+
+func absInt(value int) int {
+	if value < 0 {
+		return -value
+	}
+	return value
+}
+
+func winner(row comparisonRow, profileA, profileB string) string {
+	if row.resultA == nil {
+		return profileB + " (only)"
+	}
+	if row.resultB == nil {
+		return profileA + " (only)"
+	}
+	if row.resultA.Success != row.resultB.Success {
+		if row.resultA.Success {
+			return fmt.Sprintf("%s (%s)", profileA, formatDuration(row.resultA.Duration-row.resultB.Duration, true))
+		}
+		return fmt.Sprintf("%s (%s)", profileB, formatDuration(row.resultB.Duration-row.resultA.Duration, true))
+	}
+	if row.resultA.Duration == row.resultB.Duration {
+		return "tie"
+	}
+	if row.resultA.Duration < row.resultB.Duration {
+		return fmt.Sprintf("%s (%s)", profileA, formatDuration(row.resultA.Duration-row.resultB.Duration, true))
+	}
+	return fmt.Sprintf("%s (%s)", profileB, formatDuration(row.resultB.Duration-row.resultA.Duration, true))
+}
+
+func profileCell(name string, style lipgloss.Style, width int) string {
+	return style.Render(name) + strings.Repeat(" ", width-len(name))
 }
 
 func printComparison(rows []comparisonRow, nameA, nameB string) {
@@ -174,19 +257,16 @@ func printComparison(rows []comparisonRow, nameA, nameB string) {
 
 	fmt.Printf("\n  %s\n\n", ui.BoldStyle.Render(fmt.Sprintf("Comparing: %s  vs  %s", nameA, nameB)))
 
-	tbl := ui.NewTable("Per-problem comparison", "MODEL", "TASK", "A", "B", "DELTA", "TIME-A", "TIME-B")
+	profileA := comparisonProfile(rows, nameA, true)
+	profileB := comparisonProfile(rows, nameB, false)
+	tbl := ui.NewTable("Per-problem comparison", "BENCHMARK", "TASK", profileA, profileB, "WINNER")
 	for _, row := range rows {
-		model := row.model
-		if len(model) > 30 {
-			model = model[:30]
-		}
 		task := row.taskID
 		if len(task) > 25 {
 			task = task[:25]
 		}
 
-		tbl.AddRow(model, task, passSymbol(row.resultA), passSymbol(row.resultB),
-			deltaSymbol(row), timeStr(row.resultA), timeStr(row.resultB))
+		tbl.AddRow(row.suite, task, resultStr(row.resultA), resultStr(row.resultB), winner(row, profileA, profileB))
 	}
 	tbl.Print()
 
@@ -238,19 +318,53 @@ func printComparisonSummary(rows []comparisonRow, nameA, nameB string) {
 	rateDelta := rateB - rateA
 	rateColor := ui.MutedStyle
 	if rateDelta > 0 {
-		rateColor = ui.SuccessStyle
+		rateColor = ui.OrangeStyle
 	} else if rateDelta < 0 {
-		rateColor = ui.ErrorStyle
+		rateColor = ui.InfoStyle
+	}
+	passedDelta := passB - passA
+	passedColor := ui.MutedStyle
+	if passedDelta > 0 {
+		passedColor = ui.OrangeStyle
+	} else if passedDelta < 0 {
+		passedColor = ui.InfoStyle
+	}
+	timeDelta := timeB - timeA
+	timeColor := ui.MutedStyle
+	if timeDelta > 0 {
+		timeColor = ui.InfoStyle
+	} else if timeDelta < 0 {
+		timeColor = ui.OrangeStyle
 	}
 
-	fmt.Printf("  %s  %s  %s\n",
-		ui.BoldStyle.Render("Summary:"),
-		fmt.Sprintf("%s: %.1f%% (%d/%d)", nameA, rateA, passA, totalA),
-		fmt.Sprintf("%s: %.1f%% (%d/%d)", nameB, rateB, passB, totalB))
+	profileA := comparisonProfile(rows, nameA, true)
+	profileB := comparisonProfile(rows, nameB, false)
+	profileWidth := len(profileA)
+	if len(profileB) > profileWidth {
+		profileWidth = len(profileB)
+	}
 
-	fmt.Printf("  %s  %s  %s  %s\n\n",
-		rateColor.Render(fmt.Sprintf("Rate Δ: %+.1f%%", rateDelta)),
+	fmt.Printf("\n  %s\n", ui.BoldStyle.Render("Summary"))
+	fmt.Printf("  %-*s  %10s  %11s  %10s\n",
+		profileWidth, "PROFILE", "PASS RATE", "PASSED", "TIME")
+	fmt.Printf("  %s  %10s  %11s  %10s\n",
+		profileCell(profileA, ui.InfoStyle, profileWidth),
+		ui.SuccessStyle.Render(fmt.Sprintf("%9.1f%%", rateA)),
+		fmt.Sprintf("%5d/%-5d", passA, totalA),
+		fmt.Sprintf("%9s", formatDuration(timeA, false)))
+	fmt.Printf("  %s  %10s  %11s  %10s\n",
+		profileCell(profileB, ui.OrangeStyle, profileWidth),
+		ui.SuccessStyle.Render(fmt.Sprintf("%9.1f%%", rateB)),
+		fmt.Sprintf("%5d/%-5d", passB, totalB),
+		fmt.Sprintf("%9s", formatDuration(timeB, false)))
+	fmt.Printf("  %-*s  %10s  %11s  %10s\n\n",
+		profileWidth, "DELTA",
+		rateColor.Render(fmt.Sprintf("%+9.1fpp", rateDelta)),
+		passedColor.Render(fmt.Sprintf("%+5d/%-5d", passedDelta, totalB-totalA)),
+		timeColor.Render(fmt.Sprintf("%9s", formatDuration(timeDelta, true))))
+
+	fmt.Printf("  %s  %s  %s\n\n",
 		ui.SuccessStyle.Render(fmt.Sprintf("Improved: %d", improved)),
 		ui.ErrorStyle.Render(fmt.Sprintf("Regressed: %d", regressed)),
-		ui.MutedStyle.Render(fmt.Sprintf("Time: %ds → %ds", timeA, timeB)))
+		ui.MutedStyle.Render(fmt.Sprintf("Compared: %d tasks", len(rows))))
 }

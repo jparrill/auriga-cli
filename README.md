@@ -54,6 +54,7 @@ auriga profile switch <name> [--persistent]       # Switch to a different profil
 auriga profile stop [name]                        # Stop running llama-server instance(s)
 auriga profile validate                           # Validate configs vs model caps + GTT memory
 auriga benchmark list [--failed]                  # List meta-benchmark results
+auriga benchmark compare <run-A> <run-B>          # Compare benchmark runs
 auriga fix [--list] [--failed] [--model X]        # Interactive fix workflow
 ```
 
@@ -135,6 +136,37 @@ Compatible with the Python scripts `.envrc` — same env vars work:
 | `BENCH_GEN_TIMEOUT` | `benchmark.gen_timeout` | `900` |
 
 Precedence: CLI flag > env var > config file > default.
+
+## Benchmark Comparison
+
+Compare two benchmark runs with:
+
+```bash
+auriga benchmark compare <run-A> <run-B>
+```
+
+Results are matched by benchmark suite, task, and backend, so the same task is
+shown once even when runs use different models. The comparison displays:
+
+- `BENCHMARK` — benchmark suite name.
+- `TASK` — individual benchmark task.
+- Profile result columns — pass/fail status and elapsed time for each profile.
+- `WINNER` — profile with better correctness; when correctness ties, the faster profile wins.
+- Winner delta — time difference from winner perspective. Negative means winner used less time; positive means it won on correctness despite taking longer.
+
+Elapsed time uses compact units: `15s`, `2m15s`, or `2h54m`.
+
+Summary output aligns pass rate, passed count, total time, and deltas:
+
+```text
+Summary
+  PROFILE                 PASS RATE       PASSED        TIME
+  qwen3.8-27b-q4              95.1%    156/164       2h54m
+  qwen3.8-flash-next-q4       98.8%    162/164      10h25m
+  DELTA                       +3.7pp       +6/0       +7h31m
+
+  Improved: 8  Regressed: 2  Compared: 164 tasks
+```
 
 ## Multi-Instance (Dense + MoE)
 

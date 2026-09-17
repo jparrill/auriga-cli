@@ -11,7 +11,7 @@ var (
 	ColorBg      = lipgloss.Color("#1a1b26")
 	ColorSurface = lipgloss.Color("#24283b")
 	ColorText    = lipgloss.Color("#c0caf5")
-	ColorMuted   = lipgloss.Color("#565f89")
+	ColorMuted   = lipgloss.Color("#a9b1d6")
 	ColorAccent  = lipgloss.Color("#7aa2f7")
 	ColorGreen   = lipgloss.Color("#9ece6a")
 	ColorYellow  = lipgloss.Color("#e0af68")
@@ -24,6 +24,7 @@ var (
 	SuccessStyle = lipgloss.NewStyle().Foreground(ColorGreen)
 	ErrorStyle   = lipgloss.NewStyle().Foreground(ColorRed)
 	WarningStyle = lipgloss.NewStyle().Foreground(ColorYellow)
+	OrangeStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#ff9e64"))
 	InfoStyle    = lipgloss.NewStyle().Foreground(ColorCyan)
 	AccentStyle  = lipgloss.NewStyle().Foreground(ColorAccent)
 	MutedStyle   = lipgloss.NewStyle().Foreground(ColorMuted)
@@ -44,9 +45,9 @@ var (
 )
 
 func Ok(msg string)   { fmt.Printf("  %s %s\n", SuccessStyle.Render("✓"), msg) }
-func Fail(msg string)  { fmt.Printf("  %s %s\n", ErrorStyle.Render("✗"), msg) }
-func Warn(msg string)  { fmt.Printf("  %s %s\n", WarningStyle.Render("⚠"), msg) }
-func Info(msg string)  { fmt.Printf("  %s %s\n", InfoStyle.Render("→"), msg) }
+func Fail(msg string) { fmt.Printf("  %s %s\n", ErrorStyle.Render("✗"), msg) }
+func Warn(msg string) { fmt.Printf("  %s %s\n", WarningStyle.Render("⚠"), msg) }
+func Info(msg string) { fmt.Printf("  %s %s\n", InfoStyle.Render("→"), msg) }
 
 func FormatKeyValue(key, value string) string {
 	return fmt.Sprintf("%s %s", KeyStyle.Render(key+":"), ValueStyle.Render(value))
