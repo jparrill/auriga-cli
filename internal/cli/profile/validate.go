@@ -63,8 +63,8 @@ func newProfileValidateCmd() *cobra.Command {
 		Long: `Check each profile's ctx_size against model maximum, estimate memory usage,
 and verify dual-instance (dense + MoE) fits within available GPU memory (GTT).
 
-Detects: ctx_size exceeding model max, mtp_drafter/dflash without --model-draft,
-dual-instance combinations that exceed GTT.
+Detects: ctx_size exceeding model max, missing profile files, and dual-instance
+combinations that exceed GTT.
 
 GTT source: llama_server.gtt_bytes config > /sys/class/drm/card*/device/mem_info_gtt_total.
 
@@ -388,9 +388,6 @@ func validateProfile(name, ggufDir string) profileValidation {
 			v.Warnings = append(v.Warnings, fmt.Sprintf("%s not on disk: %s", drafter.field, drafter.file))
 		} else {
 			v.TotalEst += fi.Size()
-		}
-		if !containsFlag(flags, "--model-draft") {
-			v.Warnings = append(v.Warnings, fmt.Sprintf("%s set but --model-draft not in flags", drafter.field))
 		}
 	}
 

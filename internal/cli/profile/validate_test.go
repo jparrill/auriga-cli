@@ -362,7 +362,7 @@ func TestValidateProfile_CtxExceedsMax(t *testing.T) {
 	}
 }
 
-func TestValidateProfile_MTPDrafterWarning(t *testing.T) {
+func TestValidateProfile_MTPDrafterMissing(t *testing.T) {
 	viper.Reset()
 	defer viper.Reset()
 
@@ -384,21 +384,59 @@ func TestValidateProfile_MTPDrafterWarning(t *testing.T) {
 
 	v := validateProfile("drafter-test", ggufDir)
 
-	foundFlag := false
 	foundFile := false
 	for _, w := range v.Warnings {
-		if w == "mtp_drafter set but --model-draft not in flags" {
-			foundFlag = true
-		}
 		if w == "mtp_drafter not on disk: drafter.gguf" {
 			foundFile = true
 		}
 	}
-	if !foundFlag {
-		t.Errorf("expected --model-draft warning, got warnings: %v", v.Warnings)
-	}
 	if !foundFile {
 		t.Errorf("expected file-missing warning, got warnings: %v", v.Warnings)
+	}
+}
+
+func TestValidateProfile_DrafterAutoInjectionDoesNotWarnAboutFlags(t *testing.T) {
+	tests := []struct {
+		name  string
+		field string
+	}{
+		{name: "When MTP drafter is configured and present, it should not require manual model-draft flag", field: "mtp_drafter"},
+		{name: "When DFlash drafter is configured and present, it should not require manual model-draft flag", field: "dflash"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			viper.Reset()
+			defer viper.Reset()
+
+			ggufDir := t.TempDir()
+			modelPath := writeTestGGUF(t, map[string]any{
+				"general.architecture":  "test",
+				"test.context_length":   uint32(131072),
+				"test.block_count":      uint32(32),
+				"test.head_count_kv":    uint32(8),
+				"test.head_count":       uint32(32),
+				"test.embedding_length": uint32(4096),
+			})
+			modelFile := filepath.Base(modelPath)
+			if err := os.Rename(modelPath, filepath.Join(ggufDir, modelFile)); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(ggufDir, "drafter.gguf"), []byte("drafter"), 0644); err != nil {
+				t.Fatal(err)
+			}
+
+			viper.Set("profiles.drafter-test.model", modelFile)
+			viper.Set("profiles.drafter-test.repo", "org/repo")
+			viper.Set("profiles.drafter-test."+tt.field, "drafter.gguf")
+
+			validation := validateProfile("drafter-test", ggufDir)
+			for _, warning := range validation.Warnings {
+				if strings.Contains(warning, "--model-draft not in flags") {
+					t.Errorf("validateProfile() returned false warning: %s", warning)
+				}
+			}
+		})
 	}
 }
 
