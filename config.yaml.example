@@ -15,8 +15,8 @@ llama_server:
   gguf_dir: ~/infra/ai/models/gguf
   mmproj_dir: ~/infra/ai/models/mmproj
   quant: Q4_K_M
-  dense_port: 8090
-  moe_port: 8091
+  slot_1_port: 8090
+  slot_2_port: 8091
   perplexity:
     bin: ~/infra/bin/llama-perplexity
     dataset: ~/infra/ai/models/datasets/wikitext-2-raw/wiki.test.raw
@@ -72,8 +72,3 @@ benchmark:
   max_retries: 5
   gen_timeout: 3600
   results_dir: ~/Projects/auriga-lab/results
-
-pi:
-  bin: ~/.npm-global/bin/pi
-  default_model: gemma4:26b
-  vision_model: local

@@ -17,7 +17,7 @@
 
 `auriga` is a unified CLI for managing LLM models, benchmarks, and development workflows on a local AI server (AMD Ryzen AI Max+ 395, 128GB unified RAM, Fedora 44).
 
-It consolidates model management (Ollama + llama-server), vision-enabled inference (multimodal projectors), meta-benchmarks, and interactive fix sessions into a single binary.
+It consolidates model management (Ollama + llama-server), vision-enabled inference (multimodal projectors), and meta-benchmarks into a single binary.
 
 ## Install
 
@@ -36,10 +36,6 @@ make deploy
 
 ```
 auriga version                                    # Build info
-auriga serve start <profile>                      # Start llama-server with a profile
-auriga serve start --model X.gguf --mmproj Y.gguf # Start with custom model + vision
-auriga serve stop                                 # Stop llama-server, restart Ollama
-auriga serve list                                 # List available profiles
 auriga model list [--backend ollama|llama-server]  # List installed models + GGUFs
 auriga model ensure [--backend ...]               # Download missing models
 auriga model create --name X [--gguf|--modelfile]  # Create Ollama model from GGUF/Modelfile
@@ -49,13 +45,12 @@ auriga profile create <name> --repo X [--dflash]  # Create profile from HuggingF
 auriga profile setup <name> --repo X [--dflash]   # Resolve + download + create profile
 auriga profile sync [--name X]                    # Download missing GGUF/mmproj/drafters
 auriga profile prune [--dry-run]                  # Delete orphaned model files
-auriga profile serve <name> [--daemon]            # Start llama-server with a profile
-auriga profile switch <name> [--persistent]       # Switch to a different profile
+auriga profile serve <name> --slot N [--daemon]   # Start llama-server with a profile
+auriga profile switch <name> --slot N [--persistent] # Switch to a different profile
 auriga profile stop [name]                        # Stop running llama-server instance(s)
 auriga profile validate                           # Validate configs vs model caps + GTT memory
 auriga benchmark list [--failed]                  # List meta-benchmark results
 auriga benchmark compare <run-A> <run-B>          # Compare benchmark runs
-auriga fix [--list] [--failed] [--model X]        # Interactive fix workflow
 ```
 
 ## Configuration
@@ -72,8 +67,8 @@ llama_server:
   gguf_dir: ~/infra/ai/models/gguf
   mmproj_dir: ~/infra/ai/models/mmproj
   quant: Q4_K_M
-  dense_port: 8090
-  moe_port: 8091
+  slot_1_port: 8090
+  slot_2_port: 8091
   ctx_size: 131072          # global default, overridden per-profile
 
   reasoning_budget: 4096
@@ -191,7 +186,7 @@ auriga profile stop
 
 Model type is auto-detected from the model name (`-A3B`, `-A4B` patterns indicate MoE) or can be set explicitly with `--type` or the `type:` field in config.
 
-Port resolution: `profile.port` (explicit) > type-derived (`dense_port`/`moe_port`) > `dense_port` > 8090.
+Port selection for `profile serve` and `profile switch` comes from required `--slot`, using `slot_1_port` or `slot_2_port`.
 
 ## Vision Support
 
@@ -204,23 +199,6 @@ auriga profile serve qwen3.6-vision
 # Use with OpenCode or other clients
 LLAMA_SERVER_HOST=http://localhost:8090 opencode
 ```
-
-## Fix Workflow
-
-The `fix` command automates the iterative project repair workflow:
-
-```bash
-# List failed benchmark results
-auriga fix --failed
-
-# Pick and fix interactively
-auriga fix
-
-# Jump to a specific model
-auriga fix --model gemma4
-```
-
-Flow: select result → start model (Ollama or llama-server) → launch coding agent → work → cleanup.
 
 ## Speculative Decoding
 

@@ -62,14 +62,6 @@ make deploy-remote  # Cross-compile to Linux and rsync to auriga via SSH
 | `profile validate` | Check ctx_size, memory fit, missing files, drafter repos |
 | `profile delete` | Remove a profile from config |
 
-### `auriga serve`
-
-| Command | Purpose |
-|---------|---------|
-| `serve start <profile>` | Start llama-server with profile (or raw `--model` flag) |
-| `serve stop` | Stop running llama-server and restart Ollama |
-| `serve list` | List configured profiles |
-
 ### `auriga benchmark`
 
 | Command | Purpose |

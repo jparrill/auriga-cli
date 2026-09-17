@@ -71,10 +71,10 @@ Auriga manages llama-server instances as systemd user services.
 
 ```bash
 # Start a profile (creates/updates systemd service)
-auriga profile serve qwen3.8-27b-q4 --daemon
+auriga profile serve qwen3.8-27b-q4 --slot 1 --daemon
 
 # Switch profile on same port (stops old, starts new)
-auriga profile switch qwen3.6-mtp-q4
+auriga profile switch qwen3.6-mtp-q4 --slot 1
 
 # Stop a profile
 auriga profile stop qwen3.8-27b-q4
@@ -145,7 +145,7 @@ auriga profile validate
 ### 5. Serve
 
 ```bash
-auriga profile serve new-model --daemon
+auriga profile serve new-model --slot 1 --daemon
 ```
 
 ## Dual-Instance Setup
@@ -155,12 +155,12 @@ The typical setup runs two llama-server instances simultaneously:
 - **Slot 1 (port 8090)**: Dense model for primary chat/coding (e.g., qwen3.8-27b-q4)
 - **Slot 2 (port 8091)**: MoE model for secondary tasks, title gen, or alternative model (e.g., qwen3.6-mtp-q4)
 
-Both must fit in 108GB GTT. Use `auriga profile validate` to check memory estimates.
+Both must fit in available GTT. Use `auriga profile validate` to check memory estimates.
 
 ```bash
 # Start both
-auriga profile serve qwen3.8-27b-q4 --daemon
-auriga profile serve qwen3.6-mtp-q4 --daemon
+auriga profile serve qwen3.8-27b-q4 --slot 1 --daemon
+auriga profile serve qwen3.6-mtp-q4 --slot 2 --daemon
 
 # Verify
 auriga ps
