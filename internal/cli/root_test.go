@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 )
 
@@ -34,7 +35,7 @@ func TestVersionCmd(t *testing.T) {
 
 func TestRootCmd_SubcommandRegistration(t *testing.T) {
 	cmd := NewRootCmd()
-	expected := []string{"version", "profile", "model", "benchmark", "ps"}
+	expected := []string{"version", "profile", "model", "benchmark", "ps", "show", "sweep"}
 
 	cmds := make(map[string]bool)
 	for _, c := range cmd.Commands() {
@@ -45,5 +46,36 @@ func TestRootCmd_SubcommandRegistration(t *testing.T) {
 		if !cmds[name] {
 			t.Errorf("expected subcommand %q not found", name)
 		}
+	}
+}
+
+func TestRootCmd_ObsoleteCommandsAreNotRegistered(t *testing.T) {
+	cmd := NewRootCmd()
+	for _, name := range []string{"fix", "serve"} {
+		t.Run("When obsolete command "+name+" is requested, it should be unavailable", func(t *testing.T) {
+			for _, candidate := range cmd.Commands() {
+				if candidate.Name() == name {
+					t.Fatalf("obsolete command %q is registered", name)
+				}
+			}
+		})
+	}
+}
+
+func TestProfileLifecycleCommands_RequireSlot(t *testing.T) {
+	root := NewRootCmd()
+	for _, name := range []string{"serve", "switch"} {
+		t.Run("When profile "+name+" has no slot, it should reject execution", func(t *testing.T) {
+			cmd, _, err := root.Find([]string{"profile", name})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cmd.Flags().Lookup("slot") == nil {
+				t.Fatalf("profile %s should define slot flag", name)
+			}
+			if err := cmd.ValidateRequiredFlags(); err == nil || !strings.Contains(err.Error(), "slot") {
+				t.Fatalf("expected required slot error, got %v", err)
+			}
+		})
 	}
 }
