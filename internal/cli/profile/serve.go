@@ -12,7 +12,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/jparrill/auriga-cli/internal/config"
 	"github.com/jparrill/auriga-cli/internal/llamaserver"
 	"github.com/jparrill/auriga-cli/internal/ui"
 	"github.com/spf13/cobra"
@@ -125,12 +124,9 @@ func runProfileServe(name string, daemon bool, ctxSize int, slot int) error {
 	if modelFile == "" {
 		return fmt.Errorf("profile %q not found — run: auriga profile list", name)
 	}
-
 	port := llamaserver.SlotPort(slot)
 	pf := pidFileForPort(port)
-
-	configuredType := viper.GetString(profileKey + ".type")
-	warnTypeMismatch(name, configuredType, modelFile)
+	warnTypeMismatch(name, viper.GetString(profileKey+".type"), modelFile)
 
 	if existingPID := readPIDForPort(port); existingPID > 0 {
 		if processExists(existingPID) {
@@ -143,47 +139,12 @@ func runProfileServe(name string, daemon bool, ctxSize int, slot int) error {
 		return fmt.Errorf("port %d already in use — another process may be running\nRun: auriga profile stop", port)
 	}
 
-	mmprojFile := viper.GetString(profileKey + ".mmproj")
-	dflashFile := viper.GetString(profileKey + ".dflash")
-	mtpDrafterFile := viper.GetString(profileKey + ".mtp_drafter")
-	ggufDir := config.ExpandHome(viper.GetString("llama_server.gguf_dir"))
-	mmprojDir := config.ExpandHome(viper.GetString("llama_server.mmproj_dir"))
-
-	modelPath := filepath.Join(ggufDir, modelFile)
-	if _, err := os.Stat(modelPath); err != nil {
-		return fmt.Errorf("model not found: %s\nRun: auriga model ensure --profile %s", modelPath, name)
+	preflight, err := resolveProfilePreflight(name, ctxSize, slot, "auriga model ensure")
+	if err != nil {
+		return err
 	}
-
-	var mmprojPath string
-	if mmprojFile != "" {
-		mmprojPath = filepath.Join(mmprojDir, name, mmprojFile)
-		if _, err := os.Stat(mmprojPath); err != nil {
-			legacyPath := filepath.Join(mmprojDir, mmprojFile)
-			if _, legacyErr := os.Stat(legacyPath); legacyErr == nil {
-				mmprojPath = legacyPath
-			} else {
-				return fmt.Errorf("mmproj not found: %s\nRun: auriga model ensure --profile %s", mmprojPath, name)
-			}
-		}
-	}
-
-	if dflashFile != "" {
-		dflashPath := filepath.Join(ggufDir, dflashFile)
-		if _, err := os.Stat(dflashPath); err != nil {
-			return fmt.Errorf("dflash drafter not found: %s\nRun: auriga profile sync --name %s", dflashPath, name)
-		}
-	}
-
-	if mtpDrafterFile != "" {
-		mtpPath := filepath.Join(ggufDir, mtpDrafterFile)
-		if _, err := os.Stat(mtpPath); err != nil {
-			return fmt.Errorf("mtp_drafter not found: %s\nRun: auriga profile sync --name %s", mtpPath, name)
-		}
-	}
-
-	bin := llamaserver.BinForProfile(name)
-	if _, err := os.Stat(bin); err != nil {
-		return fmt.Errorf("llama-server binary not found: %s", bin)
+	if err := validateProfileBinary(preflight); err != nil {
+		return err
 	}
 
 	mode := "foreground"
@@ -194,25 +155,25 @@ func runProfileServe(name string, daemon bool, ctxSize int, slot int) error {
 	pType := profileType(name)
 	params := []ui.OrderedParam{
 		{Key: "Profile", Value: name},
-		{Key: "Model", Value: modelFile},
+		{Key: "Model", Value: preflight.ModelFile},
 		{Key: "Type", Value: pType},
 		{Key: "Mode", Value: mode},
 	}
 	if viper.GetString(profileKey+".bin") != "" {
-		params = append(params, ui.OrderedParam{Key: "Binary", Value: bin})
+		params = append(params, ui.OrderedParam{Key: "Binary", Value: preflight.Binary})
 	}
-	if mmprojFile != "" {
-		params = append(params, ui.OrderedParam{Key: "Vision", Value: mmprojFile})
+	if preflight.MMProjFile != "" {
+		params = append(params, ui.OrderedParam{Key: "Vision", Value: preflight.MMProjFile})
 	}
-	if dflashFile != "" {
-		params = append(params, ui.OrderedParam{Key: "DFlash", Value: dflashFile})
+	if preflight.DFlashFile != "" {
+		params = append(params, ui.OrderedParam{Key: "DFlash", Value: preflight.DFlashFile})
 	}
-	if mtpDrafterFile != "" {
-		params = append(params, ui.OrderedParam{Key: "MTP Drafter", Value: mtpDrafterFile})
+	if preflight.MTPDrafterFile != "" {
+		params = append(params, ui.OrderedParam{Key: "MTP Drafter", Value: preflight.MTPDrafterFile})
 	}
 	params = append(params, ui.OrderedParam{Key: "Port", Value: fmt.Sprintf("%d", port)})
 	params = append(params, ui.OrderedParam{Key: "Context", Value: fmt.Sprintf("%d", ctxSize)})
-	if profileFlags := viper.GetStringSlice(profileKey + ".flags"); len(profileFlags) > 0 {
+	if profileFlags := preflight.Flags; len(profileFlags) > 0 {
 		params = append(params, ui.OrderedParam{Key: "Flags", Value: formatFlagPairs(profileFlags)})
 	}
 
@@ -221,14 +182,11 @@ func runProfileServe(name string, daemon bool, ctxSize int, slot int) error {
 		return err
 	}
 
-	extraFlags := viper.GetStringSlice(profileKey + ".flags")
-	if mmprojFile != "" && !containsFlag(extraFlags, "--jinja") {
-		extraFlags = append(extraFlags, "--jinja")
-	}
-	extraFlags = injectDrafterFlags(name, ggufDir, extraFlags)
+	extraFlags := profileFlagsWithVision(preflight.Flags, preflight.MMProjFile)
+	extraFlags = injectDrafterFlags(name, preflight.GGUFDir, extraFlags)
 
 	ctx := context.Background()
-	proc, err := llamaserver.StartWithCtx(ctx, bin, modelPath, mmprojPath, extraFlags, ctxSize, port)
+	proc, err := llamaserver.StartWithCtx(ctx, preflight.Binary, preflight.ModelPath, preflight.MMProjPath, extraFlags, ctxSize, port)
 	if err != nil {
 		return err
 	}
@@ -303,4 +261,3 @@ func processExists(pid int) bool {
 	err = proc.Signal(syscall.Signal(0))
 	return err == nil
 }
-

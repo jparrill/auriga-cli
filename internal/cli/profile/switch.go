@@ -73,49 +73,17 @@ Examples:
 
 func RunProfileSwitch(name string, opts SwitchOpts) error {
 	profileKey := fmt.Sprintf("profiles.%s", name)
-	modelFile := viper.GetString(profileKey + ".model")
-	if modelFile == "" {
-		return fmt.Errorf("profile %q not found — run: auriga profile list", name)
+	preflight, err := resolveProfilePreflight(name, opts.CtxSize, opts.Slot, "auriga profile sync")
+	if err != nil {
+		return err
 	}
-
-	mmprojFile := viper.GetString(profileKey + ".mmproj")
-	ggufDir := config.ExpandHome(viper.GetString("llama_server.gguf_dir"))
-	mmprojDir := config.ExpandHome(viper.GetString("llama_server.mmproj_dir"))
-
-	modelPath := filepath.Join(ggufDir, modelFile)
-	if _, err := os.Stat(modelPath); err != nil {
-		return fmt.Errorf("model not found: %s\nRun: auriga profile sync --name %s", modelPath, name)
-	}
-
-	var mmprojPath string
-	if mmprojFile != "" {
-		mmprojPath = filepath.Join(mmprojDir, name, mmprojFile)
-		if _, err := os.Stat(mmprojPath); err != nil {
-			legacyPath := filepath.Join(mmprojDir, mmprojFile)
-			if _, legacyErr := os.Stat(legacyPath); legacyErr == nil {
-				mmprojPath = legacyPath
-			} else {
-				return fmt.Errorf("mmproj not found: %s\nRun: auriga profile sync --name %s", mmprojPath, name)
-			}
-		}
-	}
-
-	dflashFile := viper.GetString(profileKey + ".dflash")
-	mtpDrafterFile := viper.GetString(profileKey + ".mtp_drafter")
-
-	if dflashFile != "" {
-		dflashPath := filepath.Join(ggufDir, dflashFile)
-		if _, err := os.Stat(dflashPath); err != nil {
-			return fmt.Errorf("dflash drafter not found: %s\nRun: auriga profile sync --name %s", dflashPath, name)
-		}
-	}
-
-	if mtpDrafterFile != "" {
-		mtpPath := filepath.Join(ggufDir, mtpDrafterFile)
-		if _, err := os.Stat(mtpPath); err != nil {
-			return fmt.Errorf("mtp_drafter not found: %s\nRun: auriga profile sync --name %s", mtpPath, name)
-		}
-	}
+	modelFile := preflight.ModelFile
+	mmprojFile := preflight.MMProjFile
+	dflashFile := preflight.DFlashFile
+	mtpDrafterFile := preflight.MTPDrafterFile
+	modelPath := preflight.ModelPath
+	mmprojPath := preflight.MMProjPath
+	ggufDir := preflight.GGUFDir
 
 	if !opts.Quiet {
 		repo := viper.GetString(profileKey + ".repo")
@@ -151,13 +119,12 @@ func RunProfileSwitch(name string, opts SwitchOpts) error {
 			}
 		}
 	}
-
-	port := llamaserver.SlotPort(opts.Slot)
-
-	bin := llamaserver.BinForProfile(name)
-	if _, err := os.Stat(bin); err != nil {
-		return fmt.Errorf("llama-server binary not found: %s", bin)
+	if err := validateProfileBinary(preflight); err != nil {
+		return err
 	}
+
+	port := preflight.Port
+	bin := preflight.Binary
 
 	configuredType := viper.GetString(profileKey + ".type")
 	if !opts.Quiet {
@@ -202,10 +169,7 @@ func RunProfileSwitch(name string, opts SwitchOpts) error {
 
 	stopRunningServer(port, opts.Quiet)
 
-	extraFlags := viper.GetStringSlice(profileKey + ".flags")
-	if mmprojFile != "" && !containsFlag(extraFlags, "--jinja") {
-		extraFlags = append(extraFlags, "--jinja")
-	}
+	extraFlags := profileFlagsWithVision(preflight.Flags, mmprojFile)
 	extraFlags = injectDrafterFlags(name, ggufDir, extraFlags)
 
 	if opts.Persistent {
