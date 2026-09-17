@@ -30,6 +30,10 @@ func (h *HumanEvalRunner) BuildPrompt(problem formats.Problem, suite formats.Sui
 }
 
 func (h *HumanEvalRunner) ValidateResponse(response string, problem formats.Problem, workDir string) (bool, string, error) {
+	return h.validateResponseWith(response, problem, workDir, exec.RunSandboxed)
+}
+
+func (h *HumanEvalRunner) validateResponseWith(response string, problem formats.Problem, workDir string, run sandboxRunner) (bool, string, error) {
 	code := cleanPythonResponse(response, problem)
 
 	// Combine: prompt (signature) + completion + test
@@ -44,7 +48,7 @@ func (h *HumanEvalRunner) ValidateResponse(response string, problem formats.Prob
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	out, err := exec.RunSandboxed(ctx, "python3", []string{testFileName}, exec.SandboxOpts{
+	out, err := run(ctx, "python3", []string{testFileName}, exec.SandboxOpts{
 		Dir:   workDir,
 		Image: exec.ImagePython,
 	})

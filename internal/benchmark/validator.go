@@ -12,6 +12,10 @@ import (
 )
 
 func ValidateBuild(projectDir string) (bool, string) {
+	return validateBuildWith(projectDir, exec.RunSandboxed)
+}
+
+func validateBuildWith(projectDir string, run sandboxRunner) (bool, string) {
 	pkg := filepath.Join(projectDir, "package.json")
 	if _, err := os.Stat(pkg); err != nil {
 		return false, "No package.json found"
@@ -23,13 +27,13 @@ func ValidateBuild(projectDir string) (bool, string) {
 	sandbox := exec.SandboxOpts{Dir: projectDir, Image: exec.ImageNode}
 
 	ui.Info("Running npm install (sandboxed)...")
-	out, err := exec.RunSandboxed(ctx, "npm", []string{"install", "--legacy-peer-deps"}, sandbox)
+	out, err := run(ctx, "npm", []string{"install", "--legacy-peer-deps"}, sandbox)
 	if err != nil {
 		return false, fmt.Sprintf("npm install failed:\n%s", truncate(out, 1000))
 	}
 
 	ui.Info("Running npm run build (sandboxed)...")
-	out, err = exec.RunSandboxed(ctx, "npm", []string{"run", "build"}, sandbox)
+	out, err = run(ctx, "npm", []string{"run", "build"}, sandbox)
 	if err != nil {
 		return false, fmt.Sprintf("npm run build failed:\n%s", truncate(out, 1500))
 	}

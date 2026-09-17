@@ -19,6 +19,8 @@ func init() {
 
 type QualityRunner struct{}
 
+type sandboxRunner func(context.Context, string, []string, exec.SandboxOpts) (string, error)
+
 const qualitySystemPrompt = `You are an expert software engineer. Complete the task below.
 Output ONLY the code files needed, using this format for each file:
 
@@ -105,6 +107,10 @@ Original task:
 }
 
 func runBuildCheck(workDir string, problem formats.Problem) (bool, string) {
+	return runBuildCheckWith(workDir, problem, exec.RunSandboxed)
+}
+
+func runBuildCheckWith(workDir string, problem formats.Problem, run sandboxRunner) (bool, string) {
 	var name string
 	var args []string
 	var image string
@@ -127,7 +133,7 @@ func runBuildCheck(workDir string, problem formats.Problem) (bool, string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	out, err := exec.RunSandboxed(ctx, name, args, exec.SandboxOpts{Dir: workDir, Image: image})
+	out, err := run(ctx, name, args, exec.SandboxOpts{Dir: workDir, Image: image})
 	if err != nil {
 		return false, truncateStr(out, 1500)
 	}
@@ -135,12 +141,19 @@ func runBuildCheck(workDir string, problem formats.Problem) (bool, string) {
 }
 
 func runTestCheck(workDir string, problem formats.Problem) (bool, string) {
+	return runTestCheckWith(workDir, problem, exec.RunSandboxed)
+}
+
+func runTestCheckWith(workDir string, problem formats.Problem, run sandboxRunner) (bool, string) {
 	var name string
 	var args []string
 	var image string
 
 	if problem.TestCmd != "" {
 		parts := strings.Fields(problem.TestCmd)
+		if len(parts) == 0 {
+			return false, "empty test command"
+		}
 		name, args = parts[0], parts[1:]
 		image = exec.ImageGo
 	} else if _, err := os.Stat(filepath.Join(workDir, "go.mod")); err == nil {
@@ -159,7 +172,7 @@ func runTestCheck(workDir string, problem formats.Problem) (bool, string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 
-	out, err := exec.RunSandboxed(ctx, name, args, exec.SandboxOpts{Dir: workDir, Image: image})
+	out, err := run(ctx, name, args, exec.SandboxOpts{Dir: workDir, Image: image})
 	if err != nil {
 		failRe := regexp.MustCompile(`(?m)^--- FAIL.*$`)
 		failures := failRe.FindAllString(out, -1)

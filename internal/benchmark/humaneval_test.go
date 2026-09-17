@@ -1,6 +1,7 @@
 package benchmark
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -104,7 +105,7 @@ func TestHumanEvalRunner_ValidateResponse_Pass(t *testing.T) {
 	}
 
 	workDir := t.TempDir()
-	ok, errMsg, err := runner.ValidateResponse("    return a + b", problem, workDir)
+	ok, errMsg, err := runner.validateResponseWith("    return a + b", problem, workDir, fakeSandboxRunner("", nil))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +124,7 @@ func TestHumanEvalRunner_ValidateResponse_Fail(t *testing.T) {
 	}
 
 	workDir := t.TempDir()
-	ok, _, err := runner.ValidateResponse("    return a - b", problem, workDir)
+	ok, _, err := runner.validateResponseWith("    return a - b", problem, workDir, fakeSandboxRunner("assertion failed", errors.New("exit status 1")))
 	if err != nil {
 		t.Fatal(err)
 	}

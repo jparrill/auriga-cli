@@ -1,12 +1,16 @@
 package benchmark
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/jparrill/auriga-cli/internal/benchmark/formats"
+	"github.com/jparrill/auriga-cli/internal/exec"
 )
 
 func TestQualityRunner_BuildPrompt(t *testing.T) {
@@ -105,7 +109,7 @@ func TestQualityRunner_BuildRetryPrompt_BuildFail(t *testing.T) {
 
 func TestRunBuildCheck_NoProject(t *testing.T) {
 	workDir := t.TempDir()
-	ok, _ := runBuildCheck(workDir, formats.Problem{})
+	ok, _ := runBuildCheckWith(workDir, formats.Problem{}, fakeSandboxRunner("", nil))
 	if !ok {
 		t.Error("expected pass when no build system detected")
 	}
@@ -113,7 +117,7 @@ func TestRunBuildCheck_NoProject(t *testing.T) {
 
 func TestRunTestCheck_NoBuildSystem(t *testing.T) {
 	workDir := t.TempDir()
-	ok, _ := runTestCheck(workDir, formats.Problem{})
+	ok, _ := runTestCheckWith(workDir, formats.Problem{}, fakeSandboxRunner("", nil))
 	if !ok {
 		t.Error("expected pass when no test system detected")
 	}
@@ -122,8 +126,77 @@ func TestRunTestCheck_NoBuildSystem(t *testing.T) {
 func TestRunTestCheck_CustomCmd(t *testing.T) {
 	workDir := t.TempDir()
 	problem := formats.Problem{TestCmd: "true"}
-	ok, _ := runTestCheck(workDir, problem)
+	ok, _ := runTestCheckWith(workDir, problem, fakeSandboxRunner("", nil))
 	if !ok {
 		t.Error("expected pass for 'true' command")
+	}
+}
+
+func TestRunBuildCheck_UsesDetectedGoProject(t *testing.T) {
+	workDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(workDir, "go.mod"), []byte("module example.com/test"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	var gotName string
+	var gotArgs []string
+	var gotOpts exec.SandboxOpts
+	ok, errMsg := runBuildCheckWith(workDir, formats.Problem{}, func(_ context.Context, name string, args []string, opts exec.SandboxOpts) (string, error) {
+		gotName, gotArgs, gotOpts = name, args, opts
+		return "", nil
+	})
+	if !ok || errMsg != "" {
+		t.Fatalf("expected build check to pass, got ok=%v err=%q", ok, errMsg)
+	}
+	if gotName != "go" || !reflect.DeepEqual(gotArgs, []string{"build", "./..."}) {
+		t.Errorf("expected go build ./..., got %s %v", gotName, gotArgs)
+	}
+	if gotOpts.Image != exec.ImageGo || gotOpts.Dir != workDir {
+		t.Errorf("unexpected sandbox options: %+v", gotOpts)
+	}
+}
+
+func TestRunTestCheck_UsesCustomCommand(t *testing.T) {
+	workDir := t.TempDir()
+	problem := formats.Problem{TestCmd: "go test ./pkg"}
+
+	var gotName string
+	var gotArgs []string
+	ok, errMsg := runTestCheckWith(workDir, problem, func(_ context.Context, name string, args []string, _ exec.SandboxOpts) (string, error) {
+		gotName, gotArgs = name, args
+		return "", nil
+	})
+	if !ok || errMsg != "" {
+		t.Fatalf("expected custom test command to pass, got ok=%v err=%q", ok, errMsg)
+	}
+	if gotName != "go" || !reflect.DeepEqual(gotArgs, []string{"test", "./pkg"}) {
+		t.Errorf("expected go test ./pkg, got %s %v", gotName, gotArgs)
+	}
+}
+
+func TestRunTestCheck_EmptyCustomCommand(t *testing.T) {
+	workDir := t.TempDir()
+	ok, errMsg := runTestCheckWith(workDir, formats.Problem{TestCmd: "   "}, fakeSandboxRunner("", nil))
+	if ok || errMsg != "empty test command" {
+		t.Errorf("expected empty command error, got ok=%v err=%q", ok, errMsg)
+	}
+}
+
+func TestRunTestCheck_ReportsSandboxFailure(t *testing.T) {
+	workDir := t.TempDir()
+	problem := formats.Problem{TestCmd: "go test ./..."}
+	runErr := errors.New("exit status 1")
+	ok, errMsg := runTestCheckWith(workDir, problem, fakeSandboxRunner("FAIL test_add", runErr))
+	if ok {
+		t.Fatal("expected test check to fail")
+	}
+	if !strings.Contains(errMsg, "FAIL test_add") {
+		t.Errorf("expected command output in error, got %q", errMsg)
+	}
+}
+
+func fakeSandboxRunner(output string, runErr error) sandboxRunner {
+	return func(context.Context, string, []string, exec.SandboxOpts) (string, error) {
+		return output, runErr
 	}
 }

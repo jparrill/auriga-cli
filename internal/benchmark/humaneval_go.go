@@ -30,6 +30,10 @@ func (h *HumanEvalGoRunner) BuildPrompt(problem formats.Problem, suite formats.S
 }
 
 func (h *HumanEvalGoRunner) ValidateResponse(response string, problem formats.Problem, workDir string) (bool, string, error) {
+	return h.validateResponseWith(response, problem, workDir, exec.RunSandboxed)
+}
+
+func (h *HumanEvalGoRunner) validateResponseWith(response string, problem formats.Problem, workDir string, run sandboxRunner) (bool, string, error) {
 	code := cleanGoResponse(response, problem)
 
 	fullCode := buildGoTestFile(problem, code)
@@ -52,12 +56,12 @@ func (h *HumanEvalGoRunner) ValidateResponse(response string, problem formats.Pr
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
-	_, tidyErr := exec.RunSandboxed(ctx, "go", []string{"mod", "tidy"}, sandboxOpts)
+	_, tidyErr := run(ctx, "go", []string{"mod", "tidy"}, sandboxOpts)
 	if tidyErr != nil {
 		return false, fmt.Sprintf("go mod tidy failed: %v", tidyErr), nil
 	}
 
-	out, err := exec.RunSandboxed(ctx, "go", []string{"test", "-v", "-count=1", "./..."}, sandboxOpts)
+	out, err := run(ctx, "go", []string{"test", "-v", "-count=1", "./..."}, sandboxOpts)
 
 	if err != nil {
 		return false, fmt.Sprintf("test_fail: %s\n%s", err.Error(), truncateStr(out, 500)), nil
