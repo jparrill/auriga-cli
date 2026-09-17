@@ -1,9 +1,13 @@
 package profile
 
 import (
+	"bytes"
 	"encoding/binary"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/spf13/viper"
@@ -69,14 +73,216 @@ func TestReadGTTTotal_NoConfig(t *testing.T) {
 	}
 }
 
+func TestReadGTTTotalFromSysfs(t *testing.T) {
+	tests := []struct {
+		name     string
+		glob     func(string) ([]string, error)
+		readFile func(string) ([]byte, error)
+		want     int64
+	}{
+		{
+			name: "When sysfs has multiple cards, it should use largest GTT total",
+			glob: func(string) ([]string, error) {
+				return []string{"card0", "card1"}, nil
+			},
+			readFile: func(path string) ([]byte, error) {
+				if path == "card0" {
+					return []byte("107374182400\n"), nil
+				}
+				return []byte("113279762432\n"), nil
+			},
+			want: 113279762432,
+		},
+		{
+			name: "When sysfs is unavailable, it should return zero",
+			glob: func(string) ([]string, error) {
+				return nil, errors.New("sysfs unavailable")
+			},
+			readFile: os.ReadFile,
+			want:     0,
+		},
+		{
+			name: "When sysfs values are unreadable, it should ignore them",
+			glob: func(string) ([]string, error) {
+				return []string{"missing", "invalid"}, nil
+			},
+			readFile: func(path string) ([]byte, error) {
+				if path == "missing" {
+					return nil, errors.New("read failed")
+				}
+				return []byte("not-a-number"), nil
+			},
+			want: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := readGTTTotalFromSysfs(tt.glob, tt.readFile); got != tt.want {
+				t.Errorf("readGTTTotalFromSysfs() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestAssessGTTFit(t *testing.T) {
+	const gib = int64(1 << 30)
+	tests := []struct {
+		name       string
+		total      int64
+		first      int64
+		second     int64
+		wantStatus gttFitStatus
+		wantMargin int64
+		wantPct    float64
+	}{
+		{
+			name:       "When GTT is unavailable, it should leave fit unclassified",
+			total:      0,
+			first:      40 * gib,
+			second:     40 * gib,
+			wantStatus: gttFitUnknown,
+			wantMargin: 0,
+			wantPct:    0,
+		},
+		{
+			name:       "When combined estimate is below warning threshold, it should fit",
+			total:      100 * gib,
+			first:      40 * gib,
+			second:     40 * gib,
+			wantStatus: gttFitOK,
+			wantMargin: 20 * gib,
+			wantPct:    80,
+		},
+		{
+			name:       "When combined estimate is exactly 85 percent, it should fit",
+			total:      100 * gib,
+			first:      40 * gib,
+			second:     45 * gib,
+			wantStatus: gttFitOK,
+			wantMargin: 15 * gib,
+			wantPct:    85,
+		},
+		{
+			name:       "When combined estimate exceeds 85 percent, it should warn",
+			total:      100 * gib,
+			first:      40 * gib,
+			second:     46 * gib,
+			wantStatus: gttFitWarning,
+			wantMargin: 14 * gib,
+			wantPct:    86,
+		},
+		{
+			name:       "When combined estimate equals capacity, it should warn with zero margin",
+			total:      100 * gib,
+			first:      50 * gib,
+			second:     50 * gib,
+			wantStatus: gttFitWarning,
+			wantMargin: 0,
+			wantPct:    100,
+		},
+		{
+			name:       "When combined estimate exceeds capacity, it should error with negative margin",
+			total:      100 * gib,
+			first:      50 * gib,
+			second:     51 * gib,
+			wantStatus: gttFitError,
+			wantMargin: -1 * gib,
+			wantPct:    101,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := assessGTTFit(tt.total, tt.first, tt.second)
+			if got.Status != tt.wantStatus || got.Margin != tt.wantMargin || got.UsagePct != tt.wantPct {
+				t.Errorf("assessGTTFit() = %+v, want status=%s margin=%d pct=%.0f", got, tt.wantStatus, tt.wantMargin, tt.wantPct)
+			}
+			if got.Combined != tt.first+tt.second {
+				t.Errorf("combined = %d, want %d", got.Combined, tt.first+tt.second)
+			}
+		})
+	}
+}
+
+func TestRunProfileValidate_ShowsGiBUsageAndMargin(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	ggufDir := t.TempDir()
+	for _, profileName := range []string{"dense", "moe"} {
+		modelPath := writeTestGGUF(t, map[string]any{
+			"general.architecture":  "test",
+			"test.context_length":   uint32(131072),
+			"test.block_count":      uint32(32),
+			"test.head_count_kv":    uint32(8),
+			"test.head_count":       uint32(32),
+			"test.embedding_length": uint32(4096),
+		})
+		modelFile := profileName + ".gguf"
+		if err := os.Rename(modelPath, filepath.Join(ggufDir, modelFile)); err != nil {
+			t.Fatal(err)
+		}
+		viper.Set("profiles."+profileName+".model", modelFile)
+		viper.Set("profiles."+profileName+".repo", "org/repo")
+		viper.Set("profiles."+profileName+".type", profileName)
+		viper.Set("profiles."+profileName+".ctx_size", 65536)
+	}
+
+	viper.Set("llama_server.bin", "/usr/bin/llama-server")
+	viper.Set("llama_server.gguf_dir", ggufDir)
+	viper.Set("llama_server.mmproj_dir", t.TempDir())
+	viper.Set("llama_server.slot_1_port", 8090)
+	viper.Set("llama_server.slot_2_port", 8091)
+	viper.Set("llama_server.ctx_size", 131072)
+	viper.Set("llama_server.gtt_bytes", int64(20<<30))
+
+	output := captureValidateOutput(t, func() {
+		if err := runProfileValidate(); err != nil {
+			t.Errorf("runProfileValidate() error = %v", err)
+		}
+	})
+	for _, want := range []string{"GTT: 20.0 GiB", "MARGIN", "12.0 GiB"} {
+		if !strings.Contains(output, want) {
+			t.Errorf("validation output missing %q:\n%s", want, output)
+		}
+	}
+}
+
+func captureValidateOutput(t *testing.T, fn func()) string {
+	t.Helper()
+	original := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = w
+	t.Cleanup(func() { os.Stdout = original })
+
+	fn()
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = original
+
+	var output bytes.Buffer
+	if _, err := io.Copy(&output, r); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return output.String()
+}
+
 func TestReadGGUFMeta_ValidFile(t *testing.T) {
 	path := writeTestGGUF(t, map[string]any{
-		"general.architecture":     "qwen35",
-		"qwen35.context_length":    uint32(131072),
-		"qwen35.block_count":       uint32(64),
-		"qwen35.head_count_kv":     uint32(4),
-		"qwen35.head_count":        uint32(32),
-		"qwen35.embedding_length":  uint32(4096),
+		"general.architecture":    "qwen35",
+		"qwen35.context_length":   uint32(131072),
+		"qwen35.block_count":      uint32(64),
+		"qwen35.head_count_kv":    uint32(4),
+		"qwen35.head_count":       uint32(32),
+		"qwen35.embedding_length": uint32(4096),
 	})
 
 	meta, err := readGGUFMeta(path)
@@ -127,12 +333,12 @@ func TestValidateProfile_CtxExceedsMax(t *testing.T) {
 
 	ggufDir := t.TempDir()
 	modelPath := writeTestGGUF(t, map[string]any{
-		"general.architecture":    "test",
-		"test.context_length":     uint32(32768),
-		"test.block_count":        uint32(32),
-		"test.head_count_kv":      uint32(8),
-		"test.head_count":         uint32(32),
-		"test.embedding_length":   uint32(4096),
+		"general.architecture":  "test",
+		"test.context_length":   uint32(32768),
+		"test.block_count":      uint32(32),
+		"test.head_count_kv":    uint32(8),
+		"test.head_count":       uint32(32),
+		"test.embedding_length": uint32(4096),
 	})
 	modelFile := filepath.Base(modelPath)
 	os.Rename(modelPath, filepath.Join(ggufDir, modelFile))
@@ -162,12 +368,12 @@ func TestValidateProfile_MTPDrafterWarning(t *testing.T) {
 
 	ggufDir := t.TempDir()
 	modelPath := writeTestGGUF(t, map[string]any{
-		"general.architecture":    "test",
-		"test.context_length":     uint32(131072),
-		"test.block_count":        uint32(32),
-		"test.head_count_kv":      uint32(8),
-		"test.head_count":         uint32(32),
-		"test.embedding_length":   uint32(4096),
+		"general.architecture":  "test",
+		"test.context_length":   uint32(131072),
+		"test.block_count":      uint32(32),
+		"test.head_count_kv":    uint32(8),
+		"test.head_count":       uint32(32),
+		"test.embedding_length": uint32(4096),
 	})
 	modelFile := filepath.Base(modelPath)
 	os.Rename(modelPath, filepath.Join(ggufDir, modelFile))
@@ -361,9 +567,9 @@ func TestValidateConfigSchema_ProfileRecommended(t *testing.T) {
 
 func TestReadGGUFMeta_MTPDetection(t *testing.T) {
 	tests := []struct {
-		name     string
-		tensors  []string
-		wantMTP  bool
+		name    string
+		tensors []string
+		wantMTP bool
 	}{
 		{
 			name:    "When model has nextn tensors, it should detect MTP",
@@ -385,12 +591,12 @@ func TestReadGGUFMeta_MTPDetection(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			path := writeTestGGUFWithTensors(t, map[string]any{
-				"general.architecture":    "test",
-				"test.context_length":     uint32(131072),
-				"test.block_count":        uint32(32),
-				"test.head_count_kv":      uint32(8),
-				"test.head_count":         uint32(32),
-				"test.embedding_length":   uint32(4096),
+				"general.architecture":  "test",
+				"test.context_length":   uint32(131072),
+				"test.block_count":      uint32(32),
+				"test.head_count_kv":    uint32(8),
+				"test.head_count":       uint32(32),
+				"test.embedding_length": uint32(4096),
 			}, tt.tensors)
 
 			meta, err := readGGUFMeta(path)
@@ -607,10 +813,10 @@ func writeTestGGUFWithTensors(t *testing.T, kvPairs map[string]any, tensorNames 
 	for _, name := range tensorNames {
 		binary.Write(f, binary.LittleEndian, uint64(len(name)))
 		f.Write([]byte(name))
-		binary.Write(f, binary.LittleEndian, uint32(1)) // n_dims = 1
+		binary.Write(f, binary.LittleEndian, uint32(1))  // n_dims = 1
 		binary.Write(f, binary.LittleEndian, uint64(64)) // dim[0]
-		binary.Write(f, binary.LittleEndian, uint32(0)) // type F32
-		binary.Write(f, binary.LittleEndian, uint64(0)) // offset
+		binary.Write(f, binary.LittleEndian, uint32(0))  // type F32
+		binary.Write(f, binary.LittleEndian, uint64(0))  // offset
 	}
 
 	return f.Name()

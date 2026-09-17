@@ -153,3 +153,69 @@ func TestResolveProfilePreflight_ServeAndSwitchUseSameResolvedInputs(t *testing.
 		t.Errorf("serve and switch preflight differ: %#v vs %#v", serve, switchResult)
 	}
 }
+
+func TestValidateProfileBinary(t *testing.T) {
+	tests := []struct {
+		name    string
+		create  bool
+		wantErr bool
+	}{
+		{name: "When binary exists, it should pass validation", create: true},
+		{name: "When binary is missing, it should return error", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "llama-server")
+			if tt.create {
+				if err := os.WriteFile(path, []byte("fixture"), 0755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			err := validateProfileBinary(profilePreflight{Binary: path})
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateProfileBinary() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestProfileFlagsWithVision(t *testing.T) {
+	tests := []struct {
+		name       string
+		flags      []string
+		mmprojFile string
+		want       []string
+	}{
+		{
+			name:       "When profile has vision without jinja, it should add jinja",
+			flags:      []string{"--batch-size", "1024"},
+			mmprojFile: "vision.gguf",
+			want:       []string{"--batch-size", "1024", "--jinja"},
+		},
+		{
+			name:       "When profile already has jinja, it should not duplicate jinja",
+			flags:      []string{"--jinja"},
+			mmprojFile: "vision.gguf",
+			want:       []string{"--jinja"},
+		},
+		{
+			name:  "When profile has no vision, it should preserve flags",
+			flags: []string{"--threads", "16"},
+			want:  []string{"--threads", "16"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			original := append([]string(nil), tt.flags...)
+			got := profileFlagsWithVision(tt.flags, tt.mmprojFile)
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("profileFlagsWithVision() = %v, want %v", got, tt.want)
+			}
+			if !reflect.DeepEqual(tt.flags, original) {
+				t.Errorf("profileFlagsWithVision() mutated input: %v", tt.flags)
+			}
+		})
+	}
+}

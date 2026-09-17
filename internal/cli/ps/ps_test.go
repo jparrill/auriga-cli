@@ -66,8 +66,8 @@ func TestFormatGB(t *testing.T) {
 
 func TestFormatBytesStr(t *testing.T) {
 	result := formatBytesStr([]byte("1073741824\n"))
-	if result != "1.0 GB" {
-		t.Errorf("expected '1.0 GB', got %q", result)
+	if result != "1.0 GiB" {
+		t.Errorf("expected '1.0 GiB', got %q", result)
 	}
 }
 

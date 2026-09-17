@@ -40,6 +40,22 @@ type profileValidation struct {
 	Errors    []string
 }
 
+type gttFitStatus string
+
+const (
+	gttFitUnknown gttFitStatus = "unknown"
+	gttFitOK      gttFitStatus = "ok"
+	gttFitWarning gttFitStatus = "warning"
+	gttFitError   gttFitStatus = "error"
+)
+
+type gttFitAssessment struct {
+	Combined int64
+	Margin   int64
+	UsagePct float64
+	Status   gttFitStatus
+}
+
 func newProfileValidateCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "validate",
@@ -61,22 +77,22 @@ Examples:
 }
 
 type configCheck struct {
-	Key      string
-	Status   string // "ok", "missing", "recommended"
-	Detail   string
+	Key    string
+	Status string // "ok", "missing", "recommended"
+	Detail string
 }
 
 var requiredGlobalKeys = []struct {
-	key     string
-	reason  string
+	key    string
+	reason string
 }{
 	{"llama_server.bin", "llama-server binary path"},
 	{"llama_server.gguf_dir", "GGUF model directory"},
 }
 
 var recommendedGlobalKeys = []struct {
-	key     string
-	reason  string
+	key    string
+	reason string
 }{
 	{"llama_server.mmproj_dir", "multimodal projector directory"},
 	{"llama_server.slot_1_port", "slot 1 port"},
@@ -148,7 +164,7 @@ func runProfileValidate() error {
 
 		memCol := "-"
 		if v.TotalEst > 0 {
-			memCol = fmt.Sprintf("%.1f GB", float64(v.TotalEst)/1e9)
+			memCol = ui.FormatGiB(v.TotalEst)
 		}
 
 		specCol := "-"
@@ -162,29 +178,29 @@ func runProfileValidate() error {
 
 	// --- Dual-instance (any pair of profiles in 2 slots) ---
 	if gtt > 0 && len(validations) >= 2 {
-		gttLabel := fmt.Sprintf("Dual-Instance Fit (GTT: %.1f GB)", float64(gtt)/1e9)
-		dualTbl := ui.NewTable(gttLabel, "STATUS", "SLOT-1", "SLOT-2", "COMBINED", "USAGE")
+		gttLabel := fmt.Sprintf("Dual-Instance Fit (GTT: %s)", ui.FormatGiB(gtt))
+		dualTbl := ui.NewTable(gttLabel, "STATUS", "SLOT-1", "SLOT-2", "COMBINED", "USAGE", "MARGIN")
 		for i := 0; i < len(validations); i++ {
 			for j := i + 1; j < len(validations); j++ {
 				a, b := validations[i], validations[j]
 				if a.TotalEst == 0 || b.TotalEst == 0 {
 					continue
 				}
-				combined := a.TotalEst + b.TotalEst
-				pct := float64(combined) / float64(gtt) * 100
+				fit := assessGTTFit(gtt, a.TotalEst, b.TotalEst)
 				status := ui.SuccessStyle.Render("✓")
-				if combined > gtt {
+				if fit.Status == gttFitError {
 					status = ui.ErrorStyle.Render("✗")
 					hasErrors = true
-				} else if pct > 85 {
+				} else if fit.Status == gttFitWarning {
 					status = ui.WarningStyle.Render("⚠")
 				}
 				dualTbl.AddRow(
 					status,
 					a.Name,
 					b.Name,
-					fmt.Sprintf("%.1f GB", float64(combined)/1e9),
-					fmt.Sprintf("%.0f%%", pct),
+					ui.FormatGiB(fit.Combined),
+					fmt.Sprintf("%.0f%%", fit.UsagePct),
+					ui.FormatGiB(fit.Margin),
 				)
 			}
 		}
@@ -221,6 +237,27 @@ func runProfileValidate() error {
 		return fmt.Errorf("validation found errors")
 	}
 	return nil
+}
+
+func assessGTTFit(total, first, second int64) gttFitAssessment {
+	combined := first + second
+	assessment := gttFitAssessment{
+		Combined: combined,
+		Status:   gttFitUnknown,
+	}
+	if total <= 0 {
+		return assessment
+	}
+
+	assessment.Status = gttFitOK
+	assessment.Margin = total - combined
+	assessment.UsagePct = float64(combined) / float64(total) * 100
+	if combined > total {
+		assessment.Status = gttFitError
+	} else if assessment.UsagePct > 85 {
+		assessment.Status = gttFitWarning
+	}
+	return assessment
 }
 
 func validateConfigSchema(profiles map[string]any) []configCheck {
@@ -392,13 +429,17 @@ func readGTTTotal() int64 {
 	if gtt := viper.GetInt64("llama_server.gtt_bytes"); gtt > 0 {
 		return gtt
 	}
-	matches, err := filepath.Glob("/sys/class/drm/card*/device/mem_info_gtt_total")
+	return readGTTTotalFromSysfs(filepath.Glob, os.ReadFile)
+}
+
+func readGTTTotalFromSysfs(glob func(string) ([]string, error), readFile func(string) ([]byte, error)) int64 {
+	matches, err := glob("/sys/class/drm/card*/device/mem_info_gtt_total")
 	if err != nil {
 		return 0
 	}
 	var maxGTT int64
 	for _, p := range matches {
-		data, err := os.ReadFile(p)
+		data, err := readFile(p)
 		if err != nil {
 			continue
 		}

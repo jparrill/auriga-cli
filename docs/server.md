@@ -2,7 +2,7 @@
 
 ## What is Auriga
 
-Auriga is a local AI inference server built on an AMD Ryzen AI Max+ 395 workstation with 128GB LPDDR5x unified RAM (108GB GTT available for GPU). It runs Fedora 44 and hosts llama-server instances for LLM inference, accessible over the local network and Tailscale.
+Auriga is a local AI inference server built on an AMD Ryzen AI Max+ 395 workstation with 128GB LPDDR5x unified RAM. Available GTT comes from configuration or system detection and is displayed in GiB. It runs Fedora 44 and hosts llama-server instances for LLM inference, accessible over the local network and Tailscale.
 
 The primary use case is running local LLMs for coding agents (OpenCode, Claude Code) and chat, with llama-server as the main inference backend.
 

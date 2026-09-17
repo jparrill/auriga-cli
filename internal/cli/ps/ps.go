@@ -343,8 +343,6 @@ func checkHealth(port string) string {
 	return fmt.Sprintf("http-%d", resp.StatusCode)
 }
 
-
-
 func extractFlag(args, flag string) string {
 	fields := strings.Fields(args)
 	for i, f := range fields {
@@ -465,7 +463,7 @@ func formatBytesStr(raw []byte) string {
 	s := strings.TrimSpace(string(raw))
 	var n int64
 	fmt.Sscanf(s, "%d", &n)
-	return formatGB(n)
+	return ui.FormatGiB(n)
 }
 
 func portToSlot(portStr string) string {

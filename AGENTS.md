@@ -140,7 +140,7 @@ profile.port (explicit override) > type-derived port (dense/moe) > slot_1_port >
 
 ### Context Size Convention
 
-Context size defaults maximize usable context while ensuring dual-instance (dense + MoE) fits in 108GB GTT.
+Context size defaults maximize usable context while ensuring dual-instance (dense + MoE) fits in available GTT from configuration or the system.
 
 Resolution chain:
 ```
@@ -156,7 +156,7 @@ Guidelines:
 
 Memory estimation for dual-instance:
 - Model size + KV cache (Q8: ~64KB/token for MoE with GQA, ~128KB for dense)
-- Both must fit within 108GB GTT total
+- Both must fit within detected GTT total
 
 ### Naming Conventions
 

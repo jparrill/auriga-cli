@@ -255,7 +255,7 @@ Scans `gguf_dir` and `mmproj_dir` for `.gguf` files not referenced by any profil
 
 ## Hardware
 
-Designed for AMD Ryzen AI Max+ 395 with 128GB LPDDR5x unified memory (108GB GTT for GPU). With MTP enabled: dense Q8 models at ~30-44 tok/s, MoE models at ~50-90 tok/s.
+Designed for AMD Ryzen AI Max+ 395 with 128GB LPDDR5x unified memory and configured or dynamically detected GTT capacity. With MTP enabled: dense Q8 models at ~30-44 tok/s, MoE models at ~50-90 tok/s.
 
 ## License
 
