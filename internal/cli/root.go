@@ -29,8 +29,8 @@ Examples:
 
   auriga profile create mymodel --repo unsloth/gemma-4-12b-it-GGUF --vision
   auriga profile list                        # List configured profiles
-  auriga profile serve qwen3.6-vision        # Start llama-server with profile
-  auriga profile stop                        # Stop llama-server, restart Ollama
+  auriga profile serve qwen3.6-vision --slot 1  # Start llama-server with profile
+  auriga profile stop                           # Stop llama-server instances
 
   auriga benchmark list                      # List all benchmark runs
   auriga benchmark show                      # Show latest run details

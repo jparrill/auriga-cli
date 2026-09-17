@@ -17,8 +17,16 @@ func TestRootCmd_Help(t *testing.T) {
 	}
 
 	output := buf.String()
-	if output == "" {
-		t.Error("expected help output, got empty")
+	for _, want := range []string{
+		"auriga profile serve qwen3.6-vision --slot 1",
+		"auriga profile stop                           # Stop llama-server instances",
+	} {
+		if !strings.Contains(output, want) {
+			t.Errorf("When root help is shown, it should contain %q", want)
+		}
+	}
+	if strings.Contains(output, "restart Ollama") {
+		t.Error("When root help is shown, it should not claim profile stop restarts Ollama")
 	}
 }
 
