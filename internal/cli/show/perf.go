@@ -135,6 +135,9 @@ func resolveProfilePort(name string) int {
 }
 
 func resolveProfileForPort(port int) string {
+	if active := llamaserver.ReadActiveProfile(port); active != "" {
+		return active
+	}
 	runningModel := filepath.Base(getRunningModel(port))
 	profiles := viper.GetStringMap("profiles")
 	for name := range profiles {

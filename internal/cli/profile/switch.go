@@ -186,6 +186,7 @@ func switchDaemon(name, bin, modelPath, mmprojPath string, extraFlags []string, 
 	}
 
 	os.WriteFile(pidFileForPort(port), fmt.Appendf(nil, "%d", proc.Pid), 0644)
+	llamaserver.WriteActiveProfile(port, name)
 	proc.Release()
 
 	if !quiet {
@@ -218,6 +219,7 @@ func switchPersistent(name, bin, modelPath, mmprojPath string, extraFlags []stri
 	if err := systemd.Start(port); err != nil {
 		return fmt.Errorf("failed to start service: %w", err)
 	}
+	llamaserver.WriteActiveProfile(port, name)
 
 	if err := systemd.EnableLinger(); err != nil {
 		if !quiet {
@@ -271,6 +273,7 @@ func stopRunningServer(port int, quiet bool) {
 			ui.Info(fmt.Sprintf("Stopping systemd-managed llama-server on port %d...", port))
 		}
 		systemd.Stop(port)
+		llamaserver.RemoveActiveProfile(port)
 		time.Sleep(2 * time.Second)
 		return
 	}
@@ -289,6 +292,7 @@ func stopRunningServer(port int, quiet bool) {
 			}
 		}
 		os.Remove(pf)
+		llamaserver.RemoveActiveProfile(port)
 		return
 	}
 

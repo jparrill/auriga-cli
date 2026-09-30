@@ -88,6 +88,8 @@ func stopOnPort(port int) error {
 		}
 	}
 
+	llamaserver.RemoveActiveProfile(port)
+
 	if stopped {
 		ui.Ok(fmt.Sprintf("llama-server stopped on port %d", port))
 	}

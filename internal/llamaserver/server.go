@@ -202,6 +202,26 @@ func ProfileForPort(port int) string {
 	return fmt.Sprintf("port-%d", port)
 }
 
+func profileFileForPort(port int) string {
+	return fmt.Sprintf("/tmp/auriga-llama-server-%d.profile", port)
+}
+
+func WriteActiveProfile(port int, profile string) {
+	os.WriteFile(profileFileForPort(port), []byte(profile), 0644)
+}
+
+func ReadActiveProfile(port int) string {
+	data, err := os.ReadFile(profileFileForPort(port))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
+func RemoveActiveProfile(port int) {
+	os.Remove(profileFileForPort(port))
+}
+
 func HostForPort(port int) string {
 	host := Host()
 	parts := strings.Split(host, ":")

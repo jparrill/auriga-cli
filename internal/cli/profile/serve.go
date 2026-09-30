@@ -192,6 +192,7 @@ func runProfileServe(name string, daemon bool, ctxSize int, slot int) error {
 	}
 
 	os.WriteFile(pf, []byte(strconv.Itoa(proc.Pid)), 0644)
+	llamaserver.WriteActiveProfile(port, name)
 
 	if daemon {
 		ui.Ok(fmt.Sprintf("llama-server running in background (PID %d) on port %d", proc.Pid, port))
@@ -207,6 +208,7 @@ func runProfileServe(name string, daemon bool, ctxSize int, slot int) error {
 
 	fmt.Println()
 	os.Remove(pf)
+	llamaserver.RemoveActiveProfile(port)
 	llamaserver.Stop(proc)
 
 	return nil

@@ -229,6 +229,16 @@ func checkLlamaServers() []processInfo {
 			}
 
 			p.Profile, p.ModelType = resolveProfile(p.Model)
+			if port != "" {
+				var portNum int
+				fmt.Sscanf(port, "%d", &portNum)
+				if active := llamaserver.ReadActiveProfile(portNum); active != "" {
+					p.Profile = active
+					if t := viper.GetString(fmt.Sprintf("profiles.%s.type", active)); t != "" {
+						p.ModelType = t
+					}
+				}
+			}
 
 			p.Managed = detectManagement(p.Port)
 
