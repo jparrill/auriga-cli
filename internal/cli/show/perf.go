@@ -16,7 +16,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-var skipPerplexity bool
+var withPerplexity bool
 
 func newShowPerfCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -32,9 +32,9 @@ A warmup request runs before measuring to avoid cold-cache penalties.
 If a profile name is given, only test that profile's port.
 
 Examples:
-  auriga show perf                    # Test all (runs perplexity if not cached)
-  auriga show perf qwen3.8-27b        # Test specific profile
-  auriga show perf --skip-perplexity  # Skip perplexity measurement`,
+  auriga show perf              # Test all (shows cached perplexity if available)
+  auriga show perf qwen3.8-27b  # Test specific profile
+  auriga show perf --ppl        # Also run perplexity measurement if not cached`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 1 {
@@ -43,7 +43,7 @@ Examples:
 			return runPerfAll()
 		},
 	}
-	cmd.Flags().BoolVar(&skipPerplexity, "skip-perplexity", false, "Skip perplexity measurement even if not cached")
+	cmd.Flags().BoolVar(&withPerplexity, "ppl", false, "Run perplexity measurement if not cached")
 	return cmd
 }
 
@@ -242,7 +242,7 @@ func resolvePerplexity(profile, modelFile string) *perf.PerplexityResult {
 		return &cached
 	}
 
-	if skipPerplexity {
+	if !withPerplexity {
 		return nil
 	}
 
@@ -325,7 +325,10 @@ func resolveSpecType(profile string) string {
 		return "dflash"
 	}
 	flags := viper.GetStringSlice(profileKey + ".flags")
-	for _, f := range flags {
+	for i, f := range flags {
+		if f == "--model-draft" && i+1 < len(flags) {
+			return "dflash"
+		}
 		if f == "draft-mtp" {
 			return "mtp"
 		}

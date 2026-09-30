@@ -334,6 +334,18 @@ func TestResolveSpecType_DFlash(t *testing.T) {
 	}
 }
 
+func TestResolveSpecType_DFlashFromFlags(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	viper.Set("profiles.dense.flags", []string{"--model-draft", "draft-model.gguf", "--ctx-size", "131072"})
+
+	got := resolveSpecType("dense")
+	if got != "dflash" {
+		t.Errorf("When --model-draft in flags, spec should be dflash, got %q", got)
+	}
+}
+
 func TestResolveSpecType_MTPFromFlags(t *testing.T) {
 	viper.Reset()
 	defer viper.Reset()
@@ -441,18 +453,18 @@ func TestFmtPerplexity_WithResult(t *testing.T) {
 	}
 }
 
-func TestResolvePerplexity_NoCacheSkipOn(t *testing.T) {
+func TestResolvePerplexity_NoCachePplOff(t *testing.T) {
 	origCache := perf.DefaultCachePath
 	perf.DefaultCachePath = "/tmp/nonexistent-ppl-test.json"
 	defer func() { perf.DefaultCachePath = origCache }()
 
-	origFlag := skipPerplexity
-	skipPerplexity = true
-	defer func() { skipPerplexity = origFlag }()
+	origFlag := withPerplexity
+	withPerplexity = false
+	defer func() { withPerplexity = origFlag }()
 
 	result := resolvePerplexity("test-profile", "test-model.gguf")
 	if result != nil {
-		t.Error("When no cache and skip=true, resolvePerplexity should return nil")
+		t.Error("When no cache and ppl=false, resolvePerplexity should return nil")
 	}
 }
 
@@ -466,9 +478,9 @@ func TestResolvePerplexity_NoCacheBinaryMissing(t *testing.T) {
 		perf.DefaultPerplexityBin = origBin
 	}()
 
-	origFlag := skipPerplexity
-	skipPerplexity = false
-	defer func() { skipPerplexity = origFlag }()
+	origFlag := withPerplexity
+	withPerplexity = true
+	defer func() { withPerplexity = origFlag }()
 
 	result := resolvePerplexity("test-profile", "test-model.gguf")
 	if result != nil {
