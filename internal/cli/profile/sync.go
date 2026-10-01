@@ -67,6 +67,11 @@ func runProfileSync(name string) error {
 }
 
 func SyncProfile(name string) SyncResult {
+	if profileBackend(name) == "vllm" {
+		ui.Ok(fmt.Sprintf("[%s] vllm backend — no GGUF sync needed", name))
+		return SyncResult{Name: name, Status: "skip", Detail: "vllm backend"}
+	}
+
 	repo := viper.GetString(fmt.Sprintf("profiles.%s.repo", name))
 	model := viper.GetString(fmt.Sprintf("profiles.%s.model", name))
 	mmproj := viper.GetString(fmt.Sprintf("profiles.%s.mmproj", name))

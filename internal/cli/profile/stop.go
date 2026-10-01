@@ -55,6 +55,10 @@ func runProfileStopAll() error {
 		exec.RunCapture(ctx, "pkill", []string{"-f", "llama-server"}, exec.RunOpts{})
 	}
 
+	for _, port := range ports {
+		exec.RunCapture(ctx, "podman", []string{"stop", fmt.Sprintf("%s-%d", llamaserver.VLLMContainerPrefix(), port)}, exec.RunOpts{})
+	}
+
 	time.Sleep(2 * time.Second)
 	return nil
 }

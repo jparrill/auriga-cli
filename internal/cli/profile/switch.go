@@ -73,6 +73,11 @@ Examples:
 
 func RunProfileSwitch(name string, opts SwitchOpts) error {
 	profileKey := fmt.Sprintf("profiles.%s", name)
+
+	if profileBackend(name) == "vllm" {
+		return runVLLMSwitch(name, profileKey, opts)
+	}
+
 	preflight, err := resolveProfilePreflight(name, opts.CtxSize, opts.Slot, "auriga profile sync")
 	if err != nil {
 		return err
@@ -294,7 +299,56 @@ func stopRunningServer(port int, quiet bool) {
 
 	ctx := context.Background()
 	exec.RunCapture(ctx, "pkill", []string{"-f", fmt.Sprintf("llama-server.*--port %d", port)}, exec.RunOpts{})
+	exec.RunCapture(ctx, "podman", []string{"stop", fmt.Sprintf("%s-%d", llamaserver.VLLMContainerPrefix(), port)}, exec.RunOpts{})
 	time.Sleep(1 * time.Second)
+}
+
+func runVLLMSwitch(name, profileKey string, opts SwitchOpts) error {
+	if opts.Persistent {
+		return fmt.Errorf("--persistent is not supported for vllm backend — use daemon mode")
+	}
+
+	vp, err := resolveVLLMPreflight(name, opts.CtxSize, opts.Slot)
+	if err != nil {
+		return err
+	}
+
+	if !opts.Quiet {
+		params := []ui.OrderedParam{
+			{Key: "Profile", Value: name},
+			{Key: "Backend", Value: "vllm"},
+			{Key: "Model", Value: filepath.Base(vp.ModelDir)},
+			{Key: "Type", Value: profileType(name)},
+			{Key: "Mode", Value: "daemon"},
+			{Key: "Port", Value: fmt.Sprintf("%d", vp.Port)},
+			{Key: "Context", Value: fmt.Sprintf("%d", opts.CtxSize)},
+		}
+		if len(vp.Flags) > 0 {
+			params = append(params, ui.OrderedParam{Key: "Flags", Value: formatFlagPairs(vp.Flags)})
+		}
+		confirmed, err := ui.ConfirmOperationOrdered("Switch vLLM profile", params, "", opts.AutoConfirm)
+		if err != nil || !confirmed {
+			return err
+		}
+	}
+
+	stopRunningServer(vp.Port, opts.Quiet)
+
+	ctx := context.Background()
+	proc, err := llamaserver.StartWithCtx(ctx, "vllm", vp.Binary, vp.ModelDir, "", vp.Flags, opts.CtxSize, vp.Port)
+	if err != nil {
+		return err
+	}
+
+	os.WriteFile(pidFileForPort(vp.Port), fmt.Appendf(nil, "%d", proc.Pid), 0644)
+	llamaserver.WriteActiveProfile(vp.Port, name)
+	proc.Release()
+
+	if !opts.Quiet {
+		ui.Ok(fmt.Sprintf("Switched to %s (PID %d) on port %d", name, proc.Pid, vp.Port))
+		ui.Info("Stop with: auriga profile stop")
+	}
+	return nil
 }
 
 func formatFlagPairs(flags []string) string {

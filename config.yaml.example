@@ -38,14 +38,20 @@ profiles:
     flags: [--flash-attn, "on", --gpu-layers, "99", --metrics, --slots]
 
   # vLLM profile: uses 'backend: vllm' and 'model_dir' instead of 'model' (GGUF).
+  # Requires a vllm.bin wrapper script that adapts args to podman container execution.
   # Flags injected by auriga: serve <model_dir>, --host 0.0.0.0, --port <N>, --max-model-len <N>
   # gemma4-26b-ciru-vllm:
   #   backend: vllm
   #   type: moe
   #   repo: jcbtc/Gemma4-26B-CIRU-AMD-STRIX-vLLM
   #   model_dir: ~/infra/ai/models/hf/gemma4-ciru-strix
-  #   flags: [--language-model-only, --max-num-seqs, "8", --max-num-batched-tokens, "2048", --enable-prefix-caching]
-  #   ctx_size: 8192
+  #   flags: [--language-model-only, --max-num-seqs, "8", --max-num-batched-tokens, "4096", --enable-prefix-caching, --enforce-eager, --gpu-memory-utilization, "0.3"]
+  #   ctx_size: 4096
+
+# vllm:
+#   bin: ~/infra/bin/vllm-serve
+#   image: docker.io/vllm/vllm-openai-rocm:v0.30.0
+#   container_prefix: auriga-vllm
 
 benchmark:
   max_tokens: 32768

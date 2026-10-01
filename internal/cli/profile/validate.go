@@ -287,7 +287,11 @@ func validateConfigSchema(profiles map[string]any) []configCheck {
 
 	for name := range profiles {
 		prefix := fmt.Sprintf("profiles.%s", name)
+		isVLLM := profileBackend(name) == "vllm"
 		for _, key := range requiredProfileKeys {
+			if isVLLM && key == "model" {
+				continue
+			}
 			full := prefix + "." + key
 			if viper.GetString(full) != "" {
 				continue

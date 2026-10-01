@@ -108,6 +108,20 @@ func AllBinPaths() []string {
 	return paths
 }
 
+func VLLMImage() string {
+	if img := viper.GetString("vllm.image"); img != "" {
+		return img
+	}
+	return "docker.io/vllm/vllm-openai-rocm:latest"
+}
+
+func VLLMContainerPrefix() string {
+	if p := viper.GetString("vllm.container_prefix"); p != "" {
+		return p
+	}
+	return "auriga-vllm"
+}
+
 func GGUFDir() string {
 	return config.ExpandHome(viper.GetString("llama_server.gguf_dir"))
 }
@@ -194,7 +208,12 @@ func ProfileForPort(port int) string {
 			if runningModel == "" {
 				return name
 			}
-			if filepath.Base(viper.GetString(profileKey+".model")) == runningModel {
+			model := viper.GetString(profileKey + ".model")
+			modelDir := viper.GetString(profileKey + ".model_dir")
+			if model != "" && filepath.Base(model) == runningModel {
+				return name
+			}
+			if modelDir != "" && filepath.Base(modelDir) == runningModel {
 				return name
 			}
 		}
@@ -293,9 +312,17 @@ func StartWithCtx(ctx context.Context, backend string, bin string, modelPath str
 	logPath := fmt.Sprintf("/tmp/%s-auriga-%s.log", backend, time.Now().Format("2006-01-02_1504"))
 	logFile, _ := os.Create(logPath)
 
+	env := os.Environ()
+	if backend == "vllm" {
+		env = append(env,
+			"VLLM_IMAGE="+VLLMImage(),
+			"VLLM_CONTAINER_PREFIX="+VLLMContainerPrefix(),
+		)
+	}
+
 	attr := &os.ProcAttr{
 		Dir:   "/tmp",
-		Env:   os.Environ(),
+		Env:   env,
 		Files: []*os.File{os.Stdin, logFile, logFile},
 	}
 

@@ -2,6 +2,7 @@ package profile
 
 import (
 	"fmt"
+	"path/filepath"
 
 	"github.com/jparrill/auriga-cli/internal/ui"
 	"github.com/spf13/cobra"
@@ -33,7 +34,7 @@ func runProfileList() error {
 		}
 	}
 
-	headers := []string{"PROFILE", "TYPE", "PORT", "SPEC", "REPO", "MODEL", "VISION"}
+	headers := []string{"PROFILE", "BACKEND", "TYPE", "PORT", "SPEC", "REPO", "MODEL", "VISION"}
 	if hasCustomBin {
 		headers = append(headers, "BIN")
 	}
@@ -41,8 +42,14 @@ func runProfileList() error {
 
 	for name := range profiles {
 		profileKey := fmt.Sprintf("profiles.%s", name)
+		backend := profileBackend(name)
 		repo := viper.GetString(profileKey + ".repo")
 		model := viper.GetString(profileKey + ".model")
+		if model == "" {
+			if md := viper.GetString(profileKey + ".model_dir"); md != "" {
+				model = filepath.Base(md)
+			}
+		}
 		mmproj := viper.GetString(profileKey + ".mmproj")
 		flags := viper.GetStringSlice(profileKey + ".flags")
 		vision := "no"
@@ -62,7 +69,7 @@ func runProfileList() error {
 			portStr = fmt.Sprintf("%d", p)
 		}
 
-		row := []string{name, pType, portStr, spec, repo, model, vision}
+		row := []string{name, backend, pType, portStr, spec, repo, model, vision}
 		if hasCustomBin {
 			binOverride := viper.GetString(profileKey + ".bin")
 			if binOverride != "" {
