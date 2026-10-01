@@ -81,7 +81,8 @@ func runPerfAll() error {
 func runPerfForProfile(name string) error {
 	profileKey := fmt.Sprintf("profiles.%s", name)
 	model := viper.GetString(profileKey + ".model")
-	if model == "" {
+	modelDir := viper.GetString(profileKey + ".model_dir")
+	if model == "" && modelDir == "" {
 		return fmt.Errorf("profile %q not found", name)
 	}
 
@@ -210,6 +211,9 @@ func benchPort(port int, profile string) perfResult {
 	}
 	specType := resolveSpecType(profile)
 	bin := filepath.Base(llamaserver.BinForProfile(profile))
+	if viper.GetString(profileKey+".backend") == "vllm" {
+		bin = "container"
+	}
 	result := perfResult{Port: port, Profile: profile, ModelType: pType, SpecType: specType, Binary: bin}
 
 	ui.Info(fmt.Sprintf("Testing %s (port %d)...", profile, port))

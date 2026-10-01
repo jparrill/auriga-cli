@@ -1,6 +1,7 @@
 package perf
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -8,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -70,6 +72,10 @@ type ChatResponse struct {
 		PredictedMs     float64 `json:"predicted_ms"`
 		PredictedPerSec float64 `json:"predicted_per_second"`
 	} `json:"timings"`
+	Usage struct {
+		PromptTokens     int `json:"prompt_tokens"`
+		CompletionTokens int `json:"completion_tokens"`
+	} `json:"usage"`
 }
 
 func RunBench(port int, thinking bool) BenchResult {
@@ -129,6 +135,7 @@ func RunSingleBench(port int, thinking bool) BenchResult {
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{}
+	start := time.Now()
 	resp, err := client.Do(req)
 	if err != nil {
 		return BenchResult{Error: err.Error()}
@@ -136,6 +143,7 @@ func RunSingleBench(port int, thinking bool) BenchResult {
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
+	elapsed := time.Since(start)
 	if err != nil {
 		return BenchResult{Error: err.Error()}
 	}
@@ -145,11 +153,28 @@ func RunSingleBench(port int, thinking bool) BenchResult {
 		return BenchResult{Error: fmt.Sprintf("parse error: %s", err)}
 	}
 
+	if cr.Timings.PredictedPerSec > 0 {
+		return BenchResult{
+			PromptTokPerSec:     cr.Timings.PromptPerSecond,
+			GenerationTokPerSec: cr.Timings.PredictedPerSec,
+			PromptTokens:        cr.Timings.PromptN,
+			GeneratedTokens:     cr.Timings.PredictedN,
+		}
+	}
+
+	// Fallback: compute from usage + wall-clock (vLLM and other OpenAI-compatible servers)
+	secs := elapsed.Seconds()
+	promptTok := cr.Usage.PromptTokens
+	genTok := cr.Usage.CompletionTokens
+	var genTokS float64
+	if genTok > 0 && secs > 0 {
+		genTokS = float64(genTok) / secs
+	}
 	return BenchResult{
-		PromptTokPerSec:     cr.Timings.PromptPerSecond,
-		GenerationTokPerSec: cr.Timings.PredictedPerSec,
-		PromptTokens:        cr.Timings.PromptN,
-		GeneratedTokens:     cr.Timings.PredictedN,
+		PromptTokPerSec:     0,
+		GenerationTokPerSec: genTokS,
+		PromptTokens:        promptTok,
+		GeneratedTokens:     genTok,
 	}
 }
 
@@ -183,9 +208,24 @@ func MeasureTTFT(port int) (time.Duration, string) {
 	if err != nil {
 		return 0, ""
 	}
-	ttft := time.Since(start)
-	resp.Body.Close()
+	defer resp.Body.Close()
 
+	// Read until first SSE data line with content (not just headers)
+	ttft := time.Duration(0)
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "data: ") && line != "data: [DONE]" {
+			ttft = time.Since(start)
+			break
+		}
+	}
+	if ttft == 0 {
+		ttft = time.Since(start)
+	}
+	io.Copy(io.Discard, resp.Body)
+
+	// Fetch model name with a non-streaming call
 	payload["stream"] = false
 	body, _ = json.Marshal(payload)
 	req2, _ := http.NewRequestWithContext(context.Background(), "POST", host+"/v1/chat/completions", bytes.NewReader(body))
