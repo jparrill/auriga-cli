@@ -142,8 +142,6 @@ func TestBuildExecStart_BasicModel(t *testing.T) {
 		{"When building ExecStart, it should have model flag", "-m /models/model.gguf"},
 		{"When building ExecStart, it should have host", "--host 0.0.0.0"},
 		{"When building ExecStart, it should have port", "--port 8090"},
-		{"When building ExecStart, it should have flash-attn", "--flash-attn on"},
-		{"When building ExecStart, it should have gpu-layers", "--gpu-layers 99"},
 		{"When building ExecStart, it should have ctx-size", "--ctx-size 131072"},
 	}
 

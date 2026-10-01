@@ -182,6 +182,7 @@ func TestAllBinPaths_NoDuplicates(t *testing.T) {
 func TestStartWithCtx_BinaryNotFound(t *testing.T) {
 	_, err := StartWithCtx(
 		t.Context(),
+		"llama-server",
 		"/nonexistent/llama-server",
 		"/some/model.gguf",
 		"",

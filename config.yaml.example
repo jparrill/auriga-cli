@@ -23,50 +23,29 @@ llama_server:
     dataset: ~/infra/ai/models/datasets/wikitext-2-raw/wiki.test.raw
 
 profiles:
+  # llama-server profiles: all server flags go in 'flags' — nothing is hardcoded.
+  # Flags injected by auriga: -m <model>, --host 0.0.0.0, --port <N>, --ctx-size <N>, --mmproj <path>
   qwen3.6-27b:
     type: dense
     repo: unsloth/Qwen3.6-27B-GGUF
     model: Qwen3.6-27B-UD-Q8_K_XL.gguf
     mmproj: mmproj-F32.gguf
-    flags: [--cache-type-k, q8_0, --cache-type-v, q8_0, --batch-size, "2048", --ubatch-size, "512", --threads, "16"]
-  qwen3.6-vision:
-    type: moe
-    repo: unsloth/Qwen3.6-35B-A3B-GGUF
-    model: Qwen3.6-35B-A3B-Q8_0.gguf
-    mmproj: Qwen3.6-35B-A3B-mmproj-BF16.gguf
-    flags: [--jinja]
-  qwen3.6-uncensored-vision:
-    type: moe
-    repo: HauhauCS/Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive
-    model: Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive-Q4_K_M.gguf
-    mmproj: mmproj-Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive-f16.gguf
-    flags: [--jinja]
+    flags: [--flash-attn, "on", --gpu-layers, "99", --metrics, --slots, --cache-type-k, q8_0, --cache-type-v, q8_0, --batch-size, "2048", --ubatch-size, "512", --threads, "16"]
   gemma4-26b:
     type: moe
     repo: unsloth/gemma-4-26B-A4B-it-GGUF
     model: gemma-4-26B-A4B-it-UD-Q4_K_M.gguf
-  qwen3-coder:
-    type: moe
-    repo: unsloth/Qwen3-Coder-Next-GGUF
-    model: Qwen3-Coder-Next-UD-Q4_K_M.gguf
-  qwen3-30b:
-    type: moe
-    repo: unsloth/Qwen3-30B-A3B-GGUF
-    model: Qwen3-30B-A3B-Q4_K_M.gguf
-  deepseek-r1-distill-qwen32b:
-    type: dense
-    repo: bartowski/DeepSeek-R1-Distill-Qwen-32B-GGUF
-    model: DeepSeek-R1-Distill-Qwen-32B-Q8_0.gguf
-  gemma4-12b-vision:
-    type: dense
-    repo: unsloth/gemma-4-12b-it-GGUF
-    model: gemma-4-12b-it-UD-Q4_K_XL.gguf
-    mmproj: gemma-4-12b-it-mmproj-BF16.gguf
-  # Custom port override example:
-  # custom-model:
-  #   type: dense
-  #   port: 9000
-  #   model: some-model.gguf
+    flags: [--flash-attn, "on", --gpu-layers, "99", --metrics, --slots]
+
+  # vLLM profile: uses 'backend: vllm' and 'model_dir' instead of 'model' (GGUF).
+  # Flags injected by auriga: serve <model_dir>, --host 0.0.0.0, --port <N>, --max-model-len <N>
+  # gemma4-26b-ciru-vllm:
+  #   backend: vllm
+  #   type: moe
+  #   repo: jcbtc/Gemma4-26B-CIRU-AMD-STRIX-vLLM
+  #   model_dir: ~/infra/ai/models/hf/gemma4-ciru-strix
+  #   flags: [--language-model-only, --max-num-seqs, "8", --max-num-batched-tokens, "2048", --enable-prefix-caching]
+  #   ctx_size: 8192
 
 benchmark:
   max_tokens: 32768

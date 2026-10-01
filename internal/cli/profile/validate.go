@@ -330,6 +330,16 @@ func validateProfile(name, ggufDir string) profileValidation {
 		}
 	}
 
+	if profileBackend(name) == "vllm" {
+		modelDir := config.ExpandHome(viper.GetString(profileKey + ".model_dir"))
+		if modelDir == "" {
+			v.Errors = append(v.Errors, "vllm backend requires model_dir")
+		} else if fi, err := os.Stat(modelDir); err != nil || !fi.IsDir() {
+			v.Warnings = append(v.Warnings, fmt.Sprintf("model_dir not found: %s", modelDir))
+		}
+		return v
+	}
+
 	if modelFile == "" {
 		v.Errors = append(v.Errors, "no model configured")
 		return v

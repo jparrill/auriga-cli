@@ -180,7 +180,7 @@ func RunProfileSwitch(name string, opts SwitchOpts) error {
 
 func switchDaemon(name, bin, modelPath, mmprojPath string, extraFlags []string, ctxSize, port int, quiet bool) error {
 	ctx := context.Background()
-	proc, err := llamaserver.StartWithCtx(ctx, bin, modelPath, mmprojPath, extraFlags, ctxSize, port)
+	proc, err := llamaserver.StartWithCtx(ctx, "llama-server", bin, modelPath, mmprojPath, extraFlags, ctxSize, port)
 	if err != nil {
 		return err
 	}
@@ -252,11 +252,7 @@ func buildExecStart(bin, modelPath, mmprojPath string, extraFlags []string, ctxS
 		"-m", modelPath,
 		"--host", "0.0.0.0",
 		"--port", fmt.Sprintf("%d", port),
-		"--flash-attn", "on",
-		"--gpu-layers", "99",
 		"--ctx-size", fmt.Sprintf("%d", ctxSize),
-		"--metrics",
-		"--slots",
 	}
 
 	if mmprojPath != "" {

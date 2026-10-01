@@ -43,6 +43,14 @@ func validateSlot(slot int) error {
 	return nil
 }
 
+func profileBackend(name string) string {
+	profileKey := fmt.Sprintf("profiles.%s", name)
+	if b := viper.GetString(profileKey + ".backend"); b != "" {
+		return b
+	}
+	return "llama-server"
+}
+
 func profileType(name string) string {
 	profileKey := fmt.Sprintf("profiles.%s", name)
 	if t := viper.GetString(profileKey + ".type"); t != "" {
@@ -119,32 +127,19 @@ Examples:
 }
 
 func runProfileServe(name string, daemon bool, ctxSize int, slot int) error {
+	backend := profileBackend(name)
 	profileKey := fmt.Sprintf("profiles.%s", name)
-	modelFile := viper.GetString(profileKey + ".model")
-	if modelFile == "" {
-		return fmt.Errorf("profile %q not found — run: auriga profile list", name)
-	}
 	port := llamaserver.SlotPort(slot)
-	pf := pidFileForPort(port)
-	warnTypeMismatch(name, viper.GetString(profileKey+".type"), modelFile)
 
 	if existingPID := readPIDForPort(port); existingPID > 0 {
 		if processExists(existingPID) {
-			return fmt.Errorf("llama-server already running on port %d (PID %d) — run: auriga profile stop", port, existingPID)
+			return fmt.Errorf("server already running on port %d (PID %d) — run: auriga profile stop", port, existingPID)
 		}
-		os.Remove(pf)
+		os.Remove(pidFileForPort(port))
 	}
 
 	if portInUse(port) {
 		return fmt.Errorf("port %d already in use — another process may be running\nRun: auriga profile stop", port)
-	}
-
-	preflight, err := resolveProfilePreflight(name, ctxSize, slot, "auriga model ensure")
-	if err != nil {
-		return err
-	}
-	if err := validateProfileBinary(preflight); err != nil {
-		return err
 	}
 
 	mode := "foreground"
@@ -152,50 +147,67 @@ func runProfileServe(name string, daemon bool, ctxSize int, slot int) error {
 		mode = "daemon"
 	}
 
-	pType := profileType(name)
-	params := []ui.OrderedParam{
-		{Key: "Profile", Value: name},
-		{Key: "Model", Value: preflight.ModelFile},
-		{Key: "Type", Value: pType},
-		{Key: "Mode", Value: mode},
-	}
-	if viper.GetString(profileKey+".bin") != "" {
-		params = append(params, ui.OrderedParam{Key: "Binary", Value: preflight.Binary})
-	}
-	if preflight.MMProjFile != "" {
-		params = append(params, ui.OrderedParam{Key: "Vision", Value: preflight.MMProjFile})
-	}
-	if preflight.DFlashFile != "" {
-		params = append(params, ui.OrderedParam{Key: "DFlash", Value: preflight.DFlashFile})
-	}
-	if preflight.MTPDrafterFile != "" {
-		params = append(params, ui.OrderedParam{Key: "MTP Drafter", Value: preflight.MTPDrafterFile})
-	}
-	params = append(params, ui.OrderedParam{Key: "Port", Value: fmt.Sprintf("%d", port)})
-	params = append(params, ui.OrderedParam{Key: "Context", Value: fmt.Sprintf("%d", ctxSize)})
-	if profileFlags := preflight.Flags; len(profileFlags) > 0 {
-		params = append(params, ui.OrderedParam{Key: "Flags", Value: formatFlagPairs(profileFlags)})
+	var binary, modelPath, mmprojPath string
+	var extraFlags []string
+
+	if backend == "vllm" {
+		vp, err := resolveVLLMPreflight(name, ctxSize, slot)
+		if err != nil {
+			return err
+		}
+		binary = vp.Binary
+		modelPath = vp.ModelDir
+		extraFlags = vp.Flags
+	} else {
+		modelFile := viper.GetString(profileKey + ".model")
+		if modelFile == "" {
+			return fmt.Errorf("profile %q not found — run: auriga profile list", name)
+		}
+		warnTypeMismatch(name, viper.GetString(profileKey+".type"), modelFile)
+
+		pf, err := resolveProfilePreflight(name, ctxSize, slot, "auriga model ensure")
+		if err != nil {
+			return err
+		}
+		if err := validateProfileBinary(pf); err != nil {
+			return err
+		}
+		binary = pf.Binary
+		modelPath = pf.ModelPath
+		mmprojPath = pf.MMProjPath
+		extraFlags = profileFlagsWithVision(pf.Flags, pf.MMProjFile)
+		extraFlags = injectDrafterFlags(name, pf.GGUFDir, extraFlags)
 	}
 
-	confirmed, err := ui.ConfirmOperationOrdered("Start llama-server", params, "", false)
+	params := []ui.OrderedParam{
+		{Key: "Profile", Value: name},
+		{Key: "Backend", Value: backend},
+		{Key: "Model", Value: filepath.Base(modelPath)},
+		{Key: "Type", Value: profileType(name)},
+		{Key: "Mode", Value: mode},
+		{Key: "Port", Value: fmt.Sprintf("%d", port)},
+		{Key: "Context", Value: fmt.Sprintf("%d", ctxSize)},
+	}
+	if len(extraFlags) > 0 {
+		params = append(params, ui.OrderedParam{Key: "Flags", Value: formatFlagPairs(extraFlags)})
+	}
+
+	confirmed, err := ui.ConfirmOperationOrdered("Start "+backend, params, "", false)
 	if err != nil || !confirmed {
 		return err
 	}
 
-	extraFlags := profileFlagsWithVision(preflight.Flags, preflight.MMProjFile)
-	extraFlags = injectDrafterFlags(name, preflight.GGUFDir, extraFlags)
-
 	ctx := context.Background()
-	proc, err := llamaserver.StartWithCtx(ctx, preflight.Binary, preflight.ModelPath, preflight.MMProjPath, extraFlags, ctxSize, port)
+	proc, err := llamaserver.StartWithCtx(ctx, backend, binary, modelPath, mmprojPath, extraFlags, ctxSize, port)
 	if err != nil {
 		return err
 	}
 
-	os.WriteFile(pf, []byte(strconv.Itoa(proc.Pid)), 0644)
+	os.WriteFile(pidFileForPort(port), []byte(strconv.Itoa(proc.Pid)), 0644)
 	llamaserver.WriteActiveProfile(port, name)
 
 	if daemon {
-		ui.Ok(fmt.Sprintf("llama-server running in background (PID %d) on port %d", proc.Pid, port))
+		ui.Ok(fmt.Sprintf("%s running in background (PID %d) on port %d", backend, proc.Pid, port))
 		ui.Info("Stop with: auriga profile stop")
 		proc.Release()
 		return nil
@@ -207,7 +219,7 @@ func runProfileServe(name string, daemon bool, ctxSize int, slot int) error {
 	<-sigCh
 
 	fmt.Println()
-	os.Remove(pf)
+	os.Remove(pidFileForPort(port))
 	llamaserver.RemoveActiveProfile(port)
 	llamaserver.Stop(proc)
 

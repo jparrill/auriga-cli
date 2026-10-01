@@ -10,13 +10,15 @@ import (
 )
 
 type ProfileConfig struct {
-	Repo   string   `yaml:"repo,omitempty"`
-	Model  string   `yaml:"model"`
-	MMProj string   `yaml:"mmproj,omitempty"`
-	DFlash string   `yaml:"dflash,omitempty"`
-	Type   string   `yaml:"type,omitempty"`
-	Port   int      `yaml:"port,omitempty"`
-	Flags  []string `yaml:"flags,omitempty"`
+	Backend  string   `yaml:"backend,omitempty"`
+	Repo     string   `yaml:"repo,omitempty"`
+	Model    string   `yaml:"model,omitempty"`
+	ModelDir string   `yaml:"model_dir,omitempty"`
+	MMProj   string   `yaml:"mmproj,omitempty"`
+	DFlash   string   `yaml:"dflash,omitempty"`
+	Type     string   `yaml:"type,omitempty"`
+	Port     int      `yaml:"port,omitempty"`
+	Flags    []string `yaml:"flags,omitempty"`
 }
 
 func addProfileToConfig(name string, pc ProfileConfig) error {
@@ -71,10 +73,18 @@ func removeProfileFromConfig(name string) error {
 func buildProfileBlock(name string, pc ProfileConfig) []string {
 	var lines []string
 	lines = append(lines, fmt.Sprintf("  %s:", name))
+	if pc.Backend != "" {
+		lines = append(lines, fmt.Sprintf("    backend: %s", pc.Backend))
+	}
 	if pc.Repo != "" {
 		lines = append(lines, fmt.Sprintf("    repo: %s", pc.Repo))
 	}
-	lines = append(lines, fmt.Sprintf("    model: %s", pc.Model))
+	if pc.Model != "" {
+		lines = append(lines, fmt.Sprintf("    model: %s", pc.Model))
+	}
+	if pc.ModelDir != "" {
+		lines = append(lines, fmt.Sprintf("    model_dir: %s", pc.ModelDir))
+	}
 	if pc.MMProj != "" {
 		lines = append(lines, fmt.Sprintf("    mmproj: %s", pc.MMProj))
 	}
@@ -103,6 +113,13 @@ func buildProfileBlock(name string, pc ProfileConfig) []string {
 func buildProfileNode(pc ProfileConfig) *yaml.Node {
 	node := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
 
+	if pc.Backend != "" {
+		node.Content = append(node.Content,
+			&yaml.Node{Kind: yaml.ScalarNode, Value: "backend"},
+			&yaml.Node{Kind: yaml.ScalarNode, Value: pc.Backend},
+		)
+	}
+
 	if pc.Repo != "" {
 		node.Content = append(node.Content,
 			&yaml.Node{Kind: yaml.ScalarNode, Value: "repo"},
@@ -110,10 +127,19 @@ func buildProfileNode(pc ProfileConfig) *yaml.Node {
 		)
 	}
 
-	node.Content = append(node.Content,
-		&yaml.Node{Kind: yaml.ScalarNode, Value: "model"},
-		&yaml.Node{Kind: yaml.ScalarNode, Value: pc.Model},
-	)
+	if pc.Model != "" {
+		node.Content = append(node.Content,
+			&yaml.Node{Kind: yaml.ScalarNode, Value: "model"},
+			&yaml.Node{Kind: yaml.ScalarNode, Value: pc.Model},
+		)
+	}
+
+	if pc.ModelDir != "" {
+		node.Content = append(node.Content,
+			&yaml.Node{Kind: yaml.ScalarNode, Value: "model_dir"},
+			&yaml.Node{Kind: yaml.ScalarNode, Value: pc.ModelDir},
+		)
+	}
 
 	if pc.MMProj != "" {
 		node.Content = append(node.Content,

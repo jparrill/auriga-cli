@@ -26,6 +26,15 @@ type profilePreflight struct {
 	ContextSize    int
 }
 
+type vllmPreflight struct {
+	Name        string
+	ModelDir    string
+	Port        int
+	Binary      string
+	Flags       []string
+	ContextSize int
+}
+
 func resolveProfilePreflight(name string, ctxSize, slot int, missingCommand string) (profilePreflight, error) {
 	profileKey := fmt.Sprintf("profiles.%s", name)
 	modelFile := viper.GetString(profileKey + ".model")
@@ -91,6 +100,35 @@ func validateProfileBinary(preflight profilePreflight) error {
 		return fmt.Errorf("llama-server binary not found: %s", preflight.Binary)
 	}
 	return nil
+}
+
+func resolveVLLMPreflight(name string, ctxSize, slot int) (vllmPreflight, error) {
+	profileKey := fmt.Sprintf("profiles.%s", name)
+	modelDir := config.ExpandHome(viper.GetString(profileKey + ".model_dir"))
+	if modelDir == "" {
+		return vllmPreflight{}, fmt.Errorf("profile %q: model_dir required for vllm backend", name)
+	}
+
+	if fi, err := os.Stat(modelDir); err != nil || !fi.IsDir() {
+		return vllmPreflight{}, fmt.Errorf("model directory not found: %s", modelDir)
+	}
+
+	bin := llamaserver.BinForProfile(name)
+	if bin == "" || bin == llamaserver.Bin() {
+		bin = config.ExpandHome(viper.GetString("vllm.bin"))
+	}
+	if bin == "" {
+		bin = "vllm"
+	}
+
+	return vllmPreflight{
+		Name:        name,
+		ModelDir:    modelDir,
+		Port:        llamaserver.SlotPort(slot),
+		Binary:      bin,
+		Flags:       append([]string(nil), viper.GetStringSlice(profileKey+".flags")...),
+		ContextSize: ctxSize,
+	}, nil
 }
 
 func profileFlagsWithVision(flags []string, mmprojFile string) []string {

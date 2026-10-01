@@ -238,62 +238,76 @@ func IsOllamaRunning(ctx context.Context) bool {
 }
 
 func Start(ctx context.Context, modelPath string, mmprojPath string, extraFlags []string) (*os.Process, error) {
-	return StartWithCtx(ctx, Bin(), modelPath, mmprojPath, extraFlags, 65536, Port())
+	return StartWithCtx(ctx, "llama-server", Bin(), modelPath, mmprojPath, extraFlags, 65536, Port())
 }
 
-func StartWithCtx(ctx context.Context, bin string, modelPath string, mmprojPath string, extraFlags []string, ctxSize int, port int) (*os.Process, error) {
+// StartWithCtx starts an inference server. The backend parameter ("llama-server" or "vllm")
+// controls how modelPath is passed and which context-size flag is injected.
+// All other flags (flash-attn, gpu-layers, metrics, etc.) come from extraFlags.
+func StartWithCtx(ctx context.Context, backend string, bin string, modelPath string, mmprojPath string, extraFlags []string, ctxSize int, port int) (*os.Process, error) {
 	if _, err := os.Stat(bin); err != nil {
-		return nil, fmt.Errorf("llama-server binary not found: %s", bin)
+		return nil, fmt.Errorf("binary not found: %s", bin)
 	}
 
 	if IsOllamaRunning(ctx) {
 		ui.Warn("Ollama is running — both will compete for GPU resources")
 	}
 
-	if ctxSize <= 0 {
-		ctxSize = 65536
-	}
 	if port <= 0 {
 		port = Port()
 	}
 
-	args := []string{
-		"-m", modelPath,
-		"--host", "0.0.0.0",
-		"--port", fmt.Sprintf("%d", port),
-		"--flash-attn", "on",
-		"--gpu-layers", "99",
-		"--ctx-size", fmt.Sprintf("%d", ctxSize),
-		"--metrics",
-		"--slots",
-	}
+	var args []string
+	label := "llama-server"
 
-	if mmprojPath != "" {
-		args = append(args, "--mmproj", mmprojPath, "--jinja")
+	if backend == "vllm" {
+		label = "vLLM"
+		if ctxSize <= 0 {
+			ctxSize = 8192
+		}
+		args = []string{
+			"serve", modelPath,
+			"--host", "0.0.0.0",
+			"--port", fmt.Sprintf("%d", port),
+			"--max-model-len", fmt.Sprintf("%d", ctxSize),
+		}
+	} else {
+		if ctxSize <= 0 {
+			ctxSize = 65536
+		}
+		args = []string{
+			"-m", modelPath,
+			"--host", "0.0.0.0",
+			"--port", fmt.Sprintf("%d", port),
+			"--ctx-size", fmt.Sprintf("%d", ctxSize),
+		}
+		if mmprojPath != "" {
+			args = append(args, "--mmproj", mmprojPath)
+		}
 	}
 	args = append(args, extraFlags...)
 
-	ui.Info(fmt.Sprintf("Starting llama-server with %s", filepath.Base(modelPath)))
+	ui.Info(fmt.Sprintf("Starting %s with %s", label, filepath.Base(modelPath)))
 	ui.Logger.Debug("cmd", "bin", bin, "args", strings.Join(args, " "))
 
-	logPath := fmt.Sprintf("/tmp/llama-server-auriga-%s.log", time.Now().Format("2006-01-02_1504"))
+	logPath := fmt.Sprintf("/tmp/%s-auriga-%s.log", backend, time.Now().Format("2006-01-02_1504"))
 	logFile, _ := os.Create(logPath)
 
 	attr := &os.ProcAttr{
-		Dir: "/tmp",
-		Env: append(os.Environ(), "AMD_VULKAN_ICD=RADV"),
+		Dir:   "/tmp",
+		Env:   os.Environ(),
 		Files: []*os.File{os.Stdin, logFile, logFile},
 	}
 
 	proc, err := os.StartProcess(bin, append([]string{bin}, args...), attr)
 	if err != nil {
 		logFile.Close()
-		return nil, fmt.Errorf("failed to start llama-server: %w", err)
+		return nil, fmt.Errorf("failed to start %s: %w", label, err)
 	}
 
 	healthTimeout := time.Duration(viper.GetInt("llama_server.health_timeout")) * time.Second
 	if healthTimeout <= 0 {
-		healthTimeout = 90 * time.Second
+		healthTimeout = 120 * time.Second
 	}
 	if err := WaitForHealthOnPort(port, healthTimeout); err != nil {
 		logFile.Close()
@@ -301,7 +315,7 @@ func StartWithCtx(ctx context.Context, bin string, modelPath string, mmprojPath 
 		return nil, err
 	}
 
-	ui.Ok(fmt.Sprintf("llama-server ready on port %d (PID %d)", port, proc.Pid))
+	ui.Ok(fmt.Sprintf("%s ready on port %d (PID %d)", label, port, proc.Pid))
 	ui.Info(fmt.Sprintf("Log: %s", logPath))
 	return proc, nil
 }
