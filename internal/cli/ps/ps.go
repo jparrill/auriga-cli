@@ -92,7 +92,7 @@ func printStatus() {
 func printLlamaServerDetail(procs []processInfo) {
 	var servers []processInfo
 	for _, p := range procs {
-		if strings.HasPrefix(p.Component, "llama-server") && p.Status == "active" {
+		if (p.Component == "llama-server" || p.Component == "vllm") && p.Status == "active" {
 			servers = append(servers, p)
 		}
 	}
@@ -100,7 +100,7 @@ func printLlamaServerDetail(procs []processInfo) {
 		return
 	}
 
-	tbl := ui.NewTable("llama-server instances", "PROFILE", "SLOT", "TYPE", "PORT", "BINARY", "SPEC", "HEALTH", "MANAGED", "DETAILS")
+	tbl := ui.NewTable("Inference instances", "PROFILE", "SLOT", "TYPE", "PORT", "BACKEND", "SPEC", "HEALTH", "MANAGED", "DETAILS")
 	for _, s := range servers {
 		health := ui.ErrorStyle.Render(s.Health)
 		if s.Health == "healthy" {
@@ -110,12 +110,8 @@ func printLlamaServerDetail(procs []processInfo) {
 		if s.SpecType != "" {
 			spec = ui.SuccessStyle.Render(s.SpecType)
 		}
-		bin := s.Binary
-		if bin == "" {
-			bin = "-"
-		}
 		slot := portToSlot(s.Port)
-		tbl.AddRow(s.Profile, slot, s.ModelType, s.Port, bin, spec, health, s.Managed, s.Extra)
+		tbl.AddRow(s.Profile, slot, s.ModelType, s.Port, s.Component, spec, health, s.Managed, s.Extra)
 	}
 	tbl.Print()
 }
@@ -124,6 +120,7 @@ func gatherStatus() []processInfo {
 	var procs []processInfo
 	procs = append(procs, checkOllama())
 	procs = append(procs, checkLlamaServers()...)
+	procs = append(procs, checkVLLMContainers()...)
 	return procs
 }
 
@@ -275,6 +272,62 @@ func checkLlamaServers() []processInfo {
 
 	if len(procs) == 0 {
 		return []processInfo{{Component: "llama-server", Status: "stopped", PID: "-", Port: "-", Model: "-", Extra: "-"}}
+	}
+	return procs
+}
+
+func checkVLLMContainers() []processInfo {
+	prefix := llamaserver.VLLMContainerPrefix()
+	ctx := context.Background()
+	out, err := exec.RunCapture(ctx, "podman", []string{"ps", "--filter", "name=" + prefix, "--format", "{{.Names}}"}, exec.RunOpts{})
+	if err != nil || strings.TrimSpace(out) == "" {
+		return nil
+	}
+
+	var procs []processInfo
+	for _, name := range strings.Split(strings.TrimSpace(out), "\n") {
+		port := strings.TrimPrefix(name, prefix+"-")
+		var portNum int
+		fmt.Sscanf(port, "%d", &portNum)
+
+		profile := "-"
+		modelType := "-"
+		model := "-"
+		if active := llamaserver.ReadActiveProfile(portNum); active != "" {
+			profile = active
+			if t := viper.GetString(fmt.Sprintf("profiles.%s.type", active)); t != "" {
+				modelType = t
+			}
+			if md := viper.GetString(fmt.Sprintf("profiles.%s.model_dir", active)); md != "" {
+				model = filepath.Base(md)
+			}
+		}
+
+		p := processInfo{
+			Component: "vllm",
+			Status:    "active",
+			PID:       "-",
+			Port:      port,
+			Model:     model,
+			Profile:   profile,
+			ModelType: modelType,
+			Managed:   detectManagement(port),
+			Health:    checkHealth(port),
+			Binary:    "container",
+			Extra:     "-",
+		}
+
+		var details []string
+		if profile != "-" {
+			if cs := viper.GetInt(fmt.Sprintf("profiles.%s.ctx_size", profile)); cs > 0 {
+				details = append(details, fmt.Sprintf("ctx:%d", cs))
+			}
+		}
+		if len(details) > 0 {
+			p.Extra = strings.Join(details, " ")
+		}
+
+		procs = append(procs, p)
 	}
 	return procs
 }
