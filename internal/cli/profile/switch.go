@@ -304,13 +304,14 @@ func stopRunningServer(port int, quiet bool) {
 }
 
 func runVLLMSwitch(name, profileKey string, opts SwitchOpts) error {
-	if opts.Persistent {
-		return fmt.Errorf("--persistent is not supported for vllm backend — use daemon mode")
-	}
-
 	vp, err := resolveVLLMPreflight(name, opts.CtxSize, opts.Slot)
 	if err != nil {
 		return err
+	}
+
+	mode := "daemon"
+	if opts.Persistent {
+		mode = "persistent (systemd)"
 	}
 
 	if !opts.Quiet {
@@ -319,7 +320,7 @@ func runVLLMSwitch(name, profileKey string, opts SwitchOpts) error {
 			{Key: "Backend", Value: "vllm"},
 			{Key: "Model", Value: filepath.Base(vp.ModelDir)},
 			{Key: "Type", Value: profileType(name)},
-			{Key: "Mode", Value: "daemon"},
+			{Key: "Mode", Value: mode},
 			{Key: "Port", Value: fmt.Sprintf("%d", vp.Port)},
 			{Key: "Context", Value: fmt.Sprintf("%d", opts.CtxSize)},
 		}
@@ -333,6 +334,10 @@ func runVLLMSwitch(name, profileKey string, opts SwitchOpts) error {
 	}
 
 	stopRunningServer(vp.Port, opts.Quiet)
+
+	if opts.Persistent {
+		return switchVLLMPersistent(name, vp, opts)
+	}
 
 	ctx := context.Background()
 	proc, err := llamaserver.StartWithCtx(ctx, "vllm", vp.Binary, vp.ModelDir, "", vp.Flags, opts.CtxSize, vp.Port)
@@ -349,6 +354,69 @@ func runVLLMSwitch(name, profileKey string, opts SwitchOpts) error {
 		ui.Info("Stop with: auriga profile stop")
 	}
 	return nil
+}
+
+func switchVLLMPersistent(name string, vp vllmPreflight, opts SwitchOpts) error {
+	execStart := buildVLLMExecStart(vp.Binary, vp.ModelDir, vp.Flags, opts.CtxSize, vp.Port)
+
+	cfg := systemd.ServiceConfig{
+		ProfileName: name,
+		ExecStart:   execStart,
+		Environment: []string{
+			"VLLM_IMAGE=" + llamaserver.VLLMImage(),
+			"VLLM_CONTAINER_PREFIX=" + llamaserver.VLLMContainerPrefix(),
+		},
+	}
+
+	content := systemd.GenerateUnit(cfg)
+	unitName := systemd.UnitNameForPort(vp.Port)
+
+	if err := systemd.Install(vp.Port, content); err != nil {
+		return fmt.Errorf("failed to install service: %w", err)
+	}
+	if err := systemd.Enable(vp.Port); err != nil {
+		return fmt.Errorf("failed to enable service: %w", err)
+	}
+	if err := systemd.Start(vp.Port); err != nil {
+		return fmt.Errorf("failed to start service: %w", err)
+	}
+	llamaserver.WriteActiveProfile(vp.Port, name)
+
+	if err := systemd.EnableLinger(); err != nil {
+		if !opts.Quiet {
+			ui.Warn(fmt.Sprintf("Could not enable linger: %v", err))
+			ui.Info("Service may not survive logout — run: loginctl enable-linger")
+		}
+	}
+
+	healthTimeout := time.Duration(viper.GetInt("llama_server.health_timeout")) * time.Second
+	if healthTimeout <= 0 {
+		healthTimeout = 120 * time.Second
+	}
+	if err := llamaserver.WaitForHealthOnPort(vp.Port, healthTimeout); err != nil {
+		return fmt.Errorf("service started but health check failed: %w", err)
+	}
+
+	if !opts.Quiet {
+		path, _ := systemd.UnitPathForPort(vp.Port)
+		ui.Ok(fmt.Sprintf("Switched to %s (systemd persistent) on port %d", name, vp.Port))
+		ui.Info(fmt.Sprintf("Service: %s", path))
+		ui.Info(fmt.Sprintf("Stop with: systemctl --user stop %s", unitName))
+		ui.Info(fmt.Sprintf("Logs with: journalctl --user -u %s -f", unitName))
+	}
+	return nil
+}
+
+func buildVLLMExecStart(bin, modelDir string, extraFlags []string, ctxSize, port int) string {
+	args := []string{
+		bin,
+		"serve", modelDir,
+		"--host", "0.0.0.0",
+		"--port", fmt.Sprintf("%d", port),
+		"--max-model-len", fmt.Sprintf("%d", ctxSize),
+	}
+	args = append(args, extraFlags...)
+	return strings.Join(args, " ")
 }
 
 func formatFlagPairs(flags []string) string {
