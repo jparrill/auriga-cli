@@ -303,10 +303,16 @@ func checkVLLMContainers() []processInfo {
 			}
 		}
 
+		pid := "-"
+		pidOut, pidErr := exec.RunCapture(ctx, "podman", []string{"inspect", "--format", "{{.State.Pid}}", name}, exec.RunOpts{})
+		if pidErr == nil && strings.TrimSpace(pidOut) != "0" {
+			pid = strings.TrimSpace(pidOut)
+		}
+
 		p := processInfo{
 			Component: "vllm",
 			Status:    "active",
-			PID:       "-",
+			PID:       pid,
 			Port:      port,
 			Model:     model,
 			Profile:   profile,
