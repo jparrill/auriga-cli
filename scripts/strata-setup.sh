@@ -69,7 +69,7 @@ cmd_download() {
     cd "$STRATA_SRC"
     mkdir -p "$STRATA_DATA"
     # Coder variant: half experts, code-optimized, ~40GB
-    ./setup.sh --model coder --context 131072 --data-dir "$STRATA_DATA" --no-browser --yes
+    ./setup.sh --family coder --context 131072 --data-dir "$STRATA_DATA" --no-browser --yes
 }
 
 cmd_serve() {

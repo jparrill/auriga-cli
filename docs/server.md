@@ -219,6 +219,136 @@ sudo systemctl status ollama
 # Config in ~/infra/ai/models/modelfiles/
 ```
 
+## AI Services
+
+Auriga hosts additional AI services beyond llama-server. Each follows a standard deployment pattern depending on whether the service is Python-based (container) or native C++ (build on server).
+
+### Directory Convention
+
+```
+~/infra/services/<service-name>/    # Service data (models, output, config)
+~/infra/bin/<service-name>-src/     # Native builds only: source + binary
+~/Projects/<project-name>/          # macOS: project repo with Makefile, Dockerfile, etc.
+```
+
+Models downloaded from HuggingFace go under `~/infra/ai/models/hf/<model-name>/`.
+
+### Port Allocation
+
+| Port | Service |
+|------|---------|
+| 8080 | SearXNG |
+| 8082 | Open Knowledge |
+| 8083 | Available (used by service UIs) |
+| 8090 | llama-server slot 1 (dense) |
+| 8091 | llama-server slot 2 (MoE) |
+| 8092 | AI services (minimax-h3, qwen-image) |
+| 11434 | Ollama |
+
+### Pattern A: Container-based (Python services)
+
+For Python inference services (Diffusers, Transformers, FastAPI). Examples: minimax-h3, qwen-image-2.1.
+
+**Project structure** (on macOS, deployed to auriga):
+
+```
+<project>/
+├── Makefile              # build, up, down, logs, status, test
+├── Dockerfile            # Base image + pip deps
+├── Dockerfile.server     # Server-specific (optional split)
+├── Dockerfile.ui         # UI container (optional)
+├── serve.py              # FastAPI server
+├── ui.py                 # Gradio UI (optional)
+├── run.sh                # Standalone run script (no Make)
+└── compose.yaml          # Optional docker-compose
+```
+
+**Makefile targets** (standard across all container services):
+
+```makefile
+MODEL_DIR    ?= /data/infra/ai/models/hf/<model>
+OUTPUT_DIR   ?= /data/infra/services/<service>/output
+SERVER_IMAGE ?= localhost/<service>-server:latest
+PORT         ?= 8092
+
+build        # Build container image(s)
+up           # Start container(s) with GPU passthrough
+down         # Stop and remove container(s)
+restart      # down + up
+logs         # Follow server logs
+status       # Show container status + health check
+clean        # Remove output files
+test         # Smoke test against running server
+```
+
+**Container run flags** (required for GPU on gfx1151):
+
+```bash
+podman run -d --name <service> \
+  --device /dev/kfd --device /dev/dri \
+  --ipc=host --security-opt seccomp=unconfined --network=host \
+  -e HSA_OVERRIDE_GFX_VERSION=11.5.1 \
+  -e HSA_ENABLE_SDMA=0 \
+  -e HIP_FORCE_DEV_KERNARG=1 \
+  -e PYTORCH_ROCM_ARCH=gfx1151 \
+  -e PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
+  -v <model_dir>:/model:ro \
+  -v <output_dir>:/output \
+  <image>
+```
+
+**Deployment workflow**:
+
+```bash
+# On macOS: build, push to auriga, build image, start
+scp -r <project>/ auriga:~/Projects/<project>/
+ssh auriga "cd ~/Projects/<project> && make build && make up"
+```
+
+### Pattern B: Native build (C++/HIP services)
+
+For compiled inference engines that need direct ROCm/HIP access. Examples: strata (Qwen3.8-Flash-Next).
+
+**Layout on auriga**:
+
+```
+~/infra/bin/<engine>-src/       # Git clone + build artifacts
+~/infra/services/<engine>/      # Model packs, data, output
+```
+
+**Build workflow** (on auriga):
+
+```bash
+git clone <repo> ~/infra/bin/<engine>-src
+cd ~/infra/bin/<engine>-src
+# Build with ROCm for gfx1151
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+  -D<ENGINE>_ENABLE_HIP=ON -DCMAKE_HIP_ARCHITECTURES=gfx1151 ...
+cmake --build build -j$(nproc)
+```
+
+**Runtime env vars** (required for gfx1151):
+
+```bash
+export ROCM_PATH=$HOME/rocm/install
+export HIP_PATH=$ROCM_PATH HIP_PLATFORM=amd
+export LD_LIBRARY_PATH=$ROCM_PATH/lib:$LD_LIBRARY_PATH
+```
+
+**Setup scripts**: kept in `auriga-cli/scripts/` and deployed via `git pull` on auriga.
+
+### Deployed Services
+
+| Service | Type | Project | Port | Model | Status |
+|---------|------|---------|------|-------|--------|
+| minimax-h3 | Container | `video-minimax-h3/` | 8092 | MiniMax-H3 (INT8) | On-demand |
+| qwen-image-2.1 | Container | `image-qwen-image-2.1/` | 8092 | Qwen-Image-2.1 | On-demand |
+| strata | Native | `auriga-cli/scripts/` | 8083 | Qwen3.8-Flash-Next (UD-IQ4_XS) | On-demand |
+
+On-demand services share port 8092 — only one container service runs at a time. Start with `make up`, stop with `make down`.
+
+Strata runs on port 8083 alongside llama-server. Use `scripts/strata-setup.sh serve` to start, kill the process to stop.
+
 ## Monitoring
 
 The `auriga-stats-server.service` exposes system metrics via HTTP. Home Assistant dashboards in `contrib/homeassistant/` consume these metrics for monitoring GPU utilization, VRAM, temperatures, and inference stats.

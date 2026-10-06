@@ -2,7 +2,7 @@
 
 Go CLI for managing LLM models, profiles, benchmarks, and parameter sweeps on a local AMD AI server.
 
-For server-side documentation (directory layout, service management, adding models, updating binaries), see [docs/server.md](docs/server.md).
+For server-side documentation (directory layout, service management, adding models, updating binaries), see [docs/server.md](docs/server.md). For AI service deployment standards (container vs native patterns, port allocation, required env vars), see the **AI Services** section in that doc.
 
 ## Build & Test
 
