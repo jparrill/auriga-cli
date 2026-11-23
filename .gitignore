@@ -5,3 +5,8 @@ bin/
 .DS_Store
 coverage.txt
 sensitive-patterns.yaml
+
+# Agent / editor state (per machine, never shared)
+.claude/
+.codex/
+.serena/
