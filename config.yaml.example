@@ -19,7 +19,7 @@ llama_server:
   slot_2_port: 8091
   # gtt_bytes: <capacity in bytes>  # Optional override when Linux sysfs is unavailable
   perplexity:
-    bin: ~/infra/bin/llama-perplexity
+    bin: ~/infra/bin/llama-perplexity-mainline
     dataset: ~/infra/ai/models/datasets/wikitext-2-raw/wiki.test.raw
 
 profiles:

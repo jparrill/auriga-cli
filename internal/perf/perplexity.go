@@ -17,7 +17,7 @@ import (
 )
 
 var (
-	DefaultPerplexityBin = "~/infra/bin/llama-perplexity"
+	DefaultPerplexityBin = "~/infra/bin/llama-perplexity-mainline"
 	DefaultDatasetPath   = "~/infra/ai/models/datasets/wikitext-2-raw/wiki.test.raw"
 	DefaultCachePath     = "~/.config/auriga/perplexity-cache.json"
 )
