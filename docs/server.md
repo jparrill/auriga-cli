@@ -60,14 +60,36 @@ The primary use case is running local LLMs for coding agents (OpenCode, Claude C
 
 ## llama-server Binaries
 
-There are two builds of llama-server:
+**Rule: every binary in `~/infra/bin` is a symlink to an artifact inside a source
+checkout in `~/Projects/<repo>`.** The source tree, its `build/` directory and its
+shared libraries stay in `~/Projects`; `~/infra/bin` only holds the name you call.
 
-| Binary | When to use |
-|--------|-------------|
-| `llama-server-strix-halo` | Default. Patched for Strix Halo iGPU. Most models. |
-| `llama-server-stock` | For models that need upstream features not yet in the patched build (e.g., split quantization files, `--no-repack`, `--fit off`). |
+```
+~/Projects/strix-halo-llamacpp/vulkan/llama-server-strix-halo
+        └── ~/infra/bin/llama-server-strix-halo          (symlink)
+~/Projects/llama.cpp/build/bin/llama-server
+        └── ~/infra/bin/llama-server-mainline            (symlink)
+~/Projects/vllm/.venv/bin/vllm
+        └── ~/infra/bin/vllm                             (symlink)
+```
 
-**Never use bare `llama-server`** — it's a symlink that may point to either build. Always reference `llama-server-strix-halo` or `llama-server-stock` explicitly in profile configs via the `bin` field.
+Why: the upstream binaries are ~12 KB launchers with a `RUNPATH` pointing into
+their build tree. Copying the file alone breaks (the `.so`s live next to it) and
+a copied binary goes stale as soon as you rebuild. `scripts/build-llama-server.sh`
+implements this pattern for llama.cpp.
+
+Only hand-written adapters (`vllm-serve`) and the `auriga` CLI live in `~/infra/bin`
+as real files.
+
+| Binary | Source tree | When to use |
+|--------|-------------|-------------|
+| `llama-server-strix-halo` | `~/Projects/strix-halo-llamacpp` (fork, b10639) | Default. Patched for Strix Halo iGPU. Dense models + dflash/MTP. |
+| `llama-server-stock` | `~/Projects/llama.cpp-b10861` (upstream b10861) | Models needing upstream features not in the fork (split quant files, `--no-repack`, `--fit off`). |
+| `llama-server-mainline` | `~/Projects/llama.cpp` (upstream b12653) | New architectures not in the other builds (Inkling 2 Mini needs ≥ b12611). |
+
+**Never use bare `llama-server`** — it exists only for compatibility and points at
+the stock tree. Always reference `llama-server-strix-halo`, `llama-server-stock` or
+`llama-server-mainline` explicitly in profile configs via the `bin` field.
 
 ## Service Management
 

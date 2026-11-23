@@ -15,8 +15,8 @@ build:
 .PHONY: install
 install: build
 	@mkdir -p $(HOME)/bin $(HOME)/.config/auriga/prompts $(HOME)/.config/auriga/suites
-	cp bin/$(BINARY) $(HOME)/bin/$(BINARY)
-	@if [ -d $(HOME)/infra/bin ]; then cp bin/$(BINARY) $(HOME)/infra/bin/$(BINARY); fi
+	ln -sfn $(CURDIR)/bin/$(BINARY) $(HOME)/bin/$(BINARY)
+	@if [ -d $(HOME)/infra/bin ]; then ln -sfn $(CURDIR)/bin/$(BINARY) $(HOME)/infra/bin/$(BINARY); fi
 	@if [ ! -f $(HOME)/.config/auriga/config.yaml ]; then \
 		cp config.yaml.example $(HOME)/.config/auriga/config.yaml; \
 		echo "Created $(HOME)/.config/auriga/config.yaml"; \
