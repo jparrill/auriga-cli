@@ -256,3 +256,26 @@ image inputs work; video does not.
 
 **Fix**: track AMD/ROCm torchcodec builds; re-install when one exists for the
 torch version in the venv.
+
+---
+
+# Infra leftovers after the 2026-11-23 binary audit
+
+Every native binary in `~/infra/bin` now resolves into `~/Projects` (see
+`docs/server.md`). What is left are artifacts and experiments that no longer
+have a consumer. Nothing here is required by a running service.
+
+| Path | Size | What it is | Recommendation |
+|------|------|-----------|----------------|
+| `~/infra/vllm-venv` | 25 GB | venv from the container-era attempt | delete; `~/Projects/vllm/.venv` replaced it |
+| `~/infra/vllm-patches/gemma4.py` | 68 KB | patched Gemma4 model class for old vLLM | delete; vLLM 0.34 ships `gemma4_mm` |
+| `~/infra/vllm-build.log` | 40 KB | old build log | delete |
+| `~/infra/pulid-backup/pip-before.txt` | 4 KB | pip snapshot from a July experiment | delete |
+| `~/infra/services/tupaccheck` | 0 B | aborted voice experiment (empty dirs) | delete |
+| `~/infra/services/.backup-*`, `.staging`, `generate-landing.py.bak*` | 68 KB | housekeeping backups | delete |
+| `~/infra/bin/orca/orca-linux.AppImage.backup-1.4.210` | 200 MB | previous Orca version | delete once the current AppImage is confirmed |
+| `~/infra/bin/llama-server-halobox` + `~/Projects/halo-box-llamacpp` | 1.8 GB | experimental fork, no profile references it | decide whether to keep |
+| `comfyui`, `miko` container descriptors | — | units not running / `miko` unit not found | decide whether to keep |
+
+Strata was removed on 2026-11-23 (engine, source checkout and 151 GB of packs);
+port 8083 is free.
