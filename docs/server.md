@@ -75,7 +75,7 @@ shared libraries stay in `~/Projects`; `~/infra/bin` only holds the name you cal
 
 Why: the upstream binaries are ~12 KB launchers with a `RUNPATH` pointing into
 their build tree. Copying the file alone breaks (the `.so`s live next to it) and
-a copied binary goes stale as soon as you rebuild. `scripts/build-llama-server.sh`
+a copied binary goes stale as soon as you rebuild. `~/.customized/scripts/build-llama-server.sh`
 implements this pattern for llama.cpp.
 
 Only hand-written adapters (`vllm-serve`) and the `auriga` CLI live in `~/infra/bin`
@@ -407,7 +407,8 @@ The container adapter (`~/infra/bin/vllm-serve`) is kept as a fallback.
 
 ### Updating
 
-`scripts/update-vllm.sh` runs on the server and decides the build path itself:
+`~/.customized/scripts/update-vllm.sh` decides the build path itself (it ships
+itself to auriga with `--remote-local`, like `opencode-update --remote`):
 
 | Mode | What it does | Cost |
 |------|--------------|------|
@@ -423,8 +424,7 @@ for HEAD -> overlay; no wheel for HEAD but only Python changed since the newest
 wheel -> overlay with that wheel's libs; kernel files changed and no wheel -> full.
 A deep compile is never triggered unattended (`VLLM_ALLOW_FULL=1` to allow it).
 
-`update()` calls it through `~/.customized/scripts/update-vllm.sh` as the last
-step before the Oh-my-ZSH update.
+`update()` calls that same script as the last step before the Oh-my-ZSH update.
 
 ### Bootstrap notes
 

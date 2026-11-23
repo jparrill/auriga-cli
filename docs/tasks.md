@@ -211,7 +211,7 @@ combination starts without prompting.
 # vLLM native backend (added 2026-11-23)
 
 vLLM now runs from `~/Projects/vllm` + venv with `~/infra/bin/vllm` as a symlink,
-deployed by `scripts/update-vllm.sh`. These gaps remain.
+deployed by `~/.customized/scripts/update-vllm.sh`. These gaps remain.
 
 ## P2 - `profile validate` skips vLLM profiles
 
