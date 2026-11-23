@@ -4,7 +4,7 @@
 set -euo pipefail
 
 # --- Paths (follow auriga server layout) ---
-STRATA_SRC="$HOME/infra/bin/strata-src"
+STRATA_SRC="${STRATA_SRC:-$HOME/Projects/strata}"   # source checkout lives in ~/Projects (binary symlinked into ~/infra/bin)
 ROCM_DIR="$HOME/rocm"
 SDK="$ROCM_DIR/install"
 STRATA_DATA="$HOME/infra/services/strata"

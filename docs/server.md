@@ -84,12 +84,31 @@ as real files.
 | Binary | Source tree | When to use |
 |--------|-------------|-------------|
 | `llama-server-strix-halo` | `~/Projects/strix-halo-llamacpp` (fork, b10639) | Default. Patched for Strix Halo iGPU. Dense models + dflash/MTP. |
-| `llama-server-stock` | `~/Projects/llama.cpp-b10861` (upstream b10861) | Models needing upstream features not in the fork (split quant files, `--no-repack`, `--fit off`). |
-| `llama-server-mainline` | `~/Projects/llama.cpp` (upstream b12653) | New architectures not in the other builds (Inkling 2 Mini needs ≥ b12611). |
+| `llama-server-mainline` | `~/Projects/llama.cpp` (upstream b12653) | Everything upstream: new architectures (Inkling 2 Mini needs ≥ b12611), split quant files, `--no-repack`, `--fit off`. |
+| `llama-server-halobox` | `~/Projects/halo-box-llamacpp` | Experimental upstream variant, not used by any profile. |
+| `llama-cli` / `llama-perplexity` | `~/Projects/llama.cpp/build-ppl/bin` | Auxiliary tools from the mainline tree (separate build dir so rebuilding them never relinks the libs of a running server). |
 
-**Never use bare `llama-server`** — it exists only for compatibility and points at
-the stock tree. Always reference `llama-server-strix-halo`, `llama-server-stock` or
-`llama-server-mainline` explicitly in profile configs via the `bin` field.
+The old `llama-server-stock` (b10861) was **retired on 2026-11-23**: its source tree
+cannot be rebuilt offline any more (it downloads the web UI `dist.tar.gz` for the tag
+and that asset is gone), and `llama-server-mainline` accepts every flag those profiles
+used (`--fit`, `--no-repack`, `--n-cpu-moe`, `--load-mode`, `--no-host`). Profiles that
+used it now point at `llama-server-mainline`.
+
+**Never use bare `llama-server`** — it no longer exists. Always reference one of the
+builds above in profile configs via the `bin` field.
+
+## Other native binaries
+
+| Name | Source | Notes |
+|------|--------|-------|
+| `~/infra/bin/strata` | `~/Projects/strata/build-halo/strata` (HIP, gfx1151) | Alternative inference engine. Data and model packs stay in `~/infra/services/strata` (151 GB). Built by `scripts/strata-setup.sh build`; its saved configs under `~/Projects/strata/*.json` embed absolute paths, so moving the tree requires updating them. |
+| `~/infra/bin/vllm` | `~/Projects/vllm/.venv/bin/vllm` | Python venv entry point, see the vLLM section. |
+| `~/infra/bin/auriga` | `~/Projects/auriga-cli/bin/auriga` | `make install` links it (no copy). |
+
+`~/infra/bin/orca/orca-linux.AppImage` is the only binary in `~/infra/bin` that is
+not built here: it is a downloaded third-party AppImage used by
+`orca-server.service`. It is left in place on purpose (moving it would break the
+unit); treat it as an exception to the rule.
 
 ## Service Management
 
