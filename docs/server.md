@@ -101,7 +101,6 @@ builds above in profile configs via the `bin` field.
 
 | Name | Source | Notes |
 |------|--------|-------|
-| `~/infra/bin/strata` | `~/Projects/strata/build-halo/strata` (HIP, gfx1151) | Alternative inference engine. Data and model packs stay in `~/infra/services/strata` (151 GB). Built by `scripts/strata-setup.sh build`; its saved configs under `~/Projects/strata/*.json` embed absolute paths, so moving the tree requires updating them. **Pinned to commit `82f46a8`**: upstream moved `CMakeLists.txt` into `engine/` and the script still expects the old root layout. |
 | `~/infra/bin/vllm` | `~/Projects/vllm/.venv/bin/vllm` | Python venv entry point, see the vLLM section. |
 | `~/infra/bin/auriga` | `~/Projects/auriga-cli/bin/auriga` | `make install` links it (no copy). |
 
@@ -352,7 +351,7 @@ ssh auriga "cd ~/Projects/<project> && make build && make up"
 
 ### Pattern B: Native build (C++/HIP services)
 
-For compiled inference engines that need direct ROCm/HIP access. Examples: strata (Qwen3.8-Flash-Next).
+For compiled inference engines that need direct ROCm/HIP access. Examples: HIP-based engines built from a source checkout in ~/Projects.
 
 **Layout on auriga**:
 
@@ -388,11 +387,9 @@ export LD_LIBRARY_PATH=$ROCM_PATH/lib:$LD_LIBRARY_PATH
 |---------|------|---------|------|-------|--------|
 | minimax-h3 | Container | `video-minimax-h3/` | 8092 | MiniMax-H3 (INT8) | On-demand |
 | qwen-image-2.1 | Container | `image-qwen-image-2.1/` | 8092 | Qwen-Image-2.1 | On-demand |
-| strata | Native | `auriga-cli/scripts/` | 8083 | Qwen3.8-Flash-Next (UD-IQ4_XS) | On-demand |
 
 On-demand services share port 8092 — only one container service runs at a time. Start with `make up`, stop with `make down`.
 
-Strata runs on port 8083 alongside llama-server. Use `scripts/strata-setup.sh serve` to start, kill the process to stop.
 
 ## vLLM (native build)
 

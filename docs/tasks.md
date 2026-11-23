@@ -162,7 +162,7 @@ the documented behavior.
 ## P3 - Deployed binary is behind HEAD
 
 **Observed**: `~/bin/auriga` on the server is from Oct 1 19:57; HEAD is
-`46745d2` (Oct 6, docs + Strata script only), so behavior is current but the
+`46745d2` (Oct 6, docs only), so behavior is current but the
 binary is not from a tagged commit.
 
 **Fix**: `ssh auriga 'cd ~/Projects/auriga-cli && ggpull && make install'`
