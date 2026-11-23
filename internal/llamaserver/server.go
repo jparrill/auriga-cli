@@ -18,11 +18,11 @@ import (
 )
 
 type chatRequest struct {
-	Model    string        `json:"model"`
-	Messages []chatMessage `json:"messages"`
-	MaxTokens int          `json:"max_tokens"`
-	Temperature float64    `json:"temperature"`
-	Stream   bool          `json:"stream"`
+	Model       string        `json:"model"`
+	Messages    []chatMessage `json:"messages"`
+	MaxTokens   int           `json:"max_tokens"`
+	Temperature float64       `json:"temperature"`
+	Stream      bool          `json:"stream"`
 }
 
 type chatMessage struct {
@@ -41,10 +41,10 @@ type chatResponse struct {
 		CompletionTokens int `json:"completion_tokens"`
 	} `json:"usage"`
 	Timings struct {
-		PromptN       int     `json:"prompt_n"`
-		PromptMS      float64 `json:"prompt_ms"`
-		PredictedN    int     `json:"predicted_n"`
-		PredictedMS   float64 `json:"predicted_ms"`
+		PromptN     int     `json:"prompt_n"`
+		PromptMS    float64 `json:"prompt_ms"`
+		PredictedN  int     `json:"predicted_n"`
+		PredictedMS float64 `json:"predicted_ms"`
 	} `json:"timings"`
 }
 
@@ -120,6 +120,34 @@ func VLLMContainerPrefix() string {
 		return p
 	}
 	return "auriga-vllm"
+}
+
+// VLLMContainerName is the podman container name used by the vllm-serve adapter.
+func VLLMContainerName(port int) string {
+	return fmt.Sprintf("%s-%d", VLLMContainerPrefix(), port)
+}
+
+// IsVLLMAdapter reports whether bin is the podman adapter (legacy container
+// backend) instead of a native vLLM console script.
+func IsVLLMAdapter(bin string) bool {
+	return strings.HasSuffix(filepath.Base(bin), "vllm-serve")
+}
+
+// StopVLLMOnPort stops a vLLM instance on port, whether it runs inside the
+// podman adapter or as a native process. Returns true when something matched.
+func StopVLLMOnPort(port int) bool {
+	ctx := context.Background()
+	stopped := false
+
+	if _, err := exec.RunCapture(ctx, "podman", []string{"stop", VLLMContainerName(port)}, exec.RunOpts{}); err == nil {
+		stopped = true
+	}
+
+	pattern := fmt.Sprintf(`vllm serve .*--port %d(\s|$)`, port)
+	if _, err := exec.RunCapture(ctx, "pkill", []string{"-f", pattern}, exec.RunOpts{}); err == nil {
+		stopped = true
+	}
+	return stopped
 }
 
 func GGUFDir() string {
@@ -313,7 +341,7 @@ func StartWithCtx(ctx context.Context, backend string, bin string, modelPath str
 	logFile, _ := os.Create(logPath)
 
 	env := os.Environ()
-	if backend == "vllm" {
+	if backend == "vllm" && IsVLLMAdapter(bin) {
 		env = append(env,
 			"VLLM_IMAGE="+VLLMImage(),
 			"VLLM_CONTAINER_PREFIX="+VLLMContainerPrefix(),

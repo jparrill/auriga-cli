@@ -205,3 +205,54 @@ configurable GTT threshold.
 
 **Verify**: switching to a 100% combo prompts before starting; the current
 combination starts without prompting.
+
+---
+
+# vLLM native backend (added 2026-11-23)
+
+vLLM now runs from `~/Projects/vllm` + venv with `~/infra/bin/vllm` as a symlink,
+deployed by `scripts/update-vllm.sh`. These gaps remain.
+
+## P2 - `profile validate` skips vLLM profiles
+
+**Observed**: `auriga profile validate` prints `CTX - SPEC - MEMORY -` for
+`gemma4-26b-ciru-vllm` and leaves it out of the dual-instance fit table.
+
+**Where**: `internal/cli/profile/validate.go:337-345` returns right after checking
+`model_dir`, before context, memory and spec resolution.
+
+**Fix**: read `config.json` (`model_max_length`, `num_hidden_layers`,
+`num_key_value_heads`, `head_dim`) from `model_dir` and feed the same estimate
+used for GGUF profiles; include the profile in the fit table using
+`gpu_memory_utilization * GTT` when set.
+
+**Verify**: the vLLM profile shows a CTX row and appears in the fit matrix.
+
+## P2 - HF `model_dir` trees are unmanaged
+
+**Observed**: `gemma4-26b-ciru-strix` is 16 GB of safetensors that neither
+`profile prune` nor `model ensure` knows about; `profile sync` skips vLLM
+profiles by design.
+
+**Fix**: list `model_dir` sizes in `ps` disk usage (already partially there) and
+report unreferenced HF directories under `mmproj`-style handling.
+
+## P2 - `--full` cannot compile (no ROCm SDK headers)
+
+**Observed**: `rocm-sdk-devel` is not published in the pip ROCm 10 index
+(`wheels.vllm.ai/rocm/<commit>/rocm100`, `stable.repo.amd.com/rocm/whl-next`),
+so `rocm[devel]==10.0.0` is unsatisfiable and `rocm-sdk init` fails. The overlay
+path works; the deep-compile path is blocked.
+
+**Fix**: either wait for AMD to publish `rocm-sdk-devel`, or add a fallback that
+compiles against the system `/opt/rocm` with a torch built for it. Until then,
+`update-vllm.sh --full` fails fast with a clear message.
+
+## P3 - No video inputs (torchcodec)
+
+**Observed**: `torchcodec` has no ROCm wheel; the PyPI build fails to load
+(`libtorchcodec_image.so`) against ROCm torch, so it was uninstalled. Text and
+image inputs work; video does not.
+
+**Fix**: track AMD/ROCm torchcodec builds; re-install when one exists for the
+torch version in the venv.

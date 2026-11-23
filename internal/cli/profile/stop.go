@@ -30,15 +30,32 @@ Examples:
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 1 {
-				p := viper.GetInt(fmt.Sprintf("profiles.%s.port", args[0]))
-				if p == 0 {
-					return fmt.Errorf("profile %q has no explicit port — use 'auriga profile stop' to stop all", args[0])
+				port := portForProfileName(args[0])
+				if port == 0 {
+					return fmt.Errorf("profile %q not found — use 'auriga profile stop' to stop all", args[0])
 				}
-				return stopOnPort(p)
+				return stopOnPort(port)
 			}
 			return runProfileStopAll()
 		},
 	}
+}
+
+// portForProfileName resolves the port a profile would run on: an explicit
+// port wins, otherwise it is derived from the type (dense -> slot 1, moe -> slot 2).
+func portForProfileName(name string) int {
+	profileKey := fmt.Sprintf("profiles.%s", name)
+	if p := viper.GetInt(profileKey + ".port"); p > 0 {
+		return p
+	}
+	if viper.Get(profileKey+".model") == nil && viper.Get(profileKey+".model_dir") == nil {
+		return 0
+	}
+	slot := 1
+	if viper.GetString(profileKey+".type") == "moe" {
+		slot = 2
+	}
+	return llamaserver.SlotPort(slot)
 }
 
 func runProfileStopAll() error {
@@ -56,7 +73,7 @@ func runProfileStopAll() error {
 	}
 
 	for _, port := range ports {
-		exec.RunCapture(ctx, "podman", []string{"stop", fmt.Sprintf("%s-%d", llamaserver.VLLMContainerPrefix(), port)}, exec.RunOpts{})
+		llamaserver.StopVLLMOnPort(port)
 	}
 
 	time.Sleep(2 * time.Second)
@@ -67,7 +84,7 @@ func stopOnPort(port int) error {
 	stopped := false
 
 	if systemd.IsActiveOnPort(port) {
-		ui.Info(fmt.Sprintf("Stopping systemd-managed llama-server on port %d...", port))
+		ui.Info(fmt.Sprintf("Stopping systemd-managed server on port %d...", port))
 		if err := systemd.Stop(port); err != nil {
 			ui.Warn(fmt.Sprintf("systemctl stop failed on port %d: %v", port, err))
 		} else {
@@ -79,7 +96,7 @@ func stopOnPort(port int) error {
 		pf := pidFileForPort(port)
 		if pid := readPIDForPort(port); pid > 0 {
 			if processExists(pid) {
-				ui.Info(fmt.Sprintf("Stopping llama-server (PID %d) on port %d...", pid, port))
+				ui.Info(fmt.Sprintf("Stopping server (PID %d) on port %d...", pid, port))
 				proc, err := os.FindProcess(pid)
 				if err == nil {
 					proc.Signal(syscall.SIGTERM)
@@ -92,10 +109,16 @@ func stopOnPort(port int) error {
 		}
 	}
 
+	// vLLM may run natively or in the podman adapter; neither shows up in the
+	// pid file when it was started outside auriga.
+	if llamaserver.StopVLLMOnPort(port) {
+		stopped = true
+	}
+
 	llamaserver.RemoveActiveProfile(port)
 
 	if stopped {
-		ui.Ok(fmt.Sprintf("llama-server stopped on port %d", port))
+		ui.Ok(fmt.Sprintf("stopped on port %d", port))
 	}
 	return nil
 }

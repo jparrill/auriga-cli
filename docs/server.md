@@ -2,7 +2,11 @@
 
 ## What is Auriga
 
-Auriga is a local AI inference server built on an AMD Ryzen AI Max+ 395 workstation with 128GB LPDDR5x unified RAM. Available GTT comes from configuration or system detection and is displayed in GiB. It runs Fedora 44 and hosts llama-server instances for LLM inference, accessible over the local network and Tailscale.
+Auriga is a local AI inference server built on a **Framework Desktop** (AMD Ryzen AI Max+ 395, Radeon 8060S iGPU, gfx1151, 40 CU) with **8 × 16 GiB LPDDR5-8000**, of which **125.07 GiB are usable** and **105.5 GiB are GTT** available to the GPU. It runs Fedora 44 and hosts llama-server instances for LLM inference, accessible over the local network and Tailscale.
+
+Storage: 1 TB NVMe for `/` and a 4 TB NVMe mounted at `/data`, where `~/infra` is a symlink. Models and service data live there, not on the root disk.
+
+Measured values, capacity limits and the commands to reproduce them are in [server-hardware.md](server-hardware.md). Trust that file over any other document when they disagree.
 
 The primary use case is running local LLMs for coding agents (OpenCode, Claude Code) and chat, with llama-server as the main inference backend.
 
@@ -348,6 +352,66 @@ export LD_LIBRARY_PATH=$ROCM_PATH/lib:$LD_LIBRARY_PATH
 On-demand services share port 8092 — only one container service runs at a time. Start with `make up`, stop with `make down`.
 
 Strata runs on port 8083 alongside llama-server. Use `scripts/strata-setup.sh serve` to start, kill the process to stop.
+
+## vLLM (native build)
+
+vLLM runs from a source checkout plus a Python 3.14 venv, not from a container.
+The container adapter (`~/infra/bin/vllm-serve`) is kept as a fallback.
+
+```
+~/Projects/vllm/            # git clone of vllm-project/vllm (main)
+~/Projects/vllm/.venv/      # venv: torch+ROCm wheels, torch kernels, vLLM
+~/infra/bin/vllm  ->  ~/Projects/vllm/.venv/bin/vllm
+```
+
+`auriga` only needs `vllm.bin: ~/infra/bin/vllm`; the arguments it injects
+(`serve <model_dir> --host --port --max-model-len`) are the native CLI.
+
+### Updating
+
+`scripts/update-vllm.sh` runs on the server and decides the build path itself:
+
+| Mode | What it does | Cost |
+|------|--------------|------|
+| `--pull-only` | `git pull --ff-only` | seconds |
+| default (auto) | pull, then overlay or full compile, then relink | 1-3 min (overlay) |
+| `--overlay` | Python from the checkout + compiled libs from the wheel published for that commit | 1-3 min |
+| `--full` | compile `csrc/` for gfx1151 + Rust frontend | 20-45 min |
+| `--recover` | reinstall the last built wheel and relink | ~1 min |
+| `--status` | show commit, built commit/wheel/mode, symlink, disk | instant |
+
+Decision rules: dirty `csrc/`/`cmake/`/`setup.py`/`rust/` -> full; wheel published
+for HEAD -> overlay; no wheel for HEAD but only Python changed since the newest
+wheel -> overlay with that wheel's libs; kernel files changed and no wheel -> full.
+A deep compile is never triggered unattended (`VLLM_ALLOW_FULL=1` to allow it).
+
+`update()` calls it through `~/.customized/scripts/update-vllm.sh` as the last
+step before the Oh-my-ZSH update.
+
+### Bootstrap notes
+
+Host prerequisites (once): `python3.14-devel` — Triton builds a small C shim at
+runtime and needs `Python.h`; without it the engine core dies at startup.
+
+The ROCm stack must come from the wheel index (`wheels.vllm.ai/rocm/<commit>/rocm100`),
+never from PyPI: plain PyPI `torch` is a CUDA build and vLLM then fails with
+`Failed to infer device type`. Required pieces: `torch[device-gfx1151]`,
+`torchvision[device-gfx1151]`, `amd-torch-device-gfx1151` (hipBLASLt kernels;
+without it `HIPBLAS_STATUS_INVALID_VALUE`), and `amdsmi` (vLLM's ROCm probe).
+
+State files in the checkout: `.built-commit`, `.built-version`, `.built-wheel`,
+`.built-mode`. Build logs: `~/infra/services/vllm/`.
+
+### Known limitations
+
+- **No video decoding**: `torchcodec` has no ROCm wheel; it is uninstalled, so
+  video inputs are unavailable (images and text work). `requirements/rocm.txt`
+  may try to reinstall it — remove it if `libtorchcodec_image.so` fails to load.
+- **`--full` cannot compile yet**: `rocm[devel]` (the SDK headers/toolchain) is
+  not published for the pip ROCm 10 index, so `rocm-sdk init` fails and the
+  compile path is blocked. Overlay is the working path until that changes.
+- Wheels lag main by a few hours, so HEAD often has none; the overlay borrows
+  the newest wheel's libs and refuses when kernel sources changed in between.
 
 ## Monitoring
 

@@ -38,7 +38,8 @@ profiles:
     flags: [--flash-attn, "on", --gpu-layers, "99", --metrics, --slots]
 
   # vLLM profile: uses 'backend: vllm' and 'model_dir' instead of 'model' (GGUF).
-  # Requires a vllm.bin wrapper script that adapts args to podman container execution.
+  # bin may be the native console script (~/infra/bin/vllm, deployed by
+  # scripts/update-vllm.sh) or the podman adapter (~/infra/bin/vllm-serve).
   # Flags injected by auriga: serve <model_dir>, --host 0.0.0.0, --port <N>, --max-model-len <N>
   # gemma4-26b-ciru-vllm:
   #   backend: vllm
@@ -49,8 +50,8 @@ profiles:
   #   ctx_size: 4096
 
 # vllm:
-#   bin: ~/infra/bin/vllm-serve
-#   image: docker.io/vllm/vllm-openai-rocm:v0.30.0
+#   bin: ~/infra/bin/vllm           # native symlink -> ~/Projects/vllm/.venv/bin/vllm
+#   image: docker.io/vllm/vllm-openai-rocm:v0.30.0   # container fallback only
 #   container_prefix: auriga-vllm
 
 benchmark:

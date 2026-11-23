@@ -120,8 +120,107 @@ func gatherStatus() []processInfo {
 	var procs []processInfo
 	procs = append(procs, checkOllama())
 	procs = append(procs, checkLlamaServers()...)
-	procs = append(procs, checkVLLMContainers()...)
+	procs = append(procs, checkVLLM()...)
 	return procs
+}
+
+// checkVLLM reports vLLM instances from both the podman adapter and native
+// processes, de-duplicating by port.
+func checkVLLM() []processInfo {
+	procs := checkVLLMContainers()
+	seen := map[string]bool{}
+	for _, p := range procs {
+		seen[p.Port] = true
+	}
+	for _, p := range checkVLLMNative() {
+		if !seen[p.Port] {
+			procs = append(procs, p)
+		}
+	}
+	return procs
+}
+
+// checkVLLMNative finds `vllm serve <model_dir> --port N` processes started
+// from the venv (bin: ~/infra/bin/vllm) instead of a container.
+func checkVLLMNative() []processInfo {
+	ctx := context.Background()
+	out, err := exec.RunCapture(ctx, "ps", []string{"-eo", "pid,args"}, exec.RunOpts{})
+	if err != nil {
+		return nil
+	}
+
+	var procs []processInfo
+	for _, line := range strings.Split(out, "\n") {
+		if !strings.Contains(line, "vllm serve ") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		port := extractFlag(line, "--port")
+		if port == "" {
+			continue
+		}
+
+		modelArg := modelArgAfterServe(line)
+		profile, modelType := resolveVLLMProfile(modelArg)
+
+		p := processInfo{
+			Component: "vllm",
+			Status:    "active",
+			PID:       fields[0],
+			Port:      port,
+			Model:     filepath.Base(modelArg),
+			Profile:   profile,
+			ModelType: modelType,
+			Managed:   detectManagement(port),
+			Health:    checkHealth(port),
+			Binary:    "vllm (native)",
+			Extra:     "-",
+		}
+		if profile != "-" {
+			if cs := viper.GetInt(fmt.Sprintf("profiles.%s.ctx_size", profile)); cs > 0 {
+				p.Extra = fmt.Sprintf("ctx:%d", cs)
+			}
+		}
+		procs = append(procs, p)
+	}
+	return procs
+}
+
+func modelArgAfterServe(line string) string {
+	fields := strings.Fields(line)
+	for i, f := range fields {
+		if f == "serve" && i+1 < len(fields) {
+			return fields[i+1]
+		}
+	}
+	return ""
+}
+
+// resolveVLLMProfile matches a running vLLM model directory against the
+// model_dir of the configured vLLM profiles.
+func resolveVLLMProfile(modelArg string) (profile, modelType string) {
+	if modelArg == "" {
+		return "-", "-"
+	}
+	want := filepath.Base(modelArg)
+	profiles := viper.GetStringMap("profiles")
+	for name := range profiles {
+		md := config.ExpandHome(viper.GetString(fmt.Sprintf("profiles.%s.model_dir", name)))
+		if md == "" {
+			continue
+		}
+		if filepath.Base(md) == want {
+			t := viper.GetString(fmt.Sprintf("profiles.%s.type", name))
+			if t == "" {
+				t = "-"
+			}
+			return name, t
+		}
+	}
+	return "-", "-"
 }
 
 func checkOllama() processInfo {
