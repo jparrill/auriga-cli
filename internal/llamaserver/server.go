@@ -208,6 +208,41 @@ func AllSlotPorts() []int {
 	return []int{Slot1Port(), Slot2Port()}
 }
 
+// ModelTypeFromName guesses dense/moe from a GGUF filename. Upstream MoE names
+// carry an "-A<n>B" marker (gemma-4-26B-A4B, Qwen3.6-35B-A3B).
+func ModelTypeFromName(modelName string) string {
+	if idx := strings.Index(modelName, "-A"); idx >= 0 {
+		for i := idx + 2; i < len(modelName); i++ {
+			if modelName[i] >= '0' && modelName[i] <= '9' {
+				continue
+			}
+			if modelName[i] == 'B' {
+				return "moe"
+			}
+			break
+		}
+	}
+	return "dense"
+}
+
+// ProfilePort is the port a profile runs on: an explicit profiles.<name>.port
+// wins, otherwise it is derived from its type (moe -> slot 2, everything else
+// -> slot 1), falling back to the model filename when the type is unset.
+func ProfilePort(name string) int {
+	profileKey := fmt.Sprintf("profiles.%s", name)
+	if p := viper.GetInt(profileKey + ".port"); p > 0 {
+		return p
+	}
+	pType := viper.GetString(profileKey + ".type")
+	if pType == "" {
+		pType = ModelTypeFromName(viper.GetString(profileKey + ".model"))
+	}
+	if pType == "moe" {
+		return Slot2Port()
+	}
+	return Slot1Port()
+}
+
 func ProfileForPort(port int) string {
 	runningModel := ""
 	client := &http.Client{Timeout: 2 * time.Second}
@@ -228,22 +263,19 @@ func ProfileForPort(port int) string {
 	profiles := viper.GetStringMap("profiles")
 	for name := range profiles {
 		profileKey := fmt.Sprintf("profiles.%s", name)
-		p := viper.GetInt(profileKey + ".port")
-		if p == 0 {
-			p = Slot1Port()
+		if ProfilePort(name) != port {
+			continue
 		}
-		if p == port {
-			if runningModel == "" {
-				return name
-			}
-			model := viper.GetString(profileKey + ".model")
-			modelDir := viper.GetString(profileKey + ".model_dir")
-			if model != "" && filepath.Base(model) == runningModel {
-				return name
-			}
-			if modelDir != "" && filepath.Base(modelDir) == runningModel {
-				return name
-			}
+		if runningModel == "" {
+			return name
+		}
+		model := viper.GetString(profileKey + ".model")
+		modelDir := viper.GetString(profileKey + ".model_dir")
+		if model != "" && filepath.Base(model) == runningModel {
+			return name
+		}
+		if modelDir != "" && filepath.Base(modelDir) == runningModel {
+			return name
 		}
 	}
 	return fmt.Sprintf("port-%d", port)

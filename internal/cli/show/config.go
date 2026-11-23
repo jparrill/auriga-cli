@@ -125,7 +125,7 @@ func printProfileDetails() {
 
 		port := viper.GetInt(key + ".port")
 		if port == 0 {
-			port = llamaserver.Slot1Port()
+			port = llamaserver.ProfilePort(name)
 		}
 
 		vision := "no"
@@ -185,18 +185,7 @@ func summarizeFlags(flags []string) string {
 }
 
 func detectModelTypeShow(modelName string) string {
-	if strings.Contains(modelName, "-A") {
-		for i := strings.Index(modelName, "-A") + 2; i < len(modelName); i++ {
-			if modelName[i] >= '0' && modelName[i] <= '9' {
-				continue
-			}
-			if modelName[i] == 'B' {
-				return "moe"
-			}
-			break
-		}
-	}
-	return "dense"
+	return llamaserver.ModelTypeFromName(modelName)
 }
 
 func printAPIEndpoints(slot1Port, slot2Port, lanIP, tsIP string) {

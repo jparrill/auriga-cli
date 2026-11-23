@@ -128,11 +128,7 @@ func collectActivePorts() []portInfo {
 }
 
 func resolveProfilePort(name string) int {
-	profileKey := fmt.Sprintf("profiles.%s", name)
-	if p := viper.GetInt(profileKey + ".port"); p > 0 {
-		return p
-	}
-	return llamaserver.Slot1Port()
+	return llamaserver.ProfilePort(name)
 }
 
 func resolveProfileForPort(port int) string {

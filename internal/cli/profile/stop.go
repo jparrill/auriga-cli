@@ -42,20 +42,13 @@ Examples:
 }
 
 // portForProfileName resolves the port a profile would run on: an explicit
-// port wins, otherwise it is derived from the type (dense -> slot 1, moe -> slot 2).
+// port wins, otherwise it comes from its type (dense -> slot 1, moe -> slot 2).
 func portForProfileName(name string) int {
 	profileKey := fmt.Sprintf("profiles.%s", name)
-	if p := viper.GetInt(profileKey + ".port"); p > 0 {
-		return p
-	}
 	if viper.Get(profileKey+".model") == nil && viper.Get(profileKey+".model_dir") == nil {
 		return 0
 	}
-	slot := 1
-	if viper.GetString(profileKey+".type") == "moe" {
-		slot = 2
-	}
-	return llamaserver.SlotPort(slot)
+	return llamaserver.ProfilePort(name)
 }
 
 func runProfileStopAll() error {

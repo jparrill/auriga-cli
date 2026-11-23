@@ -326,3 +326,75 @@ func TestHostForPort_SamePort(t *testing.T) {
 		t.Errorf("When same port, HostForPort should return unchanged, got %q", got)
 	}
 }
+
+func TestProfilePort(t *testing.T) {
+	viper.Reset()
+	defer viper.Reset()
+
+	viper.Set("llama_server.slot_1_port", 8090)
+	viper.Set("llama_server.slot_2_port", 8091)
+
+	tests := []struct {
+		name     string
+		profile  string
+		config   map[string]any
+		expected int
+	}{
+		{
+			name:     "When the profile is moe, it should resolve to slot 2",
+			profile:  "inkling",
+			config:   map[string]any{"type": "moe"},
+			expected: 8091,
+		},
+		{
+			name:     "When the profile is dense, it should resolve to slot 1",
+			profile:  "dense",
+			config:   map[string]any{"type": "dense"},
+			expected: 8090,
+		},
+		{
+			name:     "When the type is unset and the model is MoE, it should still pick slot 2",
+			profile:  "untyped",
+			config:   map[string]any{"model": "gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf"},
+			expected: 8091,
+		},
+		{
+			name:     "When an explicit port is set, it should win over the type",
+			profile:  "pinned",
+			config:   map[string]any{"type": "moe", "port": 9999},
+			expected: 9999,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for k, v := range tt.config {
+				viper.Set("profiles."+tt.profile+"."+k, v)
+			}
+			if got := ProfilePort(tt.profile); got != tt.expected {
+				t.Fatalf("ProfilePort(%q) = %d, want %d", tt.profile, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestModelTypeFromName(t *testing.T) {
+	tests := []struct {
+		name     string
+		model    string
+		expected string
+	}{
+		{"When the name carries an active-parameter marker, it should be moe", "gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf", "moe"},
+		{"When the name carries no marker, it should be dense", "Qwen3.8-27B-UD-Q4_K_XL.gguf", "dense"},
+		{"When the marker has no B suffix, it should be dense", "Model-A10.gguf", "dense"},
+		{"When the name is Inkling, it should be dense by name (type comes from config)", "Inkling-2-Mini-UD-Q4_K_XL.gguf", "dense"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := ModelTypeFromName(tt.model); got != tt.expected {
+				t.Fatalf("ModelTypeFromName(%q) = %q, want %q", tt.model, got, tt.expected)
+			}
+		})
+	}
+}

@@ -459,18 +459,7 @@ func resolveProfile(modelFilename string) (profile, modelType string) {
 }
 
 func detectType(modelName string) string {
-	if strings.Contains(modelName, "-A") {
-		for i := strings.Index(modelName, "-A") + 2; i < len(modelName); i++ {
-			if modelName[i] >= '0' && modelName[i] <= '9' {
-				continue
-			}
-			if modelName[i] == 'B' {
-				return "moe"
-			}
-			break
-		}
-	}
-	return "dense"
+	return llamaserver.ModelTypeFromName(modelName)
 }
 
 func detectManagement(port string) string {
