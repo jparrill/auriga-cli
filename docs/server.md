@@ -85,6 +85,7 @@ as real files.
 |--------|-------------|-------------|
 | `llama-server-strix-halo` | `~/Projects/strix-halo-llamacpp` (fork, b10639) | Default. Patched for Strix Halo iGPU. Dense models + dflash/MTP. |
 | `llama-server-mainline` | `~/Projects/llama.cpp` (upstream b12653) | Everything upstream: new architectures (Inkling 2 Mini needs ≥ b12611), split quant files, `--no-repack`, `--fit off`. |
+| `llama-server-unsloth` | `~/Projects/llama.cpp-unsloth` (Unsloth prebuilt b12649, self-contained) | Only for Inkling 2 Mini: this prebuilt pins the DSpark speculator (upstream PR #32218 is still open, and b12653 rejects the drafter with a `joint_proj` shape mismatch). |
 | `llama-server-halobox` | `~/Projects/halo-box-llamacpp` | Experimental upstream variant, not used by any profile. |
 | `llama-cli` / `llama-perplexity` | `~/Projects/llama.cpp/build-ppl/bin` | Auxiliary tools from the mainline tree (separate build dir so rebuilding them never relinks the libs of a running server). |
 
@@ -108,6 +109,26 @@ builds above in profile configs via the `bin` field.
 not built here: it is a downloaded third-party AppImage used by
 `orca-server.service`. It is left in place on purpose (moving it would break the
 unit); treat it as an exception to the rule.
+
+
+### Speculative decoding for Inkling 2 Mini
+
+Inkling ships its drafter as a separate DSpark GGUF (converted from `mtp.safetensors`,
+block size 8): `dspark-Inkling-2-Mini-Q8_0.unsloth.gguf` (0.5 GB). The quant files
+themselves carry no MTP heads, so `--spec-type draft-mtp` fails with
+`failed to create MTP context`.
+
+Measured on this box (Inkling UD-Q4_K_XL):
+
+| Engine | Spec | Generation |
+|---|---|---|
+| mainline b12653 | none (drafter rejected) | 28.4 tok/s |
+| Unsloth prebuilt b12649 | `--spec-type draft-dspark --spec-draft-n-max 3` | **49.2 tok/s** |
+
+Draft acceptance sits at 0.91-0.96 with a mean accepted length of ~3.8 tokens. The
+profile sets `bin: ~/infra/bin/llama-server-unsloth`, the spec flags and the drafter
+path explicitly (it is a `Mainline_Support`-style file, so `profile sync` does not
+know how to fetch it).
 
 ## Service Management
 

@@ -225,6 +225,19 @@ func ModelTypeFromName(modelName string) string {
 	return "dense"
 }
 
+// SpecLabel maps a llama.cpp --spec-type value to the short label the CLI shows.
+func SpecLabel(specType string) string {
+	switch specType {
+	case "":
+		return ""
+	case "draft-mtp":
+		return "mtp"
+	case "draft-dspark":
+		return "dspark"
+	}
+	return strings.TrimPrefix(specType, "draft-")
+}
+
 // ProfilePort is the port a profile runs on: an explicit profiles.<name>.port
 // wins, otherwise it is derived from its type (moe -> slot 2, everything else
 // -> slot 1), falling back to the model filename when the type is unset.

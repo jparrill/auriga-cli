@@ -324,16 +324,20 @@ func fmtPerplexity(p *perf.PerplexityResult) string {
 
 func resolveSpecType(profile string) string {
 	profileKey := fmt.Sprintf("profiles.%s", profile)
+	flags := viper.GetStringSlice(profileKey + ".flags")
+	for i, f := range flags {
+		if f == "--spec-type" && i+1 < len(flags) {
+			if label := llamaserver.SpecLabel(flags[i+1]); label != "" {
+				return label
+			}
+		}
+	}
 	if viper.GetString(profileKey+".dflash") != "" {
 		return "dflash"
 	}
-	flags := viper.GetStringSlice(profileKey + ".flags")
-	for i, f := range flags {
-		if f == "--model-draft" && i+1 < len(flags) {
+	for _, f := range flags {
+		if f == "--model-draft" {
 			return "dflash"
-		}
-		if f == "draft-mtp" {
-			return "mtp"
 		}
 	}
 	if viper.GetString(profileKey+".mtp_drafter") != "" {

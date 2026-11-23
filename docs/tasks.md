@@ -279,3 +279,14 @@ have a consumer. Nothing here is required by a running service.
 
 Strata was removed on 2026-11-23 (engine, source checkout and 151 GB of packs);
 port 8083 is free.
+
+## P3 - Drop the Unsloth prebuilt once DSpark lands upstream
+
+**Observed**: Inkling's DSpark drafter only loads on the Unsloth prebuilt
+(`~/Projects/llama.cpp-unsloth`, b12649). Mainline b12653 has a partial DSpark
+implementation whose `joint_proj.weight` shape (2816x768) does not match the
+published drafters (5120x768), and PR #32218 is still open.
+
+**Fix**: when the PR merges and a mainline tag ships it, rebuild
+`llama-server-mainline`, point `inkling-2-mini-q4` back at it and delete the
+prebuilt + its symlink.

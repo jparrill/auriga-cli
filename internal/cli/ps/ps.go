@@ -359,8 +359,8 @@ func checkLlamaServers() []processInfo {
 			}
 
 			specType := extractFlag(args, "--spec-type")
-			if specType == "draft-mtp" {
-				p.SpecType = "mtp"
+			if label := llamaserver.SpecLabel(specType); label != "" {
+				p.SpecType = label
 			} else if extractFlag(args, "--model-draft") != "" {
 				p.SpecType = "dflash"
 			}

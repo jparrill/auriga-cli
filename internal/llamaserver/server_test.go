@@ -398,3 +398,24 @@ func TestModelTypeFromName(t *testing.T) {
 		})
 	}
 }
+
+func TestSpecLabel(t *testing.T) {
+	tests := []struct {
+		name     string
+		specType string
+		expected string
+	}{
+		{"When the drafter is MTP, it should be labelled mtp", "draft-mtp", "mtp"},
+		{"When the drafter is DSpark, it should be labelled dspark", "draft-dspark", "dspark"},
+		{"When the drafter is DFlash, it should be labelled dflash", "draft-dflash", "dflash"},
+		{"When no spec type is set, it should be empty", "", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := SpecLabel(tt.specType); got != tt.expected {
+				t.Fatalf("SpecLabel(%q) = %q, want %q", tt.specType, got, tt.expected)
+			}
+		})
+	}
+}
