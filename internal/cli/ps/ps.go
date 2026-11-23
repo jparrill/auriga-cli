@@ -179,7 +179,10 @@ func checkVLLMNative() []processInfo {
 			Binary:    "vllm (native)",
 			Extra:     "-",
 		}
-		if profile != "-" {
+		// Prefer the context actually running over the profile's configured one.
+		if ctxLen := extractFlag(line, "--max-model-len"); ctxLen != "" {
+			p.Extra = "ctx:" + ctxLen
+		} else if profile != "-" {
 			if cs := viper.GetInt(fmt.Sprintf("profiles.%s.ctx_size", profile)); cs > 0 {
 				p.Extra = fmt.Sprintf("ctx:%d", cs)
 			}
