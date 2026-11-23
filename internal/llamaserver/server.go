@@ -256,11 +256,29 @@ func ProfilePort(name string) int {
 	return Slot1Port()
 }
 
+// ProfileAlias returns the --alias value a profile passes to llama-server, if any.
+func ProfileAlias(name string) string {
+	flags := viper.GetStringSlice(fmt.Sprintf("profiles.%s.flags", name))
+	for i, f := range flags {
+		if f == "--alias" && i+1 < len(flags) {
+			return flags[i+1]
+		}
+	}
+	return ""
+}
+
+// ProfileForPort maps a listening port back to the profile that serves it. The
+// active-profile marker written by serve/switch wins; then the served model id
+// is matched against model, model_dir, --alias and the profile name (a server
+// started with --alias reports the alias, not the filename).
 func ProfileForPort(port int) string {
+	if active := ReadActiveProfile(port); active != "" {
+		return active
+	}
+
 	runningModel := ""
 	client := &http.Client{Timeout: 2 * time.Second}
-	resp, err := client.Get(fmt.Sprintf("http://localhost:%d/v1/models", port))
-	if err == nil {
+	if resp, err := client.Get(fmt.Sprintf("http://localhost:%d/v1/models", port)); err == nil {
 		defer resp.Body.Close()
 		body, _ := io.ReadAll(resp.Body)
 		var result struct {
@@ -274,20 +292,32 @@ func ProfileForPort(port int) string {
 	}
 
 	profiles := viper.GetStringMap("profiles")
+
+	if runningModel != "" {
+		for name := range profiles {
+			if ProfilePort(name) != port {
+				continue
+			}
+			profileKey := fmt.Sprintf("profiles.%s", name)
+			if filepath.Base(viper.GetString(profileKey+".model")) == runningModel {
+				return name
+			}
+			if filepath.Base(viper.GetString(profileKey+".model_dir")) == runningModel {
+				return name
+			}
+		}
+		for name := range profiles {
+			if ProfilePort(name) != port {
+				continue
+			}
+			if ProfileAlias(name) == runningModel || name == runningModel {
+				return name
+			}
+		}
+	}
+
 	for name := range profiles {
-		profileKey := fmt.Sprintf("profiles.%s", name)
-		if ProfilePort(name) != port {
-			continue
-		}
-		if runningModel == "" {
-			return name
-		}
-		model := viper.GetString(profileKey + ".model")
-		modelDir := viper.GetString(profileKey + ".model_dir")
-		if model != "" && filepath.Base(model) == runningModel {
-			return name
-		}
-		if modelDir != "" && filepath.Base(modelDir) == runningModel {
+		if ProfilePort(name) == port {
 			return name
 		}
 	}

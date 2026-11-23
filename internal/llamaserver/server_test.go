@@ -1,8 +1,12 @@
 package llamaserver
 
 import (
+	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -417,5 +421,33 @@ func TestSpecLabel(t *testing.T) {
 				t.Fatalf("SpecLabel(%q) = %q, want %q", tt.specType, got, tt.expected)
 			}
 		})
+	}
+}
+
+func TestProfileForPort_MatchesAliasOfMoEProfile(t *testing.T) {
+	// The Inkling profile runs with --alias, so /v1/models reports the alias and
+	// not the GGUF filename; the benchmark run name depends on this resolution
+	// (it used to fall back to "port-8091").
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"id":"inkling-2-mini-q4"}]}`))
+	}))
+	defer srv.Close()
+
+	_, portStr, _ := net.SplitHostPort(strings.TrimPrefix(srv.URL, "http://"))
+	port, _ := strconv.Atoi(portStr)
+
+	viper.Reset()
+	defer viper.Reset()
+	viper.Set("llama_server.slot_1_port", 8090)
+	viper.Set("llama_server.slot_2_port", port)
+	viper.Set("profiles.inkling-2-mini-q4.type", "moe")
+	viper.Set("profiles.inkling-2-mini-q4.model", "Inkling-2-Mini-UD-Q4_K_XL.gguf")
+	viper.Set("profiles.inkling-2-mini-q4.flags", []string{"--alias", "inkling-2-mini-q4"})
+	viper.Set("profiles.dense-profile.type", "dense")
+	viper.Set("profiles.dense-profile.model", "Qwen3.8-27B-UD-Q4_K_XL.gguf")
+
+	if got := ProfileForPort(port); got != "inkling-2-mini-q4" {
+		t.Fatalf("When a MoE profile serves an alias, ProfileForPort should resolve it, got %q", got)
 	}
 }

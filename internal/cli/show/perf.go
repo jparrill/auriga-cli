@@ -132,39 +132,7 @@ func resolveProfilePort(name string) int {
 }
 
 func resolveProfileForPort(port int) string {
-	if active := llamaserver.ReadActiveProfile(port); active != "" {
-		return active
-	}
-	runningModel := filepath.Base(getRunningModel(port))
-	profiles := viper.GetStringMap("profiles")
-	for name := range profiles {
-		if resolveProfilePort(name) == port {
-			if runningModel == "" {
-				return name
-			}
-			if filepath.Base(viper.GetString(fmt.Sprintf("profiles.%s.model", name))) == runningModel {
-				return name
-			}
-		}
-	}
-	if runningModel != "" {
-		for name := range profiles {
-			if profileAlias(name) == runningModel {
-				return name
-			}
-		}
-	}
-	return fmt.Sprintf("port-%d", port)
-}
-
-func profileAlias(name string) string {
-	flags := viper.GetStringSlice(fmt.Sprintf("profiles.%s.flags", name))
-	for i, f := range flags {
-		if f == "--alias" && i+1 < len(flags) {
-			return flags[i+1]
-		}
-	}
-	return ""
+	return llamaserver.ProfileForPort(port)
 }
 
 func getRunningModel(port int) string {
