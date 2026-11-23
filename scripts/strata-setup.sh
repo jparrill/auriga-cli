@@ -4,7 +4,8 @@
 set -euo pipefail
 
 # --- Paths (follow auriga server layout) ---
-STRATA_SRC="${STRATA_SRC:-$HOME/Projects/strata}"   # source checkout lives in ~/Projects (binary symlinked into ~/infra/bin)
+STRATA_SRC="${STRATA_SRC:-$HOME/Projects/strata}"
+STRATA_REF="${STRATA_REF:-82f46a8}"   # known-good commit; upstream moved CMakeLists.txt into engine/   # source checkout lives in ~/Projects (binary symlinked into ~/infra/bin)
 ROCM_DIR="$HOME/rocm"
 SDK="$ROCM_DIR/install"
 STRATA_DATA="$HOME/infra/services/strata"
@@ -50,10 +51,13 @@ cmd_build() {
     _setup_rocm_env
     if [ ! -d "$STRATA_SRC" ]; then
         git clone https://github.com/Niko1221/Strata.git "$STRATA_SRC"
-    else
-        cd "$STRATA_SRC" && git pull
     fi
+    # Pin instead of pull: upstream restructured the tree (root CMakeLists.txt
+    # moved to engine/) and the flags/configs here match the pinned layout.
+    git -C "$STRATA_SRC" fetch --quiet origin "$STRATA_REF" || true
+    git -C "$STRATA_SRC" checkout --quiet "$STRATA_REF"
     cd "$STRATA_SRC"
+    echo "==> Building strata at $(git rev-parse --short HEAD)"
     cmake -S . -B build-halo -G Ninja -DCMAKE_BUILD_TYPE=Release \
         -DSTRATA_ENABLE_HIP=ON -DSTRATA_ENABLE_CUDA=OFF -DSTRATA_PREFILL_MMQ=ON \
         -DCMAKE_HIP_ARCHITECTURES=gfx1151 \

@@ -101,7 +101,7 @@ builds above in profile configs via the `bin` field.
 
 | Name | Source | Notes |
 |------|--------|-------|
-| `~/infra/bin/strata` | `~/Projects/strata/build-halo/strata` (HIP, gfx1151) | Alternative inference engine. Data and model packs stay in `~/infra/services/strata` (151 GB). Built by `scripts/strata-setup.sh build`; its saved configs under `~/Projects/strata/*.json` embed absolute paths, so moving the tree requires updating them. |
+| `~/infra/bin/strata` | `~/Projects/strata/build-halo/strata` (HIP, gfx1151) | Alternative inference engine. Data and model packs stay in `~/infra/services/strata` (151 GB). Built by `scripts/strata-setup.sh build`; its saved configs under `~/Projects/strata/*.json` embed absolute paths, so moving the tree requires updating them. **Pinned to commit `82f46a8`**: upstream moved `CMakeLists.txt` into `engine/` and the script still expects the old root layout. |
 | `~/infra/bin/vllm` | `~/Projects/vllm/.venv/bin/vllm` | Python venv entry point, see the vLLM section. |
 | `~/infra/bin/auriga` | `~/Projects/auriga-cli/bin/auriga` | `make install` links it (no copy). |
 
