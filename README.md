@@ -15,7 +15,7 @@
 
 ## What
 
-`auriga` is a unified CLI for managing LLM models, benchmarks, and development workflows on a local AI server (AMD Ryzen AI Max+ 395, 128GB unified RAM, Fedora 44).
+`auriga` is a unified CLI for managing LLM models, benchmarks, and development workflows on a local AI server (Framework Desktop, AMD Ryzen AI Max+ 395 + Radeon 8060S iGPU, 128 GiB RAM of which 125.07 GiB usable, Fedora 44).
 
 It consolidates model management (Ollama + llama-server), vision-enabled inference (multimodal projectors), and meta-benchmarks into a single binary.
 
@@ -255,7 +255,9 @@ Scans `gguf_dir` and `mmproj_dir` for `.gguf` files not referenced by any profil
 
 ## Hardware
 
-Designed for AMD Ryzen AI Max+ 395 with 128GB LPDDR5x unified memory and configured or dynamically detected GTT capacity. With MTP enabled: dense Q8 models at ~30-44 tok/s, MoE models at ~50-90 tok/s.
+Designed for AMD Ryzen AI Max+ 395 (Radeon 8060S iGPU, gfx1151, 40 CU) with 128 GiB LPDDR5-8000 (125.07 GiB usable, 105.5 GiB GTT) and configured or dynamically detected GTT capacity. With MTP enabled: dense Q8 models at ~30-44 tok/s, MoE models at ~50-90 tok/s.
+
+Measured hardware details: [docs/server-hardware.md](docs/server-hardware.md).
 
 ## License
 
